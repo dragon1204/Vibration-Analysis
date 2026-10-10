@@ -1,0 +1,328 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+generator json {
+  provider  = "prisma-json-types-generator"
+  namespace = "PrismaJson"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DB_URL")
+}
+
+// ─── Spatial Hierarchy: Urban → Building → Floor ─────────────────────
+
+model Urban {
+  id          Int        @id @default(autoincrement())
+  code        String?    @unique
+  slug        String     @unique
+  name        String
+  address     String?
+  description String?
+  imageUrl    String?
+  latitude    Float?
+  longitude   Float?
+
+  buildings   Building[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Building {
+  id          Int        @id @default(autoincrement())
+  urbanId     Int
+  code        String?
+  slug        String
+  name        String
+  address     String?
+  description String?
+  imageUrl    String?
+
+  // 3D scene placement
+  modelUrl    String?
+  totalFloors Int        @default(1)
+  positionX   Float      @default(0)
+  positionY   Float      @default(0)
+  positionZ   Float      @default(0)
+  rotationY   Float      @default(0)
+  scale       Float      @default(1)
+
+  urban       Urban      @relation(fields: [urbanId], references: [id], onDelete: Cascade)
+  floors      Floor[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([urbanId, slug])
+  @@index([urbanId])
+}
+
+model Floor {
+  id           Int        @id @default(autoincrement())
+  buildingId   Int
+  floorNumber  Int
+  name         String
+  floorType    FloorType  @default(OFFICE)
+  description  String?
+
+  // 3D / layout config
+  planImageUrl String?
+  height       Float      @default(3.5)
+  elevation    Float      @default(0)
+
+  building     Building   @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  devices      BuildingDevice[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([buildingId, floorNumber])
+  @@index([buildingId])
+}
+
+enum FloorType {
+  BASEMENT
+  GROUND
+  OFFICE
+  COMMERCIAL
+  MECHANICAL
+  ROOFTOP
+  PARKING
+}
+
+// ─── Building Devices ────────────────────────────────────────────────
+
+model BuildingDevice {
+  // Primary identification
+  id          String  @id @default(uuid()) @db.Uuid
+  deviceId    String?
+  eboId       String?
+  featureCode String?
+
+  name String
+  type BuildingDeviceType @default(OTHER)
+
+  manufacturer    String?
+  model           String?
+  serialNumber    String?
+  firmwareVersion String?
+  hardwareVersion String?
+
+  macAddress String?
+  ipAddress  String?
+  buildingId   Int?
+  urbanId      Int?
+  floorId      Int?
+  status         DeviceStatus?
+  isOnline       Boolean       @default(true)
+  lastSeenAt     DateTime?
+
+  xCoordinate   Float
+  yCoordinate   Float
+  zCoordinate   Float?
+
+  installationDate    DateTime?
+  lastMaintenanceDate DateTime?
+  warrantyExpiry      DateTime?
+  installedBy         String?
+
+  /// [BuildingDeviceAttributes]
+  attributes    Json?
+  /// [BuildingDeviceConfiguration]
+  configuration Json?
+  tags          String[]
+
+  certificateId String?
+  securityLevel SecurityLevel?
+
+  description String?
+  notes       String?
+  imageUrl    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  floor                    Floor?    @relation(fields: [floorId], references: [id], onDelete: SetNull)
+  meterReadings            MeterReading[]
+  meterDailyAggregations   MeterDailyAggregation[]
+  meterMonthlyAggregations MeterMonthlyAggregation[]
+  sourceRules              DeviceRule[] @relation("sourceRules")
+  targetRules              DeviceRule[] @relation("targetRules")
+
+  @@unique([deviceId, buildingId])
+  @@index([deviceId])
+  @@index([buildingId])
+  @@index([urbanId])
+  @@index([floorId])
+  @@index([type, urbanId, buildingId])
+  @@index([type, buildingId, floorId])
+}
+
+// ─── Device Rules (Interlock & Cascade) ───────────────────────────────
+
+model DeviceRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  buildingId  Int
+
+  ruleType    RuleType
+
+  // Thiết bị nguồn (trigger)
+  sourceDeviceId  String @db.Uuid
+  sourceDevice    BuildingDevice @relation("sourceRules", fields: [sourceDeviceId], references: [id], onDelete: Cascade)
+
+  // Thiết bị đích (bị ảnh hưởng)
+  targetDeviceId  String @db.Uuid
+  targetDevice    BuildingDevice @relation("targetRules", fields: [targetDeviceId], references: [id], onDelete: Cascade)
+
+  // Cho CASCADE: khi nào trigger và hành động gì
+  triggerOn       String?   // "ON" | "OFF"
+  targetAction    String?   // "ON" | "OFF"
+
+  // Thứ tự ưu tiên trong cascade chain
+  priority        Int       @default(0)
+
+  description     String?
+  isActive        Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sourceDeviceId])
+  @@index([targetDeviceId])
+  @@index([buildingId])
+}
+
+enum RuleType {
+  PREREQUISITE
+  CASCADE
+}
+
+enum SecurityLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DeviceStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  OFFLINE
+  ERROR
+}
+
+enum BuildingDeviceType {
+  OTHER
+  CAMERA
+  FIRE_ALARM
+  FIRE_PUMP
+  FAN
+  PUMP
+  DIM_LIGHT
+  LIGHT
+  ELECTRIC
+  ELECTRIC_METER
+  POWER_BREAKER
+  WATER_METER
+  BTU_METER
+  CO2_METER
+  CHILLER
+  CHILLER_PIPE
+  CHILLER_VALVE
+  CHILLER_COLD_PUMP
+  CHILLER_COOLING_PUMP
+  CHILLER_COOLING_TOWER
+  PAU
+  PAU_FILTER
+  PAU_VALVE
+  PAU_SENSOR_TEMPERATURE
+  AHU
+  AHU_FILTER
+  AHU_VALVE
+  AHU_SENSOR_TEMPERATURE
+  FCU
+  VAV
+}
+
+model MeterReading {
+  id             String             @id @default(uuid())
+  meterId        String             @db.Uuid
+  meterType      BuildingDeviceType
+  reading        Decimal            @db.Decimal(15, 3)
+  unit           String?            @db.VarChar(50)
+  recordedAt     DateTime
+  /// [MeterReadingMetadata]
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+  buildingDevice BuildingDevice     @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, recordedAt])
+  @@index([meterId, recordedAt])
+  @@index([recordedAt])
+  @@index([meterType])
+  @@index([meterType, recordedAt])
+  @@index([recordedAt, meterType])
+}
+
+model MeterDailyAggregation {
+  id             String             @id @default(uuid())
+  meterId        String             @db.Uuid
+  meterType      BuildingDeviceType
+  date           DateTime           @db.Date
+  startReading   Decimal?           @db.Decimal(15, 3)
+  endReading     Decimal?           @db.Decimal(15, 3)
+  usage          Decimal            @default(0) @db.Decimal(15, 3)
+  unit           String?            @db.VarChar(50)
+  readingCount   Int                @default(0)
+  minReading     Decimal?           @db.Decimal(15, 3)
+  maxReading     Decimal?           @db.Decimal(15, 3)
+  /// [MeterDailyAggregationMetadata]
+  metadata       Json?
+  aggregatedAt   DateTime           @default(now())
+  buildingDevice BuildingDevice     @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, date])
+  @@index([meterId, date])
+  @@index([date])
+  @@index([meterType, date])
+}
+
+model MeterMonthlyAggregation {
+  id             String             @id @default(uuid())
+  meterId        String             @db.Uuid
+  meterType      BuildingDeviceType
+  year           Int
+  month          Int
+  totalUsage     Decimal            @default(0) @db.Decimal(15, 3)
+  avgDailyUsage  Decimal?           @db.Decimal(15, 3)
+  maxDailyUsage  Decimal?           @db.Decimal(15, 3)
+  minDailyUsage  Decimal?           @db.Decimal(15, 3)
+  daysCount      Int                @default(0)
+  startReading   Decimal?           @db.Decimal(15, 3)
+  endReading     Decimal?           @db.Decimal(15, 3)
+  unit           String?            @db.VarChar(50)
+  /// [MeterMonthlyAggregationMetadata]
+  metadata       Json?
+  aggregatedAt   DateTime           @default(now())
+  buildingDevice BuildingDevice     @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, year, month])
+  @@index([meterId, year, month])
+  @@index([year, month])
+  @@index([meterType, year, month])
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  password  String
+  fullName  String?
+  role      String   @default("USER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

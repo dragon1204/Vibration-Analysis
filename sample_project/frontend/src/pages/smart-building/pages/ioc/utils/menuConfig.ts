@@ -1,0 +1,151 @@
+import {
+  Building2,
+  FileText,
+  Package,
+  Gauge,
+  Sparkles,
+  Wrench,
+  Briefcase,
+  BarChart3,
+  FolderOpen,
+  Shield,
+  Settings,
+  Home,
+} from "lucide-react";
+
+export const IOCMENU = [
+  {
+    id: "building-management",
+    label: "Quản lý Tòa nhà",
+    icon: Home,
+    children: [
+      { id: "urban-mgmt", label: "Khu đô thị" },
+      { id: "building-mgmt", label: "Tòa nhà" },
+      { id: "floor-mgmt", label: "Tầng" },
+      { id: "device-mgmt", label: "Thiết bị" },
+    ],
+  },
+  {
+    id: "digital-management",
+    label: "Ban quản lý số",
+    icon: Building2,
+    children: [
+      { id: "digital-announcement", label: "Thông báo số" },
+      { id: "digital-feedback", label: "Phản ánh số" },
+      { id: "digital-survey", label: "Khảo sát số" },
+      { id: "bulletin-admin", label: "Quản trị bảng tin" },
+      { id: "digital-communication", label: "Giao tiếp số" },
+      { id: "hotline", label: "Đường dây nóng" },
+    ],
+  },
+  {
+    id: "digital-admin",
+    label: "Hành chính số",
+    icon: FileText,
+    children: [
+      { id: "admin-config", label: "Cài đặt cấu hình" },
+      { id: "visitor-webform", label: "Quản lý web form khách vào ra" },
+      { id: "visitor-management", label: "Quản lý khách vào ra" },
+      { id: "transport-form", label: "Biểu mẫu đăng ký vận chuyển ra vào" },
+      { id: "renovation-form", label: "Biểu mẫu sửa chữa" },
+    ],
+  },
+  {
+    id: "asset-management",
+    label: "Quản lý tài sản/vật tư",
+    icon: Package,
+    children: [
+      { id: "assets", label: "Quản lý tài sản" },
+      { id: "import-export", label: "Quản lý nhập - xuất" },
+      { id: "asset-category", label: "Quản lý danh mục" },
+    ],
+  },
+  {
+    id: "meter-management",
+    label: "Quản lý đồng hồ",
+    icon: Gauge,
+    children: [
+      { id: "meter-readings", label: "Bản ghi chỉ số" },
+      { id: "meter-list", label: "Danh sách đồng hồ" },
+      { id: "meter-types", label: "Loại đồng hồ" },
+    ],
+  },
+  {
+    id: "internal-utilities",
+    label: "Quản lý tiện ích nội khu",
+    icon: Sparkles,
+    children: [
+      { id: "utility-category", label: "Danh mục tiện ích nội khu" },
+      { id: "utility-types", label: "Loại tiện ích nội khu" },
+    ],
+  },
+  {
+    id: "internal-services",
+    label: "Quản lý dịch vụ nội khu",
+    icon: Wrench,
+    children: [
+      { id: "service-orders", label: "Đơn đặt dịch vụ" },
+      { id: "service-payment", label: "Thanh toán dịch vụ" },
+      { id: "services", label: "Dịch vụ" },
+      { id: "service-details", label: "Chi tiết dịch vụ" },
+      { id: "service-category", label: "Danh mục dịch vụ" },
+    ],
+  },
+  {
+    id: "work-management",
+    label: "Quản lý công việc",
+    icon: Briefcase,
+    children: [
+      { id: "task-assignment", label: "Giao việc" },
+      { id: "work-plans", label: "Kế hoạch công việc" },
+      { id: "task-category", label: "Danh mục loại công việc" },
+    ],
+  },
+  {
+    id: "reports-stats",
+    label: "Báo cáo - Thống kê",
+    icon: BarChart3,
+    children: [
+      { id: "overview", label: "Tổng quan" },
+      { id: "invoices", label: "Hóa đơn" },
+      { id: "assets-report", label: "Tài sản" },
+      { id: "feedback-report", label: "Phản ánh" },
+      { id: "residents-report", label: "Cư dân" },
+      { id: "tasks-report", label: "Công việc" },
+    ],
+  },
+  {
+    id: "document-management",
+    label: "Quản lý tài liệu",
+    icon: FolderOpen,
+    children: [
+      { id: "doc-types", label: "Quản lý loại tài liệu" },
+      { id: "doc-list", label: "Danh sách tài liệu" },
+    ],
+  },
+  {
+    id: "system-admin",
+    label: "Quản trị hệ thống",
+    icon: Shield,
+    children: [
+      { id: "org-structure", label: "Cơ cấu tổ chức quản lý" },
+      { id: "project-structure", label: "Cơ cấu tổ chức dự án" },
+      { id: "hr-management", label: "Quản lý nhân sự" },
+      { id: "account-management", label: "Quản lý tài khoản" },
+      { id: "permissions", label: "Phân quyền" },
+    ],
+  },
+  {
+    id: "system-settings",
+    label: "Cài đặt hệ thống",
+    icon: Settings,
+    children: [
+      { id: "my-account", label: "Tài khoản của tôi" },
+      { id: "email-config", label: "Cấu hình email" },
+      { id: "payment-config", label: "Cấu hình thanh toán" },
+      { id: "management-config", label: "Cấu hình ban quản lý số" },
+      { id: "image-management", label: "Quản lý hình ảnh" },
+      { id: "invoice-template", label: "Quản lý hóa đơn mẫu" },
+    ],
+  },
+];

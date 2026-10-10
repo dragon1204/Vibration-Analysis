@@ -1,0 +1,96 @@
+# edge-agent – Beer HN: motor Honeywell HPM 450 kW + MYCOM screw compressor.
+# 4 × WTVB05 mounted vertically (Beer HN Project.pptx):
+#   S1 top of compressor (source of noise)  S2 motor base plate (reference)
+#   S3 motor top DE                          S4 motor top NDE
+# Noise isolation: A_iso(f) = sqrt(A_S3² − (α·A_S2)²), cross-check with S1 (docs/ALGORITHMS.md).
+version: 1
+gateway: {id: beerhn-gw-01, tenant: beerhn, site: beerhn-plant, timezone: Asia/Ho_Chi_Minh}
+mqtt:
+  url: mqtts://iot.example.vn:8883
+  username: beerhn-gw-01
+  password_file: /etc/edge-agent/mqtt.token
+  ca_file: /etc/edge-agent/ca.pem
+  send_waveforms: true
+storage: {dir: /data/edge, max_bytes: 8589934592, retention_days: 7}
+log: {level: info, file: /data/edge/logs/edge-agent.log}
+buses:
+  - {id: busA, device: /dev/ttyAS6, baud: 230400, timeout_ms: 150, raw_timeout_ms: 800}
+machines:
+  - id: mycom-01
+    name: "Máy nén lạnh MYCOM #1 – động cơ 450 kW"
+    type: compressor_motor
+    rated_power_kw: 450
+    rated_speed_rpm: 2950          # 1X = 49,17 Hz
+    poles: 2
+    line_freq_hz: 50
+    iso_group: 1                   # > 300 kW
+    foundation: rigid              # giả định; xác định bằng fn/frot ≥ 1,25
+    iso_band_hz: [10, 1000]
+    male_lobes: 4                  # f_mesh = 4 × 49,17 ≈ 196,7 Hz (xác thực bằng S1)
+    thermal: {i_n_a: 0, dt_n_k: 80, a: 0.25, tau_run_s: 3600, k_neg: 3}   # I_N [CẦN XÁC MINH]
+    isolation:
+      enabled: true
+      reference_point: mycom-01-s2
+      source_point: mycom-01-s1
+      targets: [mycom-01-s3, mycom-01-s4]
+      learn_samples: 30            # N mẫu ở đầy tải để chốt α
+      learn_min_load_pct: 90
+      mesh_harmonics: 3            # học α tại f_mesh, 2·f_mesh, 3·f_mesh
+      source_peak_ratio: 0.5
+      criterion2_mode: beerhn      # ΔRMS > 0,25 × (B/C − A/B)
+      profile: orders
+      alpha: {}                    # điền sau khi học hoặc server đẩy xuống
+    band_limits:                   # Bảng SOP minh họa (mm/s RMS)
+      - {band: "1x",   warn: 1.5, alarm: 2.3}
+      - {band: "2x",   warn: 1.0, alarm: 1.8}
+      - {band: "3x4x", warn: 0.8, alarm: 1.5}
+      - {band: "bpfo", warn: 0.5, alarm: 1.0}
+      - {band: "bpfi", warn: 0.4, alarm: 0.8}
+    points:
+      - id: mycom-01-s1
+        name: "S1 – đỉnh máy nén"
+        location: compressor_top
+        role: source
+        sensor: {bus: busA, addr: 0x41}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        idle_sr: 4
+        profiles:
+          - {name: orders, sr: 4, frames: 4, every_s: 900}
+      - id: mycom-01-s2
+        name: "S2 – tấm đỡ động cơ"
+        location: base
+        role: base
+        sensor: {bus: busA, addr: 0x42}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        idle_sr: 4
+        profiles:
+          - {name: orders, sr: 4, frames: 4, every_s: 900}
+      - id: mycom-01-s3
+        name: "S3 – đỉnh động cơ DE"
+        location: de
+        sensor: {bus: busA, addr: 0x43}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        bearing: null              # nhập hình học vòng bi khi có mã ổ
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+      - id: mycom-01-s4
+        name: "S4 – đỉnh động cơ NDE"
+        location: nde
+        sensor: {bus: busA, addr: 0x44}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+sensor_policy: {allow_flash_write: false, max_flash_writes_per_day: 24}
+rules:
+  persistence: {n: 3, m: 5}
+  bearing_temp_warning_c: 90
+  bearing_temp_alarm_c: 100
+  band_limits_enforce_rss: true    # √ΣAlarm_i² ≤ Zone B/C
+local_alarm: {enabled: true, relay_gpio: 203, min_severity: warning}
+health: {watchdog: /dev/watchdog}

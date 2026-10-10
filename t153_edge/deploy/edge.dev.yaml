@@ -1,0 +1,80 @@
+# Development config: runs on a PC against sensor-sim (no hardware) and a local broker.
+#   go run ./cmd/sensor-sim --devices 0x11:healthy,0x12:unbalance,0x41:healthy:mesh=9,0x42:healthy:mesh=3,0x43:healthy:mesh=1.2,0x44:healthy:mesh=0.9 --lobes 4 --f1x 49.17
+#   go run ./cmd/edge-agent --config deploy/edge.dev.yaml
+version: 1
+gateway: {id: dev-gw-01, tenant: hem, site: hem-factory}
+mqtt:
+  url: mqtt://localhost:1883
+  username: dev-gw-01
+  password: dev-gw-01-token
+  send_waveforms: true
+storage: {dir: ./data-dev, retention_days: 7}
+log: {level: info}
+buses:
+  - {id: busA, device: "tcp://127.0.0.1:5020", baud: 230400, timeout_ms: 300, raw_timeout_ms: 1500}
+  - {id: busB, device: "tcp://127.0.0.1:5021", baud: 9600, timeout_ms: 300}
+temp_modules:
+  - {bus: busB, addr: 1, channels: 4, reg_base: 0, function: 3, scale: 0.1}
+machines:
+  - id: ga55-01
+    name: "Máy nén GA55 #1"
+    type: compressor_motor
+    rated_power_kw: 55
+    rated_speed_rpm: 2978
+    poles: 2
+    foundation: rigid
+    iso_band_hz: [10, 1000]
+    thermal: {i_n_a: 100, dt_n_k: 80, tau_run_s: 2700}
+    power_meter: {driver: sim, voltage_v: 400}
+    temps:
+      - {role: frame,   bus: busB, addr: 1, channel: 1}
+      - {role: ambient, bus: busB, addr: 1, channel: 3}
+    points:
+      - id: ga55-01-de
+        name: "Ổ DE"
+        location: de
+        sensor: {bus: busA, addr: 0x11}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        bearing: {model: "6313", n_balls: 8, bd_mm: 25.4, pd_mm: 102.5, contact_deg: 0}
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 120}
+          - {name: bearing, sr: 2, frames: 8, every_s: 300, bandpass_hz: [1000, 3000]}
+      - id: ga55-01-nde
+        name: "Ổ NDE"
+        location: nde
+        sensor: {bus: busA, addr: 0x12}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 120}
+  - id: mycom-01
+    name: "MYCOM 450 kW (Beer HN)"
+    type: compressor_motor
+    rated_power_kw: 450
+    rated_speed_rpm: 2950
+    poles: 2
+    iso_group: 1
+    foundation: rigid
+    male_lobes: 4
+    isolation:
+      enabled: true
+      reference_point: mycom-01-s2
+      source_point: mycom-01-s1
+      targets: [mycom-01-s3, mycom-01-s4]
+      learn_samples: 3
+      profile: orders
+    points:
+      - {id: mycom-01-s1, name: "S1 – đỉnh máy nén", role: source, sensor: {bus: busA, addr: 0x41}, idle_sr: 4,
+         profiles: [{name: orders, sr: 4, frames: 4, every_s: 120}]}
+      - {id: mycom-01-s2, name: "S2 – tấm đỡ", role: base, sensor: {bus: busA, addr: 0x42}, idle_sr: 4,
+         profiles: [{name: orders, sr: 4, frames: 4, every_s: 120}]}
+      - {id: mycom-01-s3, name: "S3 – DE", sensor: {bus: busA, addr: 0x43}, iso_axes: [x, z], idle_sr: 4,
+         profiles: [{name: orders, sr: 4, frames: 4, every_s: 120}]}
+      - {id: mycom-01-s4, name: "S4 – NDE", sensor: {bus: busA, addr: 0x44}, iso_axes: [x, z], idle_sr: 4,
+         profiles: [{name: orders, sr: 4, frames: 4, every_s: 120}]}
+rules:
+  band_limits_enforce_rss: true
+local_alarm: {enabled: false}

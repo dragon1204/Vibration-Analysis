@@ -1,0 +1,66 @@
+#!/bin/sh
+# /etc/init.d/S99edge-agent – Buildroot init script with respawn and OTA rollback (spec 5.13).
+BIN=/usr/local/bin/edge-agent
+CONF=/etc/edge-agent/edge.yaml
+PIDFILE=/var/run/edge-agent.pid
+SUPPID=/var/run/edge-agent-supervisor.pid
+ROLLBACK_AFTER=300   # seconds: new binary must connect MQTT within 5 minutes
+
+supervise() {
+    while true; do
+        if [ -f "$BIN.pending" ]; then
+            start_ts=$(date +%s)
+        fi
+        "$BIN" --config "$CONF" &
+        echo $! > "$PIDFILE"
+        child=$!
+        # OTA rollback: the agent deletes $BIN.pending once MQTT is connected.
+        if [ -f "$BIN.pending" ]; then
+            ok=0
+            while kill -0 $child 2>/dev/null; do
+                if [ ! -f "$BIN.pending" ]; then
+                    ok=1; break
+                fi
+                now=$(date +%s)
+                [ $((now - start_ts)) -ge $ROLLBACK_AFTER ] && break
+                sleep 5
+            done
+            if [ $ok -eq 1 ]; then
+                rm -f "$BIN.pending"
+            elif [ -f "$BIN.prev" ]; then
+                logger -t edge-agent "OTA rollback: new binary did not connect"
+                kill $child 2>/dev/null; sleep 2
+                mv -f "$BIN.prev" "$BIN"
+                rm -f "$BIN.pending"
+                continue
+            fi
+        fi
+        wait $child
+        logger -t edge-agent "edge-agent exited ($?), restarting in 3 s"
+        sleep 3
+    done
+}
+
+case "$1" in
+  start)
+    echo "Starting edge-agent"
+    mkdir -p /data/edge/logs
+    supervise > /dev/null 2>&1 &
+    echo $! > "$SUPPID"
+    ;;
+  stop)
+    echo "Stopping edge-agent"
+    [ -f "$SUPPID" ] && kill "$(cat $SUPPID)" 2>/dev/null
+    [ -f "$PIDFILE" ] && kill "$(cat $PIDFILE)" 2>/dev/null
+    rm -f "$SUPPID" "$PIDFILE"
+    ;;
+  restart)
+    "$0" stop; sleep 2; "$0" start
+    ;;
+  status)
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat $PIDFILE)" 2>/dev/null; then echo running; else echo stopped; exit 1; fi
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status}"; exit 1
+    ;;
+esac

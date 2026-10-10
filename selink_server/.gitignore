@@ -1,0 +1,7 @@
+.env
+emqx/certs/
+services/.venv/
+__pycache__/
+*.pyc
+web/node_modules/
+web/dist/

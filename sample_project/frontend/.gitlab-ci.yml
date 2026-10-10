@@ -1,0 +1,26 @@
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  image: node:22
+  script: 
+    - npm install
+    - npm run build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'dev'
+  tags:
+    - docker-runner
+
+deploy:
+  stage: deploy
+  script:
+    - cp $ENV .env
+    - docker build -t smart-building-web .
+    - cd /home/imax/projects/yootek-iot-dev
+    - docker compose up -d --force-recreate smart-building-web
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "dev"'
+  tags:
+    - shell-runner

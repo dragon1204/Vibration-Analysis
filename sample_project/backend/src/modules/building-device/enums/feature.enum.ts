@@ -1,0 +1,4 @@
+export enum FEATURE {
+  COOLING = 'COOLING',
+  FIRE_ALARM = 'FIRE_ALARM',
+}

@@ -1,0 +1,42 @@
+[2m10:04:45 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/auth/refresh[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:27:53 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/auth/refresh[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:35:05 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/auth/refresh[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:44:36 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:45:19 PM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/v1/health[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:47:33 PM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m10:47:35 PM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1712:7)
+[2m10:47:39 PM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: socket hang up
+    at Socket.socketOnEnd (node:_http_client:542:25)
+    at Socket.emit (node:events:530:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2m7:17:19 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m7:17:19 AM[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)

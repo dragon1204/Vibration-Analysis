@@ -1,0 +1,134 @@
+# edge-agent configuration – HEM pilot (spec 5.11). Install at /etc/edge-agent/edge.yaml
+version: 1
+gateway:
+  id: hem-gw-01
+  tenant: hem
+  site: hem-factory
+  timezone: Asia/Ho_Chi_Minh
+mqtt:
+  url: mqtts://iot.example.vn:8883
+  username: hem-gw-01
+  password_file: /etc/edge-agent/mqtt.token
+  ca_file: /etc/edge-agent/ca.pem
+  send_waveforms: true
+storage:
+  dir: /data/edge
+  max_bytes: 8589934592
+  retention_days: 7
+log:
+  level: info
+  file: /data/edge/logs/edge-agent.log
+buses:
+  - id: busA
+    device: /dev/ttyAS6
+    baud: 230400
+    timeout_ms: 150
+    raw_timeout_ms: 800
+  - id: busB
+    device: /dev/ttyUSB0
+    baud: 9600
+    timeout_ms: 300
+temp_modules:                       # PT100→RS485 module [CẦN XÁC MINH model]
+  - {bus: busB, addr: 1, channels: 4, reg_base: 0, function: 3, scale: 0.1}
+machines:
+  - id: ga55-01
+    name: "Máy nén GA55 #1"
+    type: compressor_motor
+    rated_power_kw: 55
+    rated_speed_rpm: 2978
+    poles: 2
+    line_freq_hz: 50
+    iso_group: 2
+    foundation: rigid
+    iso_band_hz: [10, 1000]
+    thermal:
+      i_n_a: 100          # [CẦN XÁC MINH] chưa có trên nhãn
+      dt_n_k: 80
+      a: 0.25
+      tau_run_s: 2700
+      k_neg: 3
+      k_frame: 0
+      c_frame: 0.4
+    power_meter:
+      driver: modbus_tcp
+      host: 192.168.10.21
+      port: 502
+      unit_id: 1
+      register_map: generic_3ph_v1
+    temps:
+      - {role: frame,   bus: busB, addr: 1, channel: 1}
+      - {role: ambient, bus: busB, addr: 1, channel: 3}
+    points:
+      - id: ga55-01-de
+        name: "Ổ DE"
+        location: de
+        sensor: {driver: wtvb05, bus: busA, addr: 0x11, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        bearing: null
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+      - id: ga55-01-nde
+        name: "Ổ NDE"
+        location: nde
+        sensor: {driver: wtvb05, bus: busA, addr: 0x12, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+  - id: ga55-02
+    name: "Máy nén GA55 #2"
+    type: compressor_motor
+    rated_power_kw: 55
+    rated_speed_rpm: 2978
+    poles: 2
+    foundation: rigid
+    iso_band_hz: [10, 1000]
+    thermal: {i_n_a: 100, dt_n_k: 80, a: 0.25, tau_run_s: 2700, k_neg: 3, c_frame: 0.4}
+    power_meter: {driver: modbus_tcp, host: 192.168.10.22, port: 502, unit_id: 1, register_map: generic_3ph_v1}
+    temps:
+      - {role: frame,   bus: busB, addr: 1, channel: 2}
+      - {role: ambient, bus: busB, addr: 1, channel: 3}
+    points:
+      - id: ga55-02-de
+        name: "Ổ DE"
+        location: de
+        sensor: {driver: wtvb05, bus: busA, addr: 0x21, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+      - id: ga55-02-nde
+        name: "Ổ NDE"
+        location: nde
+        sensor: {driver: wtvb05, bus: busA, addr: 0x22, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders,  sr: 4, frames: 4, every_s: 900}
+          - {name: bearing, sr: 2, frames: 8, every_s: 3600, bandpass_hz: [1000, 3000]}
+sensor_policy:
+  allow_flash_write: false
+  max_flash_writes_per_day: 24
+rules:
+  persistence: {n: 3, m: 5}
+  winding_warning_c: 130
+  winding_alarm_c: 145
+  bearing_temp_warning_c: 90
+  bearing_temp_alarm_c: 100
+local_alarm:
+  enabled: true
+  relay_gpio: 203            # [CẦN XÁC MINH] số GPIO thực tế trên board
+  buzzer: true
+  buzzer_gpio: 0             # [CẦN XÁC MINH]
+  min_severity: warning
+health:
+  watchdog: /dev/watchdog    # [CẦN XÁC MINH] để trống nếu board không có
+  modem_at_port: ""          # /dev/ttyUSB2 khi dùng EC20 (Nam Hồng)

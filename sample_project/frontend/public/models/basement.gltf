@@ -1,0 +1,361 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 2932,
+      "max": [
+        3437.47021484375,
+        222.30262756347656,
+        2553.54296875
+      ],
+      "min": [
+        -3298.809814453125,
+        -96.65069580078125,
+        -1286.611572265625
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 35184,
+      "componentType": 5126,
+      "count": 2932,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 2932,
+      "max": [
+        0.875,
+        1.0
+      ],
+      "min": [
+        0.125,
+        0.0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 4542,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 70368,
+      "componentType": 5126,
+      "count": 276,
+      "max": [
+        3399.169677734375,
+        222.30267333984375,
+        2533.701416015625
+      ],
+      "min": [
+        -3275.378662109375,
+        -96.65069580078125,
+        -1258.3907470703125
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 73680,
+      "componentType": 5126,
+      "count": 276,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 23456,
+      "componentType": 5126,
+      "count": 276,
+      "max": [
+        1.0,
+        1.0
+      ],
+      "min": [
+        0.0,
+        0.0
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 18168,
+      "componentType": 5125,
+      "count": 624,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "rustic.orcullo13 (https://sketchfab.com/rustic.orcullo13)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/interior-df5bc1a6306243b8880b4ce2520633c3",
+      "title": "Interior"
+    },
+    "generator": "Sketchfab-12.68.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 20664,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 25664,
+      "byteOffset": 20664,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 76992,
+      "byteOffset": 46328,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 123320,
+      "uri": "scene.bin"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Wall_Mat",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.5,
+          0.5,
+          1.0
+        ],
+        "metallicFactor": 0.5,
+        "roughnessFactor": 0.5
+      }
+    },
+    {
+      "alphaMode": "BLEND",
+      "doubleSided": true,
+      "name": "Divider_Mat",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.5,
+          0.5,
+          0.5,
+          0.65
+        ],
+        "roughnessFactor": 0.15
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Wall_Wall_Mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Dividers_Divider_Mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 5,
+            "POSITION": 4,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 1,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "368b0809fdb44437afd735948f8e27fe.fbx"
+    },
+    {
+      "children": [
+        3
+      ],
+      "name": "RootNode"
+    },
+    {
+      "children": [
+        4,
+        6
+      ],
+      "matrix": [
+        458.5261535644531,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        458.5261535644531,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        458.5261535644531,
+        0.0,
+        -160.29367065429688,
+        -96.65069580078125,
+        0.0,
+        1.0
+      ],
+      "name": "Interior"
+    },
+    {
+      "children": [
+        5
+      ],
+      "matrix": [
+        0.0021809006575495005,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0021809006575495005,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0021809006575495005,
+        0.0,
+        0.34958457946777344,
+        0.21078558266162872,
+        0.0,
+        1.0
+      ],
+      "name": "Wall"
+    },
+    {
+      "mesh": 0,
+      "name": "Wall_Wall_Mat_0"
+    },
+    {
+      "children": [
+        7
+      ],
+      "matrix": [
+        0.0021809006575495005,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0021809006575495005,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0021809006575495005,
+        0.0,
+        0.34958457946777344,
+        0.21078558266162872,
+        0.0,
+        1.0
+      ],
+      "name": "Dividers"
+    },
+    {
+      "mesh": 1,
+      "name": "Dividers_Divider_Mat_0"
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ]
+}

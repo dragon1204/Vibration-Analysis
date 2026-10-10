@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <title>Yootek login</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    form {
+      width: 300px;
+      margin: 0 auto;
+    }
+
+    label {
+      display: block;
+      margin-top: 20px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      margin-right: 10px;
+      margin-top: 10px;
+    }
+    .remenber {
+      margin-top: 10px;
+    }
+
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+    }
+
+    input[type="submit"] {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    input[type="submit"]:hover {
+      background-color: #45a049;
+    }
+  </style>
+</head>
+
+<body>
+  <form action="/api/alexa/yootek/auth?{{query}}" method="post">
+    <label for="tenant">Tenant:</label>
+    <input type="text" id="tenant" name="tenancyName" >
+    <label for="username">Username:</label>
+    <input type="text" id="username" name="userNameOrEmailAddress" required>
+
+    <label for="password">Password:</label>
+    <input type="password" id="password" name="password" required>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="remember" name="remember" value="true">
+      <label id="remenber" for="remember">Remember password:</label>
+    </div>
+
+    <input type="submit" value="Login">
+  </form>
+</body>
+
+</html>

@@ -1,0 +1,106 @@
+{
+ "bandpass_hz": null,
+ "bearing": null,
+ "features": {
+  "capture_id": "golden_unbalance_orders",
+  "point_id": "golden",
+  "profile": "unbalance_orders",
+  "ts": "2026-10-08T14:00:00.000Z",
+  "fs_hz": 2000,
+  "sr_code": 4,
+  "frames": 4,
+  "frames_contiguous": false,
+  "n_fft": 1024,
+  "df_hz": 1.9531,
+  "running": true,
+  "load_pct": null,
+  "speed_hz": 49.652,
+  "speed_confidence": "high",
+  "axes": {
+   "x": {
+    "acc_rms_g": 0.13473,
+    "acc_peak_g": 0.2023,
+    "crest": 1.501,
+    "kurtosis": 1.442,
+    "skew": -0.011,
+    "iso_vrms_mm_s": 4.2139,
+    "iso_band_hz": [
+     10,
+     781.3
+    ],
+    "orders": {
+     "0.5": 0.0211,
+     "1": 4.1996,
+     "1.5": 0.0061,
+     "2": 0.229,
+     "3": 0.0807,
+     "4": 0.0036,
+     "5": 0.0021,
+     "6": 0.0024
+    },
+    "orders_unit": "mm_s_rms",
+    "line_2x_mm_s": 0.2273
+   },
+   "y": {
+    "acc_rms_g": 0.02183,
+    "acc_peak_g": 0.0576,
+    "crest": 2.638,
+    "kurtosis": 2.52,
+    "skew": 0.871,
+    "iso_vrms_mm_s": 0.6144,
+    "iso_band_hz": [
+     10,
+     781.3
+    ],
+    "orders": {
+     "0.5": 0.0227,
+     "1": 0.5935,
+     "1.5": 0.0071,
+     "2": 0.1375,
+     "3": 0.0498,
+     "4": 0.0026,
+     "5": 0.0024,
+     "6": 0.0019
+    },
+    "orders_unit": "mm_s_rms",
+    "line_2x_mm_s": 0.1365
+   },
+   "z": {
+    "acc_rms_g": 0.12155,
+    "acc_peak_g": 0.2092,
+    "crest": 1.721,
+    "kurtosis": 1.6,
+    "skew": 0.203,
+    "iso_vrms_mm_s": 3.8062,
+    "iso_band_hz": [
+     10,
+     781.3
+    ],
+    "orders": {
+     "0.5": 0.0242,
+     "1": 3.7946,
+     "1.5": 0.0079,
+     "2": 0.1812,
+     "3": 0.0708,
+     "4": 0.0032,
+     "5": 0.0026,
+     "6": 0.0023
+    },
+    "orders_unit": "mm_s_rms",
+    "line_2x_mm_s": 0.1799
+   }
+  },
+  "envelope": null,
+  "quality_flags": [
+   "iso_band_truncated"
+  ],
+  "waveform_ref": "",
+  "spectrum_ref": ""
+ },
+ "iso_band_hz": [
+  10,
+  1000
+ ],
+ "line_freq_hz": 50,
+ "nominal_f1x_hz": 49.63
+}

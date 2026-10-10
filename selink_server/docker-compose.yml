@@ -1,0 +1,152 @@
+# Smart Motor server (spec 6.1, ADR-06). Start: cp .env.example .env && docker compose up -d --build
+name: smartmotor
+
+x-svc: &svc
+  build:
+    context: .
+    dockerfile: services/Dockerfile
+  image: smartmotor/services:latest
+  env_file: .env
+  restart: unless-stopped
+  environment: &svc-env
+    DB_URL: postgresql://${POSTGRES_USER:-smartmotor}:${POSTGRES_PASSWORD:-smartmotor}@db:5432/${POSTGRES_DB:-smartmotor}
+    REDIS_URL: redis://redis:6379/0
+    MQTT_URL: mqtt://emqx:1883
+    MINIO_ENDPOINT: s3:9000
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-smartmotor}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change-me-minio}
+
+services:
+  certs:
+    image: alpine:3.20
+    command: ["sh", "/scripts/gen-certs.sh"]
+    environment:
+      CERT_DIR: /certs
+      MQTT_HOST: ${MQTT_HOST:-localhost}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./emqx/certs:/certs
+
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartmotor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartmotor}
+      POSTGRES_DB: ${POSTGRES_DB:-smartmotor}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-smartmotor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  # S3-compatible object storage (ADR-08). The official minio/minio image is no longer on
+  # Docker Hub, so SeaweedFS provides the S3 API; services use the S3 client unchanged.
+  s3:
+    image: chrislusf/seaweedfs:3.80
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        printf '{"identities":[{"name":"smartmotor","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=9000 -s3.config=/tmp/s3.json -master.volumeSizeLimitMB=1024 -volume.max=0
+    environment:
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-smartmotor}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-change-me-minio}
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 5s
+      retries: 30
+
+  emqx:
+    image: emqx/emqx:5.8.3
+    restart: unless-stopped
+    depends_on:
+      certs:
+        condition: service_completed_successfully
+    volumes:
+      - ./emqx/emqx.conf:/opt/emqx/etc/emqx.conf:ro
+      - ./emqx/acl.conf:/opt/emqx/etc/acl.conf:ro
+      - ./emqx/certs:/opt/emqx/etc/certs:ro
+      - emqxdata:/opt/emqx/data
+    ports:
+      - "${MQTT_TLS_PORT:-8883}:8883"   # gateways (TLS)
+      - "127.0.0.1:${MQTT_DEV_PORT:-1883}:1883"   # local dev only (edge.dev.yaml)
+      - "127.0.0.1:18083:18083"   # dashboard, local only
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 10s
+      retries: 20
+
+  api:
+    <<: *svc
+    command: ["uvicorn", "smartmotor.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      s3: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:8000:8000"     # direct API access for development
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      retries: 30
+
+  ingest:
+    <<: *svc
+    command: ["python", "-m", "smartmotor.ingest"]
+    depends_on:
+      api: {condition: service_healthy}
+      emqx: {condition: service_healthy}
+
+  analytics:
+    <<: *svc
+    command: ["python", "-m", "smartmotor.analytics"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  notifier:
+    <<: *svc
+    command: ["python", "-m", "smartmotor.notifier"]
+    depends_on:
+      api: {condition: service_healthy}
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    image: smartmotor/web:latest
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    depends_on:
+      - api
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - caddydata:/data
+
+volumes:
+  dbdata:
+  redisdata:
+  s3data:
+  emqxdata:
+  caddydata:

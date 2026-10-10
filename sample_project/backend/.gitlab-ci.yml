@@ -1,0 +1,29 @@
+stages:
+  - build
+  - scan-code
+  - deploy
+
+# build:
+#   stage: build
+#   image: node:20
+#   script:
+#     - npm install --global dotenv-cli
+#     - npm install
+#     - npm run build
+#   rules:
+#     - if: $CI_PIPELINE_SOURCE == 'merge_request_event' && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == 'development'
+#   tags:
+#     - docker-runner 
+
+
+deploy:
+  stage: deploy
+  script:
+    - docker build -t ioc-smart-building-onsite-core-backend .
+    - cd /home/imax/projects/yootek-iot-dev
+    - docker compose up -d --force-recreate ioc-smart-building-onsite-core-backend
+  rules:
+    - if: '$CI_COMMIT_REF_NAME == "development"'
+  tags:
+    - shell-runner
+
