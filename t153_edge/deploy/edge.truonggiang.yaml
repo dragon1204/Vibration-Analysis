@@ -1,0 +1,36 @@
+# T153 "t153-01" – Máy bơm test Trường Giang (site namhong) on the VPS server.
+# Install at /etc/edge-agent/edge.yaml with mqtt.token + ca.pem from the server.
+version: 1
+gateway: {id: t153-01, tenant: hem, site: namhong, timezone: Asia/Ho_Chi_Minh}
+mqtt:
+  url: mqtts://160.191.87.104:8883
+  username: t153-01
+  password_file: /etc/edge-agent/mqtt.token
+  ca_file: /etc/edge-agent/ca.pem
+  send_waveforms: true
+storage: {dir: /data/edge, retention_days: 7}
+log: {level: info, file: /data/edge/logs/edge-agent.log}
+buses:
+  # Sensor still at factory 9600 bps: one RAWFIFO frame takes ~6.5 s on the wire.
+  - {id: busA, device: /dev/ttyS6, baud: 9600, timeout_ms: 300, raw_timeout_ms: 15000}
+machines:
+  - id: pump-tg-01
+    name: "Máy bơm test Trường Giang"
+    type: pump
+    rated_speed_rpm: 2950           # [CẦN XÁC MINH] theo nhãn động cơ
+    poles: 2
+    line_freq_hz: 50
+    iso_group: 2
+    foundation: flexible        # vùng ISO 20816-3 nhóm 2 nền mềm: A/B 2.3, B/C 4.5, C/D 7.1 mm/s
+    iso_band_hz: [10, 1000]
+    points:
+      - id: pump-tg-01-p1
+        name: "Cảm biến 1"
+        location: de
+        sensor: {driver: wtvb05, bus: busA, addr: 0x02, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders, sr: 4, frames: 1, every_s: 60}   # 1 frame: a 2nd back-to-back frame times out at 9600 bps
+local_alarm: {enabled: false}

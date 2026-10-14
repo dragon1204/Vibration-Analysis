@@ -27,7 +27,7 @@ from .diagnose import DiagContext, diagnose, to_diagnosis
 log = logging.getLogger("analytics")
 
 CAPTURE_DELAY_S = 20  # wait for the waveform after features arrive
-CLEAN_EXCLUDE_FLAGS = {"saturated", "flatline", "spike", "time_unsynced"}
+CLEAN_EXCLUDE_FLAGS = {"saturated", "flatline", "spike", "time_unsynced", "speed_low_confidence"}
 
 
 class Analytics:
@@ -102,7 +102,10 @@ class Analytics:
         """Manual triggers from the API: {"job": "baseline_learn" | "anomaly_train" | ..., "machine_id"?}."""
         job = getattr(self, "job_" + d.get("job", ""), None)
         if job:
-            await job()
+            if d.get("job") == "monthly_report":
+                await job(d)
+            else:
+                await job()
 
     async def process_capture(self, capture_id: str) -> None:
         await self.assets.refresh()
@@ -453,33 +456,113 @@ class Analytics:
             log.info("anomaly model trained for %s on %d vectors", mid, len(X))
 
     async def job_rul_estimate(self) -> None:
-        async with self.pool.acquire() as c:
-            pts = await c.fetch("""SELECT DISTINCT b.point_id, b.machine_id, b.feature, b.alarm FROM baselines b
-                                   WHERE b.status='active' AND b.load_bin='all' AND b.feature IN ('env.bpfo','env.bpfi','iso_vrms_mm_s')""")
-            for p in pts:
-                rows = await c.fetch("""SELECT ts, features FROM captures WHERE point_id=$1 AND ts > now()-interval '60 days'
-                                        AND running ORDER BY ts""", p["point_id"])
-                t, y = [], []
-                for r in rows:
-                    v = extract_capture_features(r["features"] or {}, ["x", "y", "z"]).get(p["feature"])
-                    if v is not None:
-                        t.append(r["ts"].timestamp() / 86400)
-                        y.append(v)
-                if len(t) < 10:
-                    continue
-                t0 = min(t)
-                res = anomaly.rul_exponential(np.array(t) - t0, np.array(y), float(p["alarm"]))
-                if not res or res.get("rul_days") is None:
-                    continue
-                await c.execute("""INSERT INTO machine_health (ts, machine_id, point_id, rul_days, rul_lo_days, rul_hi_days, detail)
-                                   VALUES (now(), $1,$2,$3,$4,$5,$6)""", p["machine_id"], p["point_id"], res["rul_days"],
-                                res.get("rul_lo_days"), res.get("rul_hi_days"), {"feature": p["feature"], **res})
+        """Estimate a conservative conditional time to the active alarm threshold.
 
-    async def job_monthly_report(self) -> None:
+        One machine-level record is written on every run, including unavailable
+        results. That makes a formerly valid estimate expire instead of remaining
+        visible after the trend or input quality no longer supports it.
+        """
+        await self.assets.refresh(force=True)
+        async with self.pool.acquire() as c:
+            machines = await c.fetch("SELECT id FROM machines ORDER BY id")
+            baselines = await c.fetch(
+                """SELECT point_id, machine_id, feature, load_bin, alarm FROM baselines
+                   WHERE status='active' AND alarm IS NOT NULL
+                     AND feature IN ('env.bpfo','env.bpfi','iso_vrms_mm_s')
+                   ORDER BY machine_id, point_id, feature, load_bin""")
+            by_machine: dict[str, list[dict]] = defaultdict(list)
+            for row in baselines:
+                by_machine[row["machine_id"]].append(dict(row))
+
+            row_cache: dict[str, list] = {}
+            for machine_row in machines:
+                machine_id = machine_row["id"]
+                candidates: list[dict] = []
+                for base in by_machine.get(machine_id, []):
+                    point_id = base["point_id"]
+                    point = self.assets.points.get(point_id) or {}
+                    if point_id not in row_cache:
+                        # At most one capture per 15 minutes prevents a high-rate commissioning run
+                        # from dominating months of field history while retaining daily structure.
+                        row_cache[point_id] = await c.fetch(
+                            """SELECT DISTINCT ON (bucket) ts, features, quality_flags, load_pct, speed_hz
+                               FROM (SELECT time_bucket('15 minutes', ts) AS bucket, ts, features,
+                                            quality_flags, load_pct, speed_hz
+                                     FROM captures
+                                     WHERE point_id=$1 AND ts > now()-interval '180 days'
+                                       AND running AND features IS NOT NULL) q
+                               ORDER BY bucket, ts DESC""", point_id)
+                    samples = []
+                    for row in row_cache[point_id]:
+                        if CLEAN_EXCLUDE_FLAGS & set(row["quality_flags"] or []):
+                            continue
+                        if base["load_bin"] != "all" and load_bin(row["load_pct"]) != base["load_bin"]:
+                            continue
+                        value = extract_capture_features(
+                            row["features"] or {}, point.get("iso_axes") or ["x", "z"]
+                        ).get(base["feature"])
+                        if value is not None and math.isfinite(value) and value > 0:
+                            samples.append((row["ts"].timestamp() / 86400, value, _f(row["speed_hz"])))
+
+                    # Compare like-for-like operating speed. Keep all samples only when speed
+                    # is unavailable; otherwise reject captures outside ±5% (at least ±0.5 Hz)
+                    # of the dominant speed regime.
+                    known_speed = [s for _, _, s in samples if s is not None and s > 0]
+                    if len(known_speed) >= max(10, int(0.8 * len(samples))):
+                        center = float(np.median(known_speed))
+                        tolerance = max(0.5, 0.05 * center)
+                        samples = [s for s in samples if s[2] is not None and abs(s[2] - center) <= tolerance]
+
+                    t = np.asarray([s[0] for s in samples], dtype=float)
+                    y = np.asarray([s[1] for s in samples], dtype=float)
+                    if len(t):
+                        t -= float(t.min())
+                    seed = sum(ord(ch) for ch in f"{point_id}:{base['feature']}:{base['load_bin']}")
+                    result = anomaly.rul_exponential(t, y, float(base["alarm"]), seed=seed)
+                    candidates.append({"point_id": point_id, "feature": base["feature"],
+                                       "load_bin": base["load_bin"], "threshold_source": "baseline_alarm",
+                                       **result})
+
+                valid = [x for x in candidates if x.get("rul_days") is not None]
+                if valid:
+                    limiting = min(valid, key=lambda x: x["rul_days"])
+                    detail = {**limiting, "kind": "rul", "candidates": candidates,
+                              "interpretation": "conditional_time_to_alarm_not_certified_failure_life"}
+                    values = (limiting["rul_days"], limiting.get("rul_lo_days"), limiting.get("rul_hi_days"))
+                    point_id = limiting["point_id"]
+                else:
+                    reason = "no_active_baseline" if not candidates else "no_reliable_trend"
+                    detail = {"kind": "rul", "status": reason, "model_version": anomaly.RUL_MODEL_VERSION,
+                              "prediction_kind": "time_to_alarm_threshold", "candidates": candidates,
+                              "interpretation": "conditional_time_to_alarm_not_certified_failure_life"}
+                    values = (None, None, None)
+                    point_id = None
+                await c.execute(
+                    """INSERT INTO machine_health (ts, machine_id, point_id, rul_days, rul_lo_days, rul_hi_days, detail)
+                       VALUES (now(), $1,$2,$3,$4,$5,$6)""", machine_id, point_id, *values, _jsonable(detail))
+
+    async def job_monthly_report(self, options: dict | None = None) -> None:
+        """Generate a selected month or quarter; scheduled execution defaults to the previous month."""
+        options = options or {}
         now = datetime.now(timezone.utc)
-        first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        start = (first - timedelta(days=1)).replace(day=1)
-        period = f"{start:%Y-%m}"
+        if options.get("period_type") == "quarter":
+            year = int(options.get("year") or now.year)
+            quarter = int(options.get("quarter") or ((now.month - 1) // 3 or 4))
+            if not 1 <= quarter <= 4:
+                raise ValueError("quarter must be from 1 to 4")
+            if not options.get("year") and (now.month - 1) // 3 == 0:
+                year -= 1
+            start = datetime(year, 3 * (quarter - 1) + 1, 1, tzinfo=timezone.utc)
+            first = datetime(year + (1 if quarter == 4 else 0), 1 if quarter == 4 else 3 * quarter + 1, 1, tzinfo=timezone.utc)
+            period = f"{year}-Q{quarter}"
+        elif options.get("period"):
+            start = datetime.strptime(str(options["period"]), "%Y-%m").replace(tzinfo=timezone.utc)
+            first = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            period = f"{start:%Y-%m}"
+        else:
+            first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            start = (first - timedelta(days=1)).replace(day=1)
+            period = f"{start:%Y-%m}"
         await self.assets.refresh(force=True)
         for mid, m in self.assets.machines.items():
             async with self.pool.acquire() as c:

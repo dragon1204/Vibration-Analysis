@@ -1,175 +1,238 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Col, Descriptions, Empty, Row, Select, Space, Spin, Table, Tag, Typography } from 'antd'
-import { CameraOutlined, LineChartOutlined } from '@ant-design/icons'
-import { api, post } from '../api/client'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Button, Card, Col, Empty, Row, Select, Spin, Table, Tag } from 'antd'
+import { DisconnectOutlined, LineChartOutlined, WifiOutlined } from '@ant-design/icons'
+import { api } from '../api/client'
 import { useRealtime } from '../api/realtime'
-import { Sparkline, WaveformChart } from '../components/charts'
-import { EstimateTag, ZoneTag, lastHours, rangeParams } from '../components/common'
-import { useAuth } from '../auth'
+import { TrendChart, WaveformChart } from '../components/charts'
+import { lastHours, rangeParams } from '../components/common'
 import { ago, num } from '../utils/format'
-import MachineNav from './MachineNav'
 
-type Spark = Record<string, Record<string, [string, number][]>> // point -> axis -> series
+type IsoSeries = Record<string, [string, number][]>
+type Sensor = { point: any; axis: string; data: any; series: [string, number][] }
+
+const axisName: Record<string, string> = { x: 'ngang (H)', y: 'dọc trục (A)', z: 'đứng (V)' }
+const axisColor: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
+const zoneClass: Record<string, string> = { A: 'zone-a', B: 'zone-b', C: 'zone-c', D: 'zone-d' }
+const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận được', C: 'Cảnh báo', D: 'Nguy hiểm' }
+/** Data older than this is not "live": the gateway sends indicators every 10 s. */
+const LIVE_MAX_AGE_MS = 2 * 60_000
+
+function getZone(value: number | null | undefined, limits: any): string | null {
+  if (value == null || !limits) return null
+  if (value <= limits.ab) return 'A'
+  if (value <= limits.bc) return 'B'
+  if (value <= limits.cd) return 'C'
+  return 'D'
+}
+
+// ISO velocity RMS of one axis: the latest capture (computed from the raw waveform) first, then the
+// sensor's own VRMS register when it reports one. The VX register is NOT an RMS value and is not used.
+function isoValue(sensor: Sensor): { value: number | null; acc: number | null; peak: number | null; source: string } {
+  const cap = sensor.point.last_capture
+  const iso = cap?.axes_iso?.[sensor.axis]
+  if (iso?.iso_vrms_mm_s != null) {
+    return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, peak: iso.acc_peak_g ?? null, source: `capture ${ago(cap.ts)}` }
+  }
+  const vrms = sensor.data?.vel_rms_mm_s
+  if (vrms) return { value: vrms, acc: sensor.data?.acc_rms_g || null, peak: null, source: 'cảm biến' }
+  return { value: null, acc: null, peak: null, source: 'chờ capture đầu tiên' }
+}
+
+function Spark({ series, color }: { series: [string, number][]; color: string }) {
+  if (series.length < 2) return <span>Chưa đủ dữ liệu xu hướng 60 phút</span>
+  const values = series.map((item) => item[1])
+  const min = Math.min(...values, 0)
+  const max = Math.max(...values, 0.1)
+  const t0 = Date.parse(series[0][0])
+  const span = Math.max(Date.parse(series[series.length - 1][0]) - t0, 1)
+  const pts = series.map(([t, v]) => `${((Date.parse(t) - t0) / span) * 100},${26 - ((v - min) / (max - min || 1)) * 23}`).join(' ')
+  return <svg viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points={pts} style={{ stroke: color }} /></svg>
+}
+
+function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
+  const { value, acc, peak, source } = isoValue(sensor)
+  const zone = getZone(value, limits)
+  return (
+    <Card className="sensor-card" size="small">
+      <div className="sensor-card-head">
+        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS ISO · {source}</span></div>
+        <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
+          title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
+      </div>
+      <div className="sensor-primary"><strong>{num(value, 2)}</strong><span>mm/s</span></div>
+      <div className="sensor-secondary">
+        <div><span>Gia tốc RMS</span><b>{num(acc, 2)} <small>g</small></b></div>
+        <div><span>Gia tốc đỉnh</span><b>{num(peak, 2)} <small>g</small></b></div>
+      </div>
+      <div className="sensor-spark" title="Vận tốc RMS ISO · 60 phút gần nhất">
+        <Spark series={sensor.series} color={axisColor[sensor.axis] || '#3270ed'} />
+      </div>
+    </Card>
+  )
+}
 
 export default function Live() {
   const { id = '' } = useParams()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const qc = useQueryClient()
-  const { can } = useAuth()
-  const { message } = App.useApp()
   const { data: machine } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
-  const { data: st, isLoading } = useQuery<any>({ queryKey: ['status', id], queryFn: () => api(`/machines/${id}/status`), refetchInterval: 15_000 })
-  const [spark, setSpark] = useState<Spark>({})
+  const { data: status, isLoading } = useQuery<any>({ queryKey: ['status', id], queryFn: () => api(`/machines/${id}/status`), refetchInterval: 15_000 })
+  const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
 
-  // Preload 60 min of velocity for sparklines.
+  // ISO RMS per point × axis over the last 6 h (one value per capture) – trend chart and 60-min sparklines.
+  const isoQueries: { data?: any }[] = useQueries({
+    queries: (machine?.points || []).map((point: any) => ({
+      queryKey: ['iso-series', point.id],
+      queryFn: () => api(`/points/${point.id}/metrics`, { params: { ...rangeParams(lastHours(6)), fields: 'iso_vrms_mm_s' } }),
+      refetchInterval: 60_000,
+    })),
+  })
+  const isoSeries: Record<string, IsoSeries> = {}
+  ;(machine?.points || []).forEach((point: any, i: number) => {
+    const s = isoQueries[i]?.data?.series || {}
+    isoSeries[point.id] = Object.fromEntries(Object.entries(s).map(([axis, f]: any) => [axis, f.iso_vrms_mm_s || []]))
+  })
+
   useEffect(() => {
     if (!machine) return
-    const r = rangeParams(lastHours(1))
-    Promise.all(machine.points.map((p: any) =>
-      api(`/points/${p.id}/metrics`, { params: { ...r, fields: 'vel_mm_s' } }).then((d) => [p.id, d.series] as const),
-    )).then((rows) => {
-      const s: Spark = {}
-      rows.forEach(([pid, series]: any) => {
-        s[pid] = {}
-        Object.entries(series).forEach(([a, f]: any) => (s[pid][a] = f.vel_mm_s))
-      })
-      setSpark(s)
-    }).catch(() => undefined)
-    if (!wavePoint) setWavePoint(machine.points.find((p: any) => p.role === 'bearing')?.id || machine.points[0]?.id)
-  }, [machine]) // eslint-disable-line react-hooks/exhaustive-deps
+    setWavePoint((current) => current || machine.points.find((point: any) => point.role === 'bearing')?.id || machine.points[0]?.id)
+  }, [machine])
 
-  useRealtime([`machine:${id}`], (m) => {
-    const d = m.data
-    if (d.type === 'vib') {
-      setSpark((prev) => {
-        const next: Spark = { ...prev, [d.point_id]: { ...(prev[d.point_id] || {}) } }
-        ;(['x', 'y', 'z'] as const).forEach((a) => {
-          const v = d.vel_mm_s?.[a]
-          if (v == null) return
-          const arr = [...(next[d.point_id][a] || []), [d.ts, v] as [string, number]]
-          const cutoff = Date.now() - 3600_000
-          next[d.point_id][a] = arr.filter(([t]) => Date.parse(t) >= cutoff)
-        })
-        return next
-      })
-      qc.setQueryData(['status', id], (old: any) => {
-        if (!old) return old
-        return {
-          ...old, points: old.points.map((p: any) => p.id !== d.point_id ? p : {
-            ...p, axes: Object.fromEntries(['x', 'y', 'z'].map((a) => [a, {
-              ...(p.axes[a] || {}), ts: d.ts, vel_mm_s: d.vel_mm_s?.[a], disp_um: d.disp_um?.[a], acc_g: d.acc_g?.[a],
-              freq_hz: d.freq_hz?.[a], temp_c: d.temp_c,
-            }])),
-          }),
-        }
-      })
-    } else if (d.type === 'power' || d.type === 'temp' || d.type === 'capture') {
-      qc.invalidateQueries({ queryKey: ['status', id] })
+  useEffect(() => {
+    if (searchParams.get('focus') === 'spectrum' && machine?.points?.length) {
+      const point = machine.points.find((item: any) => item.role === 'bearing') || machine.points[0]
+      nav(`/points/${point.id}/spectrum`, { replace: true })
     }
+  }, [machine, nav, searchParams])
+
+  useRealtime([`machine:${id}`], (message) => {
+    qc.invalidateQueries({ queryKey: ['status', id] })
+    if (message.data?.type !== 'vib') qc.invalidateQueries({ queryKey: ['iso-series'] })
   })
 
-  const lastCap = useMemo(() => st?.points.find((p: any) => p.id === wavePoint)?.last_capture, [st, wavePoint])
+  const lastCapture = useMemo(() => status?.points?.find((point: any) => point.id === wavePoint)?.last_capture, [status, wavePoint])
   const { data: wave } = useQuery<any>({
-    queryKey: ['wave', lastCap?.capture_id],
-    queryFn: () => api(`/captures/${lastCap.capture_id}/waveform`, { params: { max_points: 3000 } }),
-    enabled: !!lastCap?.capture_id && can('engineer'),
+    queryKey: ['wave', lastCapture?.capture_id],
+    queryFn: () => api(`/captures/${lastCapture.capture_id}/waveform`, { params: { max_points: 4096 } }),
+    enabled: !!lastCapture?.capture_id,
   })
 
-  const captureNow = async (pointId: string) => {
-    const p = machine.points.find((x: any) => x.id === pointId)
-    if (!p?.gateway_id) return
-    try {
-      await post(`/gateways/${p.gateway_id}/commands`, { type: 'capture_now', point_id: pointId })
-      message.success('Đã gửi lệnh chụp sóng – kết quả sẽ hiện sau ít phút')
-    } catch (e: any) {
-      message.error(e.message)
-    }
-  }
+  if (isLoading || !status || !machine) return <div className="page page-loading"><Spin size="large" /></div>
 
-  if (isLoading || !st || !machine) return <div className="page"><MachineNav id={id} /><Spin /></div>
-  const power = st.power
-  const temps = st.temps
+  const points = status.points || []
+  // One card per (point, axis), no duplicates: a single-point machine shows X, Z, Y of that point;
+  // with two or more points, the radial axes of the first points come first.
+  const sensorDefs: [any, string][] = points.length === 1
+    ? [[points[0], 'x'], [points[0], 'z'], [points[0], 'y']]
+    : points.flatMap((point: any) => [[point, 'x'], [point, 'z']] as [any, string][]).slice(0, 4)
+  const cutoff = Date.now() - 3_600_000
+  const sensors: Sensor[] = sensorDefs.map(([point, axis]) => ({
+    point, axis, data: point.axes?.[axis] || {},
+    series: (isoSeries[point.id]?.[axis] || []).filter(([t]) => Date.parse(t) >= cutoff),
+  }))
+  const cardSpan = Math.max(6, Math.floor(24 / Math.max(sensors.length, 1)))
+  const maxValue = Math.max(...sensors.map((sensor) => isoValue(sensor).value ?? 0))
+  const overallZone = getZone(maxValue || null, machine.iso_limits)
+
+  // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
+  const lastTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
+  const gatewayOnline = points.some((p: any) => p.gateway_online)
+  const isLive = gatewayOnline && lastTs > 0 && Date.now() - lastTs < LIVE_MAX_AGE_MS
+
+  const wavePointObj = machine.points.find((point: any) => point.id === wavePoint)
+  const trendPoint = wavePoint || points[0]?.id
+  const trendSeries = (['x', 'z', 'y'] as const).map((axis) => ({
+    name: `${axisName[axis]}`, data: isoSeries[trendPoint]?.[axis] || [], color: axisColor[axis],
+  })).filter((s) => s.data.length)
+
+  const power = status.power
+  const temps = status.temps
+  const temperatureRows = [
+    ['Ổ DE', temps?.bearing_temp_c], ['Vỏ động cơ', temps?.frame_temp_c], ['Môi trường', temps?.ambient_temp_c],
+    ['Cuộn dây (ước lượng)', temps?.winding_temp_est_c],
+  ].filter(([, value]) => value != null)
+  const powerRows = [
+    ['Điện áp dây', power?.u_v?.length ? `${num(power.u_v.reduce((a: number, b: number) => a + b, 0) / power.u_v.length, 1)} V` : '—'],
+    ['Dòng điện TB', power?.i_a?.length ? `${num(power.i_a.reduce((a: number, b: number) => a + b, 0) / power.i_a.length, 1)} A` : '—'],
+    ['Lệch dòng pha', power?.i_unbalance_pct != null ? `${num(power.i_unbalance_pct, 1)} %` : '—'],
+    ['Công suất tác dụng', power?.p_kw != null ? `${num(power.p_kw, 1)} kW` : '—'],
+    ['cosφ', num(power?.pf, 2)], ['Tải động cơ', power?.load_pct != null ? `${num(power.load_pct, 0)} %` : '—'],
+  ]
+  const subtitle = [
+    machine.site_name || machine.site_id,
+    machine.rated_power_kw ? `${num(machine.rated_power_kw, 0)} kW` : null,
+    machine.rated_speed_rpm ? `${num(machine.rated_speed_rpm, 0)} v/ph` : null,
+    machine.mounting === 'horizontal' ? 'Nằm ngang' : machine.mounting,
+    `ISO 20816-3 nhóm ${machine.iso_group} · ${machine.foundation === 'flexible' ? 'nền mềm' : 'nền cứng'}`,
+  ].filter(Boolean).join(' · ')
+
   return (
-    <div className="page">
-      <MachineNav id={id} />
-      <Row gutter={[12, 12]}>
-        {st.points.map((p: any) => (
-          <Col xs={24} lg={12} key={p.id}>
-            <Card size="small" title={<Space>{p.name}<Tag>{p.id}</Tag>{p.role !== 'bearing' && <Tag color="blue">{p.role === 'base' ? 'tham chiếu bệ' : 'nguồn máy nén'}</Tag>}</Space>}
-              extra={<Space>
-                {p.last_capture && <ZoneTag zone={p.last_capture.iso_zone} />}
-                <Button size="small" icon={<LineChartOutlined />} onClick={() => nav(`/points/${p.id}/spectrum`)} disabled={!can('engineer')}>Phổ</Button>
-                {can('analyst') && <Button size="small" icon={<CameraOutlined />} onClick={() => captureNow(p.id)}>Chụp sóng</Button>}
-              </Space>}>
-              <Table size="small" className="metric-table" pagination={false} rowKey="axis"
-                dataSource={['x', 'y', 'z'].map((a) => ({ axis: a, role: machine.points.find((x: any) => x.id === p.id)?.axes_map?.[a], ...(p.axes[a] || {}) }))}
-                columns={[
-                  { title: 'Trục', dataIndex: 'axis', render: (a, r: any) => <span><b>{a.toUpperCase()}</b> <span className="muted">{r.role}</span></span> },
-                  { title: 'Vận tốc (mm/s)', dataIndex: 'vel_mm_s', render: (v) => <b>{num(v)}</b> },
-                  { title: 'Gia tốc RMS (g)', dataIndex: 'acc_rms_g', render: (v) => num(v, 3), responsive: ['sm'] },
-                  { title: 'Chuyển vị (µm)', dataIndex: 'disp_um', render: (v) => num(v, 0) },
-                  { title: 'Tần số (Hz)', dataIndex: 'freq_hz', render: (v) => num(v, 1), responsive: ['md'] },
-                  { title: '60 phút', key: 'spark', width: 130, render: (_, r: any) => <Sparkline data={spark[p.id]?.[r.axis] || []} /> },
-                ]} />
-              <div className="muted" style={{ marginTop: 4 }}>
-                Nhiệt cảm biến: <b>{num(p.axes.x?.temp_c, 1)} °C</b> · Kurtosis: {num(p.axes.x?.kurtosis, 2)} ·
-                Cập nhật: {ago(p.axes.x?.ts)}
-                {p.last_capture && <> · ISO {num(p.last_capture.iso_vrms_max_mm_s)} mm/s ({ago(p.last_capture.ts)})</>}
-                {p.last_capture?.isolation && <> · <Tag color="cyan">đã cô lập nhiễu</Tag></>}
-              </div>
-            </Card>
-          </Col>
-        ))}
-        <Col xs={24} md={12}>
-          <Card size="small" title="Nhiệt độ">
-            <Descriptions size="small" column={2}>
-              <Descriptions.Item label="Nhiệt ổ">{num(temps?.bearing_temp_c, 1)} °C</Descriptions.Item>
-              <Descriptions.Item label="Nhiệt vỏ">{num(temps?.frame_temp_c, 1)} °C</Descriptions.Item>
-              <Descriptions.Item label="Môi trường">{num(temps?.ambient_temp_c, 1)} °C</Descriptions.Item>
-              <Descriptions.Item label={<span>Cuộn dây <EstimateTag /></span>}>
-                <b>{num(temps?.winding_temp_est_c, 1)} °C</b> (Δ {num(temps?.winding_rise_est_k, 1)} K)
-              </Descriptions.Item>
-            </Descriptions>
+    <div className="page live-page">
+      <div className="live-titlebar">
+        <div><h1>{machine.id.toUpperCase()} · {machine.name}</h1><p>{subtitle}</p></div>
+        <div className="live-actions">
+          <Tag className={`state-tag ${overallZone ? zoneClass[overallZone] : ''}`}>
+            {overallZone ? `Vùng ${overallZone} · ${zoneText[overallZone]}` : 'Chưa phân vùng ISO'}
+          </Tag>
+          {isLive
+            ? <Tag className="live-tag"><WifiOutlined /> Trực tiếp · cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
+            : <Tag className="offline-tag"><DisconnectOutlined /> {lastTs ? `Mất kết nối · dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'Gateway chưa gửi dữ liệu'}</Tag>}
+          <Select value={id} style={{ minWidth: 190 }} onChange={(value) => nav(`/machines/${value}/live`)}
+            options={(overview?.machines || []).map((item: any) => ({ value: item.id, label: item.name }))} />
+        </div>
+      </div>
+
+      <Row gutter={[14, 14]}>
+        {sensors.map((sensor) => <Col xs={24} sm={12} xl={cardSpan} key={`${sensor.point.id}-${sensor.axis}`}>
+          <SensorCard sensor={sensor} limits={machine.iso_limits} onSpectrum={() => nav(`/points/${sensor.point.id}/spectrum`)} />
+        </Col>)}
+        {!sensors.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}
+
+        <Col xs={24} xl={15}>
+          <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc"
+            extra={machine.points.length > 1 && <Select size="small" value={wavePoint} onChange={setWavePoint} style={{ width: 150 }}
+              options={machine.points.map((point: any) => ({ value: point.id, label: point.name }))} />}>
+            <div className="card-subtitle">
+              {wave ? `${wavePointObj?.name || ''} · ${num(wave.fs_hz / 1000, 1)} kS/s · capture ${ago(lastCapture?.ts)}` : 'Dữ liệu capture mới nhất'}
+            </div>
+            {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} height={250} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
           </Card>
         </Col>
-        <Col xs={24} md={12}>
-          <Card size="small" title="Điện">
-            {power ? (
-              <Descriptions size="small" column={2}>
-                <Descriptions.Item label="U (V)">{power.u_v?.map((v: number) => num(v, 0)).join(' / ')}</Descriptions.Item>
-                <Descriptions.Item label="I (A)">{power.i_a?.map((v: number) => num(v, 1)).join(' / ')}</Descriptions.Item>
-                <Descriptions.Item label="P (kW)">{num(power.p_kw, 1)}</Descriptions.Item>
-                <Descriptions.Item label="cosφ">{num(power.pf, 2)}</Descriptions.Item>
-                <Descriptions.Item label="% tải">{num(power.load_pct, 0)} %</Descriptions.Item>
-                <Descriptions.Item label="Lệch dòng">{num(power.i_unbalance_pct, 1)} %</Descriptions.Item>
-              </Descriptions>
-            ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có đồng hồ điện" />}
+        <Col xs={24} xl={9}>
+          <div className="stack-cards">
+            <Card className="data-list-card" size="small" title="Nhiệt độ">
+              {temperatureRows.length ? temperatureRows.map(([label, value]) => <div className="data-row" key={String(label)}><span>{label}</span><b>{`${num(value as number, 1)} °C`}</b></div>)
+                : <div className="card-empty-line">Chưa nhận dữ liệu nhiệt độ</div>}
+              {temps && <div className="data-foot">Cập nhật {ago(temps.ts)}</div>}
+            </Card>
+            <Card className="data-list-card" size="small" title="Thông số điện">
+              {power ? <>
+                {powerRows.map(([label, value]) => <div className="data-row" key={String(label)}><span>{label}</span><b>{value}</b></div>)}
+                <div className="data-foot">Cập nhật {ago(power.ts)}</div>
+              </> : <div className="card-empty-line">Chưa kết nối đồng hồ điện · các chỉ số dòng, áp, % tải và nhiệt cuộn dây sẽ hiện khi có đồng hồ</div>}
+            </Card>
+          </div>
+        </Col>
+
+        <Col xs={24} xl={15}>
+          <Card className="dashboard-card" title="Xu hướng vận tốc RMS ISO · 6 giờ"
+            extra={trendPoint && <Button size="small" icon={<LineChartOutlined />} onClick={() => nav(`/points/${trendPoint}/spectrum`)}>Xem phổ</Button>}>
+            {trendSeries.length ? <TrendChart height={270} limits={machine.iso_limits} yName="mm/s" series={trendSeries} />
+              : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có capture trong 6 giờ qua" />}
           </Card>
         </Col>
-        {can('engineer') && (
-          <Col xs={24} lg={14}>
-            <Card size="small" title="Dạng sóng thô mới nhất"
-              extra={<Select size="small" value={wavePoint} onChange={setWavePoint} style={{ width: 200 }}
-                options={machine.points.map((p: any) => ({ value: p.id, label: p.name }))} />}>
-              {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} /> : <Empty description="Chưa có sóng thô" />}
-              {lastCap && <div className="muted">{lastCap.capture_id} · fs {num(wave?.fs_hz, 0)} Hz</div>}
-            </Card>
-          </Col>
-        )}
-        <Col xs={24} lg={can('engineer') ? 10 : 24}>
-          <Card size="small" title="Đối chứng sai số (< 5%)">
-            {st.accuracy.length ? (
-              <Table size="small" pagination={false} rowKey="quantity" dataSource={st.accuracy} columns={[
-                { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'n', dataIndex: 'n' },
-                { title: 'mean e (%)', dataIndex: 'mean_pct', render: (v) => num(v) },
-                { title: 'P95 e (%)', dataIndex: 'p95_pct', render: (v) => num(v) },
-                { title: 'Kết luận', key: 'ok', render: (_, r: any) => r.quantity === 'temp' || r.quantity === 'peak_freq' ? '–'
-                  : (r.mean_pct <= 5 && r.p95_pct <= 8 ? <Tag color="green">Đạt</Tag> : <Tag color="red">Không đạt</Tag>) },
-              ]} />
-            ) : <Typography.Text type="secondary">Chưa có số liệu kiểm chứng (màn hình Kiểm chứng sai số)</Typography.Text>}
+        <Col xs={24} xl={9}>
+          <Card className="accuracy-card" size="small" title="Độ chính xác đo" extra={<span className="accuracy-requirement">Yêu cầu sai lệch &lt; 5%</span>}>
+            {(status.accuracy || []).length ? <Table size="small" pagination={false} rowKey="quantity" dataSource={status.accuracy} columns={[
+              { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Số mẫu', dataIndex: 'n' },
+              { title: 'Sai lệch TB', dataIndex: 'mean_pct', render: (value) => `${num(value, 1)} %` },
+              { title: 'P95', dataIndex: 'p95_pct', render: (value) => `${num(value, 1)} %` },
+              { title: 'Kết quả', render: (_value, row: any) => row.mean_pct <= 5 ? <Tag color="success">Đạt</Tag> : <Tag color="error">Không đạt</Tag> },
+            ]} /> : <div className="card-empty-line">Chưa có biên bản đối chứng. <a onClick={() => nav('/accuracy')}>Nhập kết quả đo bằng đồng hồ →</a></div>}
           </Card>
         </Col>
       </Row>

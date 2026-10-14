@@ -1,0 +1,11 @@
+.env
+.git
+.gitignore
+**/__pycache__/
+**/*.py[cod]
+services/.venv/
+web/node_modules/
+web/dist/
+emqx/certs/
+*.log
+

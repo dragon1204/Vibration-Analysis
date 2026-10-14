@@ -11,6 +11,7 @@ export default function MachineNav({ id }: { id: string }) {
   const tabs = [
     { label: 'Thời gian thực', value: 'live' },
     { label: 'AI chẩn đoán', value: 'diagnosis' },
+    { label: 'Phân tích sâu', value: 'deep-analysis' },
     { label: 'Xu hướng', value: 'trends' },
     { label: 'Bảo trì', value: 'maintenance' },
     { label: 'Thông tin', value: '' },

@@ -264,22 +264,36 @@ func (s *Sensor) rawOnce(ctx context.Context) (ready bool, cnt int, counts [3][]
 	req := modbus.BuildRead(s.opt.Addr, modbus.FuncReadHolding, RegRawFIFO, 1)
 	err = s.bus.Do(ctx, s.opt.ID, func(c *modbus.RTUClient) error {
 		start = time.Now().UTC()
+		// Firmware 193.x answers one request with a stream: zero or more "not ready"
+		// frames (byte progress) followed by the full data frame. Keep reading until the
+		// data frame arrives; fall back to the last "not ready" frame if the stream stops.
 		frame, e := c.Transact(req, s.opt.RawTimeout, func(r *transport.Reader) ([]byte, error) {
-			hdr, e := r.ReadN(3)
-			if e != nil {
-				return nil, modbus.ErrTimeout
+			var lastNotReady []byte
+			for {
+				hdr, e := r.ReadN(3)
+				if e != nil {
+					if lastNotReady != nil {
+						return lastNotReady, nil
+					}
+					return nil, modbus.ErrTimeout
+				}
+				n := 4 // not ready: CNT_H CNT_L CRC CRC
+				if hdr[2] == 0x00 {
+					n = rawRespLen - 3
+				} else if hdr[1] == modbus.FuncReadHolding|0x80 {
+					n = 2
+				}
+				rest, e := r.ReadN(n)
+				if e != nil {
+					return nil, modbus.ErrTimeout
+				}
+				f := append(hdr, rest...)
+				if hdr[2] == 0x01 && hdr[1] == modbus.FuncReadHolding && modbus.CheckCRC(f) {
+					lastNotReady = f
+					continue
+				}
+				return f, nil
 			}
-			n := 4 // not ready: CNT_H CNT_L CRC CRC
-			if hdr[2] == 0x00 {
-				n = rawRespLen - 3
-			} else if hdr[1] == modbus.FuncReadHolding|0x80 {
-				n = 2
-			}
-			rest, e := r.ReadN(n)
-			if e != nil {
-				return nil, modbus.ErrTimeout
-			}
-			return append(hdr, rest...), nil
 		})
 		end = time.Now().UTC()
 		if e != nil {

@@ -1,0 +1,16 @@
+# systemd unit for boards running Ubuntu (HelperT153 ships Ubuntu 20.04) instead of Buildroot.
+# Install: /etc/systemd/system/edge-agent.service ; systemctl daemon-reload ; systemctl enable --now edge-agent
+[Unit]
+Description=Smart Motor edge-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStartPre=/bin/mkdir -p /data/edge/logs
+ExecStart=/usr/local/bin/edge-agent --config /etc/edge-agent/edge.yaml
+Restart=always
+RestartSec=3
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

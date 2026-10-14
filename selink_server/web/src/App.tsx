@@ -1,15 +1,19 @@
-import { Suspense, lazy, useEffect, useState } from 'react'
+import { Suspense, lazy, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { Button, Drawer, Grid, Layout, Menu, Spin, Space, Typography, Dropdown } from 'antd'
+import { Avatar, Badge, Button, Drawer, Dropdown, Grid, Input, Layout, Menu, Spin } from 'antd'
 import {
-  DashboardOutlined, AlertOutlined, ApiOutlined, SettingOutlined, FileTextOutlined, ExperimentOutlined,
-  MenuOutlined, UserOutlined, LogoutOutlined, ThunderboltFilled, ClockCircleOutlined,
+  AlertOutlined, BellFilled, DashboardOutlined, DatabaseOutlined, FieldTimeOutlined, FileTextOutlined,
+  LineChartOutlined, LogoutOutlined, MenuOutlined, RobotOutlined, SearchOutlined, SettingOutlined,
+  FundProjectionScreenOutlined, UnorderedListOutlined,
+  ApartmentOutlined,
 } from '@ant-design/icons'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from './auth'
-import { logout } from './api/client'
+import { api, logout } from './api/client'
 import Login from './pages/Login'
 
 const Overview = lazy(() => import('./pages/Overview'))
+const Machines = lazy(() => import('./pages/Machines'))
 const Live = lazy(() => import('./pages/Live'))
 const Diagnosis = lazy(() => import('./pages/Diagnosis'))
 const MachineDetail = lazy(() => import('./pages/MachineDetail'))
@@ -17,19 +21,13 @@ const Trends = lazy(() => import('./pages/Trends'))
 const Spectrum = lazy(() => import('./pages/Spectrum'))
 const Events = lazy(() => import('./pages/Events'))
 const Maintenance = lazy(() => import('./pages/Maintenance'))
+const Rul = lazy(() => import('./pages/Rul'))
+const DeepAnalysis = lazy(() => import('./pages/DeepAnalysis'))
 const Accuracy = lazy(() => import('./pages/Accuracy'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Devices = lazy(() => import('./pages/Devices'))
+const Knowledge = lazy(() => import('./pages/Knowledge'))
 const Settings = lazy(() => import('./pages/Settings'))
-
-const MENU = [
-  { key: '/', icon: <DashboardOutlined />, label: 'Tổng quan' },
-  { key: '/events', icon: <AlertOutlined />, label: 'Cảnh báo' },
-  { key: '/accuracy', icon: <ExperimentOutlined />, label: 'Kiểm chứng sai số' },
-  { key: '/reports', icon: <FileTextOutlined />, label: 'Báo cáo' },
-  { key: '/devices', icon: <ApiOutlined />, label: 'Thiết bị' },
-  { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt' },
-]
 
 export default function App() {
   const { ready, loggedIn, me } = useAuth()
@@ -37,49 +35,84 @@ export default function App() {
   const loc = useLocation()
   const screens = Grid.useBreakpoint()
   const [open, setOpen] = useState(false)
-  const [now, setNow] = useState(new Date())
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
+  const { data: overview } = useQuery<any>({
+    queryKey: ['shell-overview'], queryFn: () => api('/overview'), enabled: loggedIn, refetchInterval: 30_000,
+  })
+  const { data: gateways = [] } = useQuery<any[]>({
+    queryKey: ['shell-gateways'], queryFn: () => api('/gateways'), enabled: loggedIn, refetchInterval: 30_000,
+  })
+
   if (!ready) return <Spin style={{ marginTop: '40vh', width: '100%' }} size="large" />
   if (!loggedIn) return <Login />
-  const selected = MENU.find((m) => m.key !== '/' && loc.pathname.startsWith(m.key))?.key || '/'
-  const menu = (
-    <Menu className="app-menu" theme="dark" mode="inline" selectedKeys={[selected]} items={MENU}
-      onClick={(e) => { nav(e.key); setOpen(false) }} />
-  )
+
+  const routeMachine = loc.pathname.match(/^\/machines\/([^/]+)/)?.[1]
+  const machines = overview?.machines || []
+  const activeMachine = routeMachine || machines[0]?.id || 'ga55-01'
+  const online = gateways.filter((gateway: any) => gateway.online).length
+  const eventCount = overview?.events?.length || 0
+  const livePath = `/machines/${activeMachine}/live`
+  const diagnosisPath = `/machines/${activeMachine}/diagnosis`
+  const deepPath = `/machines/${activeMachine}/deep-analysis`
+  const rulPath = `/machines/${activeMachine}/rul`
+  const menuItems: any[] = [
+    { key: '/', icon: <DashboardOutlined />, label: 'Tổng quan' },
+    { key: '/machines', icon: <UnorderedListOutlined />, label: 'Danh sách động cơ' },
+    { key: livePath, icon: <FundProjectionScreenOutlined />, label: 'Giám sát thời gian thực' },
+    { key: `${livePath}?focus=spectrum`, icon: <LineChartOutlined />, label: 'Phân tích phổ FFT' },
+    { key: '/events', icon: <AlertOutlined />, label: <span>Cảnh báo & sự kiện {eventCount > 0 && <Badge count={eventCount} size="small" />}</span> },
+    { type: 'group', label: 'PHÂN TÍCH NÂNG CAO', children: [
+      { key: diagnosisPath, icon: <RobotOutlined />, label: 'AI chẩn đoán' },
+      { key: deepPath, icon: <ApartmentOutlined />, label: 'Phân tích sâu S1–S4' },
+      { key: rulPath, icon: <FieldTimeOutlined />, label: 'Dự đoán RUL' },
+      { key: '/reports', icon: <FileTextOutlined />, label: 'Lịch sử & báo cáo' },
+    ] },
+    { type: 'group', label: 'QUẢN TRỊ', children: [
+      { key: '/knowledge', icon: <RobotOutlined />, label: 'Mô hình AI & tri thức' },
+      { key: '/devices', icon: <DatabaseOutlined />, label: 'Thiết bị & gateway' },
+      { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt' },
+    ] },
+  ]
+  const selected = loc.pathname === '/' ? '/' : loc.pathname.startsWith('/events') ? '/events'
+    : loc.pathname.startsWith('/reports') ? '/reports' : loc.pathname.startsWith('/knowledge') ? '/knowledge' : loc.pathname.startsWith('/devices') ? '/devices'
+      : loc.pathname.startsWith('/settings') ? '/settings' : loc.pathname.includes('/deep-analysis') ? deepPath : loc.pathname.includes('/rul') ? rulPath : loc.pathname.includes('/diagnosis') ? diagnosisPath
+        : loc.pathname.includes('/live') ? livePath : '/machines'
+  const menu = <Menu className="app-menu" mode="inline" selectedKeys={[selected]} items={menuItems}
+    onClick={(e) => { nav(e.key); setOpen(false) }} />
+
   return (
     <Layout className="app-shell">
-      {screens.md ? (
-        <Layout.Sider className="app-sidebar" collapsible breakpoint="lg" width={236} collapsedWidth={76}>
-          <div className="brand"><div className="brand-mark"><ThunderboltFilled /></div><div><div className="brand-title">SMART MOTOR</div><div className="brand-subtitle">Predictive care</div></div></div>
-          {menu}
-          <div className="sidebar-health"><strong><span className="pulse-dot" />Hệ thống đang hoạt động</strong>Edge & cloud monitoring</div>
-        </Layout.Sider>
-      ) : (
-        <Drawer open={open} onClose={() => setOpen(false)} placement="left" width={230}
-          styles={{ body: { padding: 0, background: '#07111f' } }}>
-          <div className="brand"><div className="brand-mark"><ThunderboltFilled /></div><div><div className="brand-title">SMART MOTOR</div><div className="brand-subtitle">Predictive care</div></div></div>
-          {menu}
-        </Drawer>
-      )}
+      <Layout.Header className="app-header">
+        {!screens.md && <Button className="mobile-menu-btn" icon={<MenuOutlined />} onClick={() => setOpen(true)} />}
+        <div className="top-brand"><div className="top-brand-mark">H</div><b>HEM Smart Motor</b><span>Giám sát thông minh · Vận hành bền vững</span></div>
+        <Input className="header-search hide-tablet" prefix={<SearchOutlined />} placeholder="Tìm động cơ, cảnh báo, báo cáo..."
+          onPressEnter={(e) => {
+            const q = e.currentTarget.value.toLowerCase().trim()
+            const found = machines.find((m: any) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+            if (found) nav(`/machines/${found.id}/live`)
+          }} />
+        <div className="system-health hide-mobile" title="Gateway gửi health mỗi phút; quá 3 phút không có tín hiệu được coi là mất kết nối">
+          <span className={`pulse-dot ${!gateways.length ? '' : online === gateways.length ? '' : online === 0 ? 'pulse-dot-bad' : 'pulse-dot-warn'}`} />
+          {!gateways.length ? 'Chưa có gateway' : online === gateways.length ? `Hệ thống hoạt động · ${online}/${gateways.length} gateway`
+            : online === 0 ? `Mất kết nối gateway · 0/${gateways.length}` : `${online}/${gateways.length} gateway trực tuyến`}
+        </div>
+        <Badge count={eventCount} size="small"><Button className="header-icon" type="text" icon={<BellFilled />} onClick={() => nav('/events')} /></Badge>
+        <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: () => logout() }] }}>
+          <div className="user-chip"><Avatar>{(me?.name || me?.email || 'A').slice(0, 1).toUpperCase()}</Avatar><div><b>{me?.name || me?.email}</b><span>{me?.role === 'admin' ? 'Quản trị hệ thống' : me?.role}</span></div></div>
+        </Dropdown>
+      </Layout.Header>
       <Layout>
-        <Layout.Header className="app-header">
-          {!screens.md && <Button icon={<MenuOutlined />} onClick={() => setOpen(true)} />}
-          <div className="header-copy"><div className="header-eyebrow">Trung tâm vận hành</div><div className="header-title">Giám sát & chẩn đoán rung động cơ</div></div>
-          <div className="header-clock hide-mobile"><ClockCircleOutlined /> {now.toLocaleTimeString('vi-VN')} · {now.toLocaleDateString('vi-VN')}</div>
-          <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: () => logout() }] }}>
-            <Space style={{ cursor: 'pointer' }}><UserOutlined />{me?.name || me?.email}<Typography.Text type="secondary">({me?.role})</Typography.Text></Space>
-          </Dropdown>
-        </Layout.Header>
-        <Layout.Content>
+        {screens.md ? <Layout.Sider className="app-sidebar" width={256}>{menu}</Layout.Sider>
+          : <Drawer open={open} onClose={() => setOpen(false)} placement="left" width={270} styles={{ body: { padding: 0 } }}>{menu}</Drawer>}
+        <Layout.Content className="app-content">
           <Suspense fallback={<Spin style={{ margin: 48 }} />}>
             <Routes>
               <Route path="/" element={<Overview />} />
+              <Route path="/machines" element={<Machines />} />
               <Route path="/machines/:id" element={<MachineDetail />} />
               <Route path="/machines/:id/live" element={<Live />} />
               <Route path="/machines/:id/diagnosis" element={<Diagnosis />} />
+              <Route path="/machines/:id/rul" element={<Rul />} />
+              <Route path="/machines/:id/deep-analysis" element={<DeepAnalysis />} />
               <Route path="/machines/:id/trends" element={<Trends />} />
               <Route path="/machines/:id/maintenance" element={<Maintenance />} />
               <Route path="/points/:id/spectrum" element={<Spectrum />} />
@@ -87,6 +120,7 @@ export default function App() {
               <Route path="/accuracy" element={<Accuracy />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/knowledge" element={<Knowledge />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

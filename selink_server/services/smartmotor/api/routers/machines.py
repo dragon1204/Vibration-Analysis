@@ -2,11 +2,14 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import Response
+from pathlib import Path
+from uuid import uuid4
 from pydantic import BaseModel
 
 from ...common import bus
-from ...common.iso import iso_limits
+from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
 router = APIRouter(tags=["machines"])
@@ -57,7 +60,7 @@ async def list_machines(request: Request, site_id: Optional[str] = None, user: U
 async def get_machine(machine_id: str, request: Request, user: User = Depends(current_user)):
     await check_machine(request.app.state.pool, user, machine_id)
     async with request.app.state.pool.acquire() as c:
-        m = await c.fetchrow("SELECT * FROM machines WHERE id=$1", machine_id)
+        m = await c.fetchrow("SELECT m.*, s.name AS site_name FROM machines m LEFT JOIN sites s ON s.id=m.site_id WHERE m.id=$1", machine_id)
         pts = await c.fetch("""SELECT p.*, b.model AS bearing_model, g.online AS gateway_online FROM measurement_points p
                                LEFT JOIN bearings b ON b.id=p.bearing_id LEFT JOIN gateways g ON g.id=p.gateway_id
                                WHERE p.machine_id=$1 ORDER BY p.id""", machine_id)
@@ -100,17 +103,29 @@ async def machine_status(machine_id: str, request: Request, user: User = Depends
     pool = request.app.state.pool
     await check_machine(pool, user, machine_id)
     async with pool.acquire() as c:
-        pts = await c.fetch("SELECT id, name, location, role, iso_axes, axes_map FROM measurement_points WHERE machine_id=$1 ORDER BY id",
-                            machine_id)
+        m = await c.fetchrow("SELECT iso_group, foundation FROM machines WHERE id=$1", machine_id)
+        lim = iso_limits(m["iso_group"], m["foundation"])
+        pts = await c.fetch("""SELECT p.id, p.name, p.location, p.role, p.iso_axes, p.axes_map, p.gateway_id, g.online AS gateway_online,
+                                 g.last_seen AS gateway_last_seen
+                               FROM measurement_points p LEFT JOIN gateways g ON g.id=p.gateway_id
+                               WHERE p.machine_id=$1 ORDER BY p.id""", machine_id)
         out_pts = []
         for p in pts:
             rows = await c.fetch("""SELECT DISTINCT ON (axis) axis, ts, vel_mm_s, vel_mm_s_max, disp_um, freq_hz, acc_g, temp_c,
                                       acc_rms_g, vel_rms_mm_s, kurtosis, crest FROM vib_metrics
                                     WHERE point_id=$1 AND ts > now() - interval '1 hour' ORDER BY axis, ts DESC""", p["id"])
+            # axes_iso: per-axis ISO velocity RMS / acc RMS computed from the raw waveform – the values
+            # comparable with a handheld meter (the sensor's VX register is not an RMS value).
             cap = await c.fetchrow("""SELECT capture_id, ts, profile, iso_vrms_max_mm_s, iso_zone, speed_hz, anomaly_score,
-                                        features->'isolation' AS isolation FROM captures WHERE point_id=$1 AND features IS NOT NULL
+                                        features->'isolation' AS isolation,
+                                        (SELECT jsonb_object_agg(k, jsonb_build_object(
+                                                  'iso_vrms_mm_s', v->'iso_vrms_mm_s', 'acc_rms_g', v->'acc_rms_g',
+                                                  'acc_peak_g', v->'acc_peak_g', 'iso_band_hz', v->'iso_band_hz'))
+                                           FROM jsonb_each(features->'axes') AS e(k, v)) AS axes_iso
+                                      FROM captures WHERE point_id=$1 AND features IS NOT NULL
                                       ORDER BY ts DESC LIMIT 1""", p["id"])
-            out_pts.append({**dict(p), "axes": {r["axis"]: dict(r) for r in rows}, "last_capture": dict(cap) if cap else None})
+            out_pts.append({**dict(p), "axes": {r["axis"]: dict(r) for r in rows},
+                            "last_capture": rezone(dict(cap), lim) if cap else None})
         power = await c.fetchrow("SELECT * FROM power_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
         temp = await c.fetchrow("SELECT * FROM temp_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
         acc = await c.fetch("""SELECT quantity, count(*) n, avg(error_pct) mean_pct,
@@ -170,6 +185,41 @@ class MaintenanceIn(BaseModel):
     reset_baseline: bool = False
 
 
+MAINTENANCE_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+
+@router.post("/machines/{machine_id}/maintenance/photos", status_code=201)
+async def upload_maintenance_photo(machine_id: str, request: Request, photo: UploadFile = File(...),
+                                   user: User = Depends(require("engineer"))):
+    """Store a maintenance evidence photo outside the database (maximum 5 MiB)."""
+    await check_machine(request.app.state.pool, user, machine_id, "engineer")
+    suffix = MAINTENANCE_IMAGE_TYPES.get(photo.content_type or "")
+    if not suffix:
+        raise HTTPException(415, "Chỉ chấp nhận ảnh JPEG, PNG hoặc WebP")
+    data = await photo.read(5 * 1024 * 1024 + 1)
+    if not data or len(data) > 5 * 1024 * 1024:
+        raise HTTPException(413, "Ảnh phải có dung lượng từ 1 byte đến 5 MiB")
+    photo_id = f"{uuid4().hex}{suffix}"
+    key = f"maintenance/{machine_id}/{photo_id}"
+    await request.app.state.storage.put(key, data, photo.content_type)
+    await audit(request.app.state.pool, user, "maintenance.photo.upload", machine_id,
+                {"photo_id": photo_id, "original_name": Path(photo.filename or "photo").name})
+    return {"id": photo_id, "url": f"/api/v1/machines/{machine_id}/maintenance/photos/{photo_id}"}
+
+
+@router.get("/machines/{machine_id}/maintenance/photos/{photo_id}")
+async def get_maintenance_photo(machine_id: str, photo_id: str, request: Request,
+                                user: User = Depends(current_user)):
+    await check_machine(request.app.state.pool, user, machine_id)
+    if Path(photo_id).name != photo_id or Path(photo_id).suffix.lower() not in (".jpg", ".png", ".webp"):
+        raise HTTPException(400, "Mã ảnh không hợp lệ")
+    data = await request.app.state.storage.get(f"maintenance/{machine_id}/{photo_id}")
+    if data is None:
+        raise HTTPException(404, "Không tìm thấy ảnh")
+    media = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}[Path(photo_id).suffix.lower()]
+    return Response(data, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
+
+
 @router.get("/machines/{machine_id}/maintenance")
 async def list_maintenance(machine_id: str, request: Request, user: User = Depends(current_user)):
     await check_machine(request.app.state.pool, user, machine_id)
@@ -207,7 +257,7 @@ async def machine_diagnosis(machine_id: str, request: Request, user: User = Depe
         health = await c.fetchrow("""SELECT avg(health_index) health_index, avg(anomaly_score) anomaly_score FROM machine_health
                                      WHERE machine_id=$1 AND ts > now() - interval '24 hours' AND health_index IS NOT NULL""", machine_id)
         rul = await c.fetchrow("""SELECT rul_days, rul_lo_days, rul_hi_days, detail, ts FROM machine_health
-                                  WHERE machine_id=$1 AND rul_days IS NOT NULL ORDER BY ts DESC LIMIT 1""", machine_id)
+                                  WHERE machine_id=$1 AND detail->>'kind'='rul' ORDER BY ts DESC LIMIT 1""", machine_id)
         events = await c.fetch("""SELECT event_id, ts, point_id, severity, rule, metric, value, threshold, message, state, diagnosis
                                   FROM events WHERE machine_id=$1 AND type='alarm' AND ts > now() - interval '7 days'
                                   ORDER BY ts DESC LIMIT 20""", machine_id)
@@ -244,7 +294,7 @@ async def machine_health(machine_id: str, request: Request, rng=Depends(time_ran
     await check_machine(request.app.state.pool, user, machine_id)
     frm, to = rng
     async with request.app.state.pool.acquire() as c:
-        rows = await c.fetch("""SELECT ts, point_id, health_index, anomaly_score, rul_days, rul_lo_days, rul_hi_days
+        rows = await c.fetch("""SELECT ts, point_id, health_index, anomaly_score, rul_days, rul_lo_days, rul_hi_days, detail
                                 FROM machine_health WHERE machine_id=$1 AND ts BETWEEN $2 AND $3 ORDER BY ts""", machine_id, frm, to)
     return [dict(r) for r in rows]
 

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import ReactECharts from 'echarts-for-react'
-import { Button, Space, Typography } from 'antd'
+import { Button, Segmented, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
 import { ZONE_BG, num, saveCSV, vnMs } from '../utils/format'
 
@@ -22,28 +23,60 @@ function isoBands(l?: IsoLimits, max = 0) {
 
 type Series = { name: string; data: [string, number][]; yAxisIndex?: number; color?: string; dashed?: boolean }
 
+/** Round an axis maximum up to a "nice" value (1, 2, 2.5, 5 × 10^n) so labels never read 8.52 or 114.037795. */
+export function niceMax(v: number) {
+  if (!(v > 0)) return 1
+  const p = 10 ** Math.floor(Math.log10(v))
+  return ([1, 2, 2.5, 5, 10].find((m) => m * p >= v) ?? 10) * p
+}
+
+/** Axis label formatter: at most 2 decimals, Vietnamese decimal comma. */
+const axisNum = (v: number) => num(v, Math.abs(v) >= 10 || Number.isInteger(v) ? 0 : v % 0.5 === 0 ? 1 : 2)
+
+/** Time series points with explicit gaps: a null is inserted where the sampling interval is exceeded
+ * (more than 4× the median step), so the line breaks instead of drawing a straight bridge over missing data. */
+function withGaps(data: [string, number][]): [number, number | null][] {
+  const pts = data.map(([t, v]) => [vnMs(t), v] as [number, number])
+  if (pts.length < 3) return pts
+  const steps = pts.slice(1).map((p, i) => p[0] - pts[i][0]).sort((a, b) => a - b)
+  const gap = Math.max(steps[Math.floor(steps.length / 2)] * 4, 1)
+  const out: [number, number | null][] = [pts[0]]
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i][0] - pts[i - 1][0] > gap) out.push([pts[i - 1][0] + 1, null])
+    out.push(pts[i])
+  }
+  return out
+}
+
+const TIME_LABELS = { year: '{yyyy}', month: '{MM}/{yyyy}', day: '{dd}/{MM}', hour: '{HH}:{mm}', minute: '{HH}:{mm}', second: '{HH}:{mm}:{ss}', none: '{HH}:{mm}' }
+
 export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Name, markers = [], csvName, compact }: {
   series: Series[]; limits?: IsoLimits; height?: number; yName?: string; y2Name?: string
   markers?: { ts: string; label: string }[]; csvName?: string; compact?: boolean
 }) {
   const max = Math.max(0, ...series.filter((s) => !s.yAxisIndex).flatMap((s) => s.data.map((d) => d[1])))
+  // The secondary axis exists only when a series actually uses it (no empty "% tải" axis without a power meter).
+  const hasY2 = !!y2Name && series.some((s) => s.yAxisIndex === 1 && s.data.length)
+  const yMax = limits ? niceMax(Math.max(max * 1.1, limits.cd * 1.15)) : max > 0 ? niceMax(max * 1.1) : undefined
   const option = {
     animation: false,
-    grid: compact ? { left: 30, right: 8, top: 8, bottom: 20 } : { left: 50, right: y2Name ? 50 : 20, top: 30, bottom: 60 },
-    tooltip: compact ? undefined : { trigger: 'axis', valueFormatter: (v: number) => num(v, 3) },
-    legend: compact ? undefined : { top: 0 },
+    grid: compact ? { left: 34, right: 8, top: 8, bottom: 20 } : { left: 56, right: hasY2 ? 56 : 16, top: 40, bottom: 62 },
+    tooltip: compact ? undefined : { trigger: 'axis', valueFormatter: (v: number) => (v == null ? '—' : num(v, 2)) },
+    legend: compact ? undefined : { top: 0, left: 'center', type: 'scroll' },
     dataZoom: compact ? undefined : [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8 }],
-    xAxis: { type: 'time', axisLabel: { hideOverlap: true, fontSize: compact ? 9 : 11 } },
+    xAxis: { type: 'time', axisLabel: { hideOverlap: true, fontSize: compact ? 9 : 11, formatter: TIME_LABELS } },
     yAxis: [
-      { type: 'value', name: compact ? undefined : yName, min: 0, max: limits ? Math.max(max * 1.15, limits.cd * 1.2) : undefined,
-        axisLabel: { fontSize: compact ? 9 : 11 } },
-      ...(y2Name ? [{ type: 'value', name: y2Name, min: 0, max: 120, splitLine: { show: false } }] : []),
+      { type: 'value', name: compact ? undefined : yName, nameLocation: 'middle', nameRotate: 90, nameGap: 36, min: 0, max: yMax,
+        axisLabel: { fontSize: compact ? 9 : 11, formatter: axisNum } },
+      ...(hasY2 ? [{ type: 'value', name: y2Name, nameLocation: 'middle', nameRotate: -90, nameGap: 40, min: 0, max: 120, splitLine: { show: false },
+        axisLabel: { fontSize: 11 } }] : []),
     ],
-    series: series.map((s, i) => ({
-      name: s.name, type: 'line', showSymbol: false, sampling: 'lttb', yAxisIndex: s.yAxisIndex || 0,
-      lineStyle: { width: compact ? 1.2 : 1.5, type: s.dashed ? 'dashed' : 'solid' }, color: s.color,
-      data: s.data.map(([t, v]) => [vnMs(t), v]),
-      markArea: i === 0 ? isoBands(limits, max) : undefined,
+    series: series.filter((s) => hasY2 || !s.yAxisIndex).map((s, i) => ({
+      name: s.name, type: 'line', showSymbol: s.data.length < 3, symbolSize: 5, connectNulls: false,
+      yAxisIndex: s.yAxisIndex || 0,
+      lineStyle: { width: compact ? 1.4 : 1.8, type: s.dashed ? 'dashed' : 'solid' }, color: s.color,
+      data: withGaps(s.data),
+      markArea: i === 0 ? isoBands(limits, yMax ?? max) : undefined,
       markLine: i === 0 && markers.length ? {
         symbol: 'none', label: { formatter: '{b}', fontSize: 10 }, lineStyle: { color: '#595959', type: 'dotted' },
         data: markers.map((m) => ({ name: m.label, xAxis: vnMs(m.ts) })),
@@ -53,10 +86,10 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
   return (
     <div>
       {csvName && (
-        <Space style={{ float: 'right' }}>
+        <div className="chart-toolbar">
           <Button size="small" icon={<DownloadOutlined />} onClick={() =>
             saveCSV(csvName, [['series', 'ts', 'value'], ...series.flatMap((s) => s.data.map(([t, v]) => [s.name, t, v]))])}>CSV</Button>
-        </Space>
+        </div>
       )}
       <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
     </div>
@@ -65,6 +98,33 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
 
 export type Marker = { label: string; freq_hz: number; kind?: string }
 const MARKER_COLOR: Record<string, string> = { order: '#1677ff', bearing: '#cf1322', electrical: '#722ed1', mesh: '#d46b08' }
+
+/** Fault-frequency marker lines. Markers closer than ~1.5 % of the visible band (e.g. 2X 98,8 Hz and 2×f_line 100 Hz)
+ * share one line and one label; labels are horizontal, above the plot, staggered on two rows so they never overlap. */
+function markerLines(markers: Marker[], fmax: number, conv: (f: number) => number = (f) => f) {
+  const sorted = markers.filter((m) => conv(m.freq_hz) <= fmax).sort((a, b) => a.freq_hz - b.freq_hz)
+  const groups: Marker[][] = []
+  for (const m of sorted) {
+    const last = groups[groups.length - 1]
+    if (last && conv(m.freq_hz) - conv(last[0].freq_hz) < fmax * 0.015) last.push(m)
+    else groups.push([m])
+  }
+  return {
+    symbol: 'none', silent: false,
+    data: groups.map((g, i) => {
+      const color = MARKER_COLOR[g[0].kind || 'order']
+      return {
+        name: g.map((m) => m.label).join(' / '), xAxis: conv(g[0].freq_hz),
+        lineStyle: { color, type: 'dashed', width: 1, opacity: 0.7 },
+        label: {
+          formatter: g.map((m) => m.label).join(' / '), position: 'end', rotate: 0, fontSize: 11, fontWeight: 600, color,
+          backgroundColor: 'rgba(255,255,255,.9)', padding: [1, 3], borderRadius: 3, distance: i % 2 ? 18 : 3,
+        },
+      }
+    }),
+    tooltip: { formatter: (p: any) => `${p.name}: ${num(p.value, 1)} Hz` },
+  }
+}
 
 export function SpectrumChart({ df, values, unit, markers = [], compare, height = 360, showOrders = false, speedHz, title, csvName }: {
   df: number; values: number[]; unit: string; markers?: Marker[]; compare?: { name: string; df: number; values: number[] }
@@ -76,24 +136,18 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
   const option = {
     animation: false,
     title: title ? { text: title, left: 'center', textStyle: { fontSize: 13 } } : undefined,
-    grid: { left: 60, right: 20, top: title ? 40 : 25, bottom: 60 },
+    grid: { left: 60, right: 28, top: title ? 78 : 62, bottom: 60 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v, 4)} ${unit}`,
       axisPointer: { label: { formatter: (p: any) => (p.axisDimension === 'x' ? (showOrders ? `${num(p.value, 2)}X` : `${num(p.value, 1)} Hz`) : num(p.value, 4)) } } },
     legend: compare ? { top: 0, right: 10 } : undefined,
     dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8 }],
-    xAxis: { type: 'value', name: showOrders ? 'bậc (X)' : 'Hz', max: fmax, nameGap: 4 },
-    yAxis: { type: 'value', name: unit, min: 0 },
+    xAxis: { type: 'value', name: showOrders ? 'bậc (X)' : 'Hz', max: fmax, nameGap: 6, axisLabel: { formatter: axisNum } },
+    yAxis: { type: 'value', name: unit, min: 0, nameLocation: 'middle', nameRotate: 90, nameGap: 42, axisLabel: { formatter: axisNum } },
     series: [
       {
-        name: 'Hiện tại', type: 'line', showSymbol: false, data, lineStyle: { width: 1 }, color: '#0b4f6c',
-        markLine: {
-          symbol: 'none', silent: true,
-          label: { formatter: '{b}', fontSize: 10, position: 'insideEndTop' },
-          data: markers.filter((m) => conv(m.freq_hz) <= fmax).map((m) => ({
-            name: `${m.label} ${num(m.freq_hz, 1)} Hz`, xAxis: conv(m.freq_hz),
-            lineStyle: { color: MARKER_COLOR[m.kind || 'order'], type: 'dashed', width: 1 },
-          })),
-        },
+        name: 'Hiện tại', type: 'line', showSymbol: false, data, lineStyle: { width: 1.3 }, color: '#0b4f6c',
+        areaStyle: { color: 'rgba(11,79,108,.06)' },
+        markLine: markerLines(markers, fmax, conv),
       },
       ...(compare ? [{
         name: compare.name, type: 'line', showSymbol: false, color: '#bfbfbf', lineStyle: { width: 1 },
@@ -104,30 +158,78 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
   return (
     <div>
       {csvName && (
-        <Button size="small" style={{ float: 'right', position: 'relative', zIndex: 2 }} icon={<DownloadOutlined />}
-          onClick={() => saveCSV(csvName, [['freq_hz', `value_${unit}`], ...values.map((v, i) => [i * df, v])])}>CSV</Button>
+        <div className="chart-toolbar">
+          <Button size="small" icon={<DownloadOutlined />}
+            onClick={() => saveCSV(csvName, [['freq_hz', `value_${unit}`], ...values.map((v, i) => [i * df, v])])}>CSV</Button>
+        </div>
       )}
       <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
     </div>
   )
 }
 
-export function WaveformChart({ axes, dt, unit = 'g', height = 260 }: { axes: Record<string, number[]>; dt: number; unit?: string; height?: number }) {
-  const colors: Record<string, string> = { x: '#1677ff', y: '#52c41a', z: '#fa541c' }
+export function MultiSpectrumChart({ spectra, markers = [], fmax = 500, height = 390, unit = 'mm/s' }: {
+  spectra: { name: string; df: number; values: number[]; color: string }[]
+  markers?: Marker[]; fmax?: number; height?: number; unit?: string
+}) {
   const option = {
     animation: false,
-    grid: { left: 55, right: 20, top: 25, bottom: 50 },
-    tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v, 4)} ${unit}` },
-    legend: { top: 0 },
-    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 16, bottom: 6 }],
-    xAxis: { type: 'value', name: 's', max: 'dataMax' },
-    yAxis: { type: 'value', name: unit },
-    series: Object.entries(axes).map(([a, vals]) => ({
-      name: a.toUpperCase(), type: 'line', showSymbol: false, sampling: 'lttb', color: colors[a], lineStyle: { width: 0.8 },
-      data: vals.map((v, i) => [i * dt, v]),
+    color: spectra.map((item) => item.color),
+    grid: { left: 58, right: 28, top: 84, bottom: 62 },
+    legend: { top: 4, type: 'scroll' },
+    tooltip: { trigger: 'axis', valueFormatter: (value: number) => `${num(value, 4)} ${unit}` },
+    dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8 }],
+    xAxis: { type: 'value', name: 'Hz', min: 0, max: fmax, axisLabel: { formatter: axisNum } },
+    yAxis: { type: 'value', name: unit, min: 0, scale: true, nameLocation: 'middle', nameRotate: 90, nameGap: 42, axisLabel: { formatter: axisNum } },
+    series: spectra.map((spectrum, index) => ({
+      name: spectrum.name, type: 'line', showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.6 },
+      data: spectrum.values.slice(0, Math.floor(fmax / spectrum.df) + 1).map((value, i) => [i * spectrum.df, value]),
+      markLine: index === 0 ? markerLines(markers, fmax) : undefined,
     })),
   }
   return <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+}
+
+const AXIS_COLOR: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
+const AXIS_LABEL: Record<string, string> = { x: 'X ngang', y: 'Y dọc trục', z: 'Z đứng' }
+
+/** Acceleration waveform. One axis at a time by default (three overlaid 2 kS/s traces read as a solid band),
+ * opened on the first ~100 ms so individual cycles are visible; the slider pans/zooms over the whole frame. */
+export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis = 'x', windowS = 0.1 }: {
+  axes: Record<string, number[]>; dt: number; unit?: string; height?: number; defaultAxis?: string; windowS?: number
+}) {
+  const names = Object.keys(axes)
+  const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0])
+  const shown = sel === 'all' ? names : [sel]
+  const total = Math.max(0, ...names.map((a) => axes[a].length)) * dt
+  const endPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
+  const option = {
+    animation: false,
+    grid: { left: 52, right: 16, top: 16, bottom: 56 },
+    tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v, 3)} ${unit}`,
+      axisPointer: { label: { formatter: (p: any) => (p.axisDimension === 'x' ? `${num(p.value * 1000, 1)} ms` : num(p.value, 3)) } } },
+    dataZoom: [{ type: 'inside', start: 0, end: endPct }, { type: 'slider', height: 18, bottom: 8, start: 0, end: endPct,
+      labelFormatter: (v: number) => `${num(v * 1000, 0)} ms` }],
+    xAxis: { type: 'value', name: 'ms', nameGap: 6, max: 'dataMax', axisLabel: { formatter: (v: number) => num(v * 1000, 0) } },
+    yAxis: { type: 'value', name: unit, nameTextStyle: { align: 'left' }, axisLabel: { formatter: axisNum } },
+    series: shown.map((a) => ({
+      name: AXIS_LABEL[a] || a.toUpperCase(), type: 'line', showSymbol: false, color: AXIS_COLOR[a],
+      lineStyle: { width: shown.length > 1 ? 1 : 1.5, opacity: shown.length > 1 ? 0.85 : 1 },
+      data: axes[a].map((v, i) => [i * dt, v]),
+    })),
+  }
+  return (
+    <div>
+      <div className="chart-toolbar chart-toolbar-left">
+        <Segmented size="small" value={sel} onChange={(v) => setSel(String(v))}
+          options={[...names.map((a) => ({ value: a, label: (
+            <span><span className="series-dot" style={{ background: AXIS_COLOR[a], marginRight: 5 }} />{AXIS_LABEL[a] || a.toUpperCase()}</span>
+          ) })), { value: 'all', label: 'Cả 3 trục' }]} />
+        <span className="muted">Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
+      </div>
+      <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+    </div>
+  )
 }
 
 export function WaterfallChart({ rows, df, unit, height = 420 }: { rows: { ts: string; values: number[]; df_hz?: number }[]; df: number; unit: string; height?: number }) {
@@ -151,19 +253,29 @@ export function WaterfallChart({ rows, df, unit, height = 420 }: { rows: { ts: s
   return <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
 }
 
-export function Gauge({ value, title, height = 180 }: { value?: number | null; title: string; height?: number }) {
-  const v = value ?? 0
+/** Health gauge. The caption sits below the chart in HTML (an in-chart title collided with the arc ends);
+ * without a value the arc is grey and the centre says so instead of showing a bare dash. */
+export function Gauge({ value, title, height = 180, emptyText = 'Chưa đủ dữ liệu' }: {
+  value?: number | null; title: string; height?: number; emptyText?: string
+}) {
+  const has = value != null
   const option = {
     series: [{
-      type: 'gauge', min: 0, max: 100, radius: '95%', progress: { show: true, width: 12 },
-      axisLine: { lineStyle: { width: 12, color: [[0.4, '#cf1322'], [0.7, '#fa8c16'], [1, '#2e9d4f']] } },
+      type: 'gauge', min: 0, max: 100, radius: '92%', center: ['50%', '56%'], progress: { show: has, width: 12 },
+      axisLine: { lineStyle: { width: 12, color: has ? [[0.4, '#cf1322'], [0.7, '#fa8c16'], [1, '#2e9d4f']] : [[1, '#e4e8ef']] } },
       pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-      title: { offsetCenter: [0, '70%'], fontSize: 12 },
-      detail: { valueAnimation: true, fontSize: 26, offsetCenter: [0, '10%'], formatter: value == null ? '–' : '{value}' },
-      data: [{ value: Math.round(v), name: title }],
+      title: { show: false },
+      detail: has ? { valueAnimation: true, fontSize: 28, fontWeight: 700, offsetCenter: [0, '6%'], formatter: '{value}' }
+        : { fontSize: 13, color: '#8190a6', offsetCenter: [0, '6%'], formatter: emptyText },
+      data: [{ value: has ? Math.round(value as number) : 0 }],
     }],
   }
-  return <ReactECharts option={option} style={{ height }} />
+  return (
+    <div className="gauge-wrap">
+      <ReactECharts option={option} style={{ height }} />
+      <div className="gauge-caption">{title}</div>
+    </div>
+  )
 }
 
 export function Sparkline({ data, color = '#0b4f6c', height = 36 }: { data: [string, number][]; color?: string; height?: number }) {

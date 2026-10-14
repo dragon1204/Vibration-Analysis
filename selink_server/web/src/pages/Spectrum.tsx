@@ -16,7 +16,7 @@ export default function Spectrum() {
   const [compareId, setCompareId] = useState<string>()
   const [type, setType] = useState('vel')
   const [axis, setAxis] = useState('x')
-  const [fmax, setFmax] = useState<number | null>(null)
+  const [fmax, setFmax] = useState<number | null>(1000)
   const [orders, setOrders] = useState(false)
   const { data: point } = useQuery<any>({ queryKey: ['point', id], queryFn: () => api(`/points/${id}`) })
   const { data: caps = [] } = useQuery<any[]>({
@@ -56,7 +56,10 @@ export default function Spectrum() {
         <Segmented value={type} onChange={(v) => setType(String(v))} options={[
           { label: 'Vận tốc', value: 'vel' }, { label: 'Gia tốc', value: 'acc' }, { label: 'Phổ bao', value: 'env' }, { label: 'Đã cô lập', value: 'iso' }]} />
         <Segmented value={axis} onChange={(v) => setAxis(String(v))} options={['x', 'y', 'z'].map((a) => ({ label: a.toUpperCase(), value: a }))} />
-        <InputNumber placeholder="f max (Hz)" value={fmax} onChange={setFmax} min={10} />
+        <Segmented value={fmax ?? 'full'} onChange={(value) => setFmax(value === 'full' ? null : Number(value))} options={[
+          { value: 250, label: '0–250 Hz' }, { value: 500, label: '0–500 Hz' }, { value: 1000, label: '0–1.000 Hz' }, { value: 'full', label: 'Toàn dải' },
+        ]} />
+        <InputNumber addonBefore="f max" addonAfter="Hz" value={fmax} onChange={setFmax} min={10} step={50} style={{ width: 165 }} />
         <Space>Trục bậc (X)<Switch checked={orders} onChange={setOrders} /></Space>
       </Space>
       <Row gutter={[12, 12]}>
@@ -68,7 +71,7 @@ export default function Spectrum() {
               columns={[
                 { title: 'Thời điểm', dataIndex: 'ts', render: (v) => dt(v) },
                 { title: 'Profile', dataIndex: 'profile' },
-                { title: 'ISO', dataIndex: 'iso_vrms_max_mm_s', render: (v, r: any) => <span>{num(v)} <ZoneTag zone={r.iso_zone} /></span> },
+                { title: 'RMS ISO', dataIndex: 'iso_vrms_max_mm_s', align: 'right', render: (v, r: any) => <span className="nowrap">{num(v)} <ZoneTag zone={r.iso_zone} /></span> },
               ]} />
             <Select allowClear placeholder="So sánh với capture (baseline)…" style={{ width: '100%' }} value={compareId} onChange={setCompareId}
               options={caps.filter((c) => c.capture_id !== capId).map((c) => ({ value: c.capture_id, label: `${dt(c.ts)} · ${c.profile}` }))} />
@@ -80,7 +83,7 @@ export default function Spectrum() {
               key: 'spec', label: 'Phổ', children: spec ? (
                 <Card size="small">
                   <SpectrumChart df={spec.df_hz} values={spec.values} unit={spec.unit} markers={spec.markers} speedHz={spec.speed_hz}
-                    showOrders={orders} csvName={`${capId}_${type}_${axis}.csv`} height={420}
+                    showOrders={orders} csvName={`${capId}_${type}_${axis}.csv`} height={500}
                     compare={cmp ? { name: `So sánh ${dt(caps.find((c) => c.capture_id === compareId)?.ts)}`, df: cmp.df_hz, values: cmp.values } : undefined} />
                   {cap && <Space wrap className="muted">
                     <span>{cap.capture_id}</span><span>fs {num(cap.fs_hz, 0)} Hz</span><span>{cap.frames} frame</span>
@@ -91,7 +94,7 @@ export default function Spectrum() {
               ) : <Empty description="Chọn capture" />,
             },
             {
-              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small"><WaveformChart axes={wave.axes} dt={wave.dt_s} height={380} /></Card>
+              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small"><WaveformChart axes={wave.axes} dt={wave.dt_s} height={420} defaultAxis={axis} /></Card>
                 : <Empty description="Không có sóng thô" />,
             },
             {

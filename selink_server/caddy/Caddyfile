@@ -7,6 +7,13 @@
 	handle /api/v1/internal/* {
 		respond 404
 	}
+	# Keep the production API schema private. It remains available inside the API container.
+	handle /api/v1/docs* {
+		respond 404
+	}
+	handle /api/v1/openapi.json {
+		respond 404
+	}
 	handle /api/* {
 		reverse_proxy api:8000
 	}
@@ -20,8 +27,12 @@
 	}
 
 	header {
+		-Server
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
 		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
 }

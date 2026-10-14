@@ -19,17 +19,17 @@ const qc = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConfigProvider locale={viVN} theme={{
-      algorithm: theme.darkAlgorithm,
+      algorithm: theme.defaultAlgorithm,
       token: {
-        colorPrimary: '#22d3ee', colorInfo: '#38bdf8', colorSuccess: '#34d399',
-        colorWarning: '#fbbf24', colorError: '#fb7185', colorBgBase: '#050b16',
-        colorBgContainer: '#0b1626', colorBorder: 'rgba(148,163,184,.16)',
-        borderRadius: 12, fontFamily: 'Inter, "Segoe UI", sans-serif',
+        colorPrimary: '#2563eb', colorInfo: '#2563eb', colorSuccess: '#18a873',
+        colorWarning: '#f59e0b', colorError: '#e5484d', colorBgBase: '#f4f6fb',
+        colorBgContainer: '#ffffff', colorBorder: '#dfe4ee', colorText: '#17213a',
+        borderRadius: 10, fontFamily: 'Inter, "Segoe UI", sans-serif',
       },
       components: {
-        Card: { colorBgContainer: 'rgba(11,22,38,.78)' },
-        Layout: { bodyBg: '#050b16', headerBg: 'rgba(5,11,22,.74)', siderBg: '#07111f' },
-        Menu: { darkItemBg: 'transparent', darkItemSelectedBg: 'rgba(34,211,238,.14)', darkItemSelectedColor: '#67e8f9' },
+        Card: { colorBgContainer: '#ffffff' },
+        Layout: { bodyBg: '#f4f6fb', headerBg: '#10275c', siderBg: '#ffffff' },
+        Menu: { itemBg: '#ffffff', itemSelectedBg: '#eaf1ff', itemSelectedColor: '#2563eb' },
       },
     }}>
       <AntApp>

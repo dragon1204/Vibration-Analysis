@@ -1,0 +1,33 @@
+# Bench test on a real T153 with one WTVB05 on 485_UART6 – no PT100, no power meter, no server needed.
+# Install at /etc/edge-agent/edge.yaml. Captures go to /data/edge (outbox keeps them until MQTT connects).
+version: 1
+gateway: {id: bench-gw-01, tenant: hem, site: bench}
+mqtt:
+  url: mqtt://192.168.10.2:1883     # PC running selink_server (docker compose); unreachable is fine
+  username: bench-gw-01
+  password: bench-gw-01-token
+  send_waveforms: true
+storage: {dir: /data/edge, retention_days: 7}
+log: {level: debug, file: /data/edge/logs/edge-agent.log}
+buses:
+  - {id: busA, device: /dev/ttyS6, baud: 230400, timeout_ms: 150, raw_timeout_ms: 800}
+machines:
+  - id: bench-01
+    name: "Bàn thử"
+    type: compressor_motor
+    rated_speed_rpm: 2978
+    poles: 2
+    foundation: rigid
+    iso_band_hz: [10, 1000]
+    running_vrms_mm_s: 0.05           # low so a sensor on the desk (tapped/on a fan) counts as running
+    points:
+      - id: bench-01-de
+        name: "Cảm biến thử"
+        location: de
+        sensor: {driver: wtvb05, bus: busA, addr: 0x11, velocity_scale: 0.01}
+        axes_map: {x: radial_h, y: axial, z: radial_v}
+        iso_axes: [x, z]
+        idle_sr: 4
+        profiles:
+          - {name: orders, sr: 4, frames: 4, every_s: 60}
+local_alarm: {enabled: false}

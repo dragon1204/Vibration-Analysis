@@ -74,6 +74,24 @@ npm run gen:api                              # sinh kiểu TS từ OpenAPI
 | 9 | Kiểm chứng sai số < 5% (nhập tay/CSV, ghép capture, biên bản PDF) | `/accuracy` |
 | 10–12 | Báo cáo PDF tháng · Thiết bị (health, lỗi bus, lệnh, OTA) · Cài đặt (ngưỡng SOP, α, baseline, luật, vòng bi, người dùng, kênh thông báo) | `/reports`, `/devices`, `/settings` |
 
+## Giả lập cảm biến khi chưa có phần cứng
+
+Bộ giả lập tự đọc máy, điểm đo và gateway trong database, sau đó phát đúng topic MQTT
+của edge T153: rung 3 trục, thống kê rung, nhiệt độ, điện năng, health, waveform/capture
+và ACK lệnh gateway. Simulator không ghi trực tiếp vào database.
+
+```bash
+# Bật dữ liệu demo (nhiều vùng ISO để thử giao diện)
+docker compose --profile simulation up -d simulator
+
+# Xem log / tắt trước khi cắm gateway thật
+docker compose logs -f simulator
+docker compose --profile simulation stop simulator
+
+# Chọn kịch bản: normal | demo | warning | danger
+SIM_SCENARIO=warning docker compose --profile simulation up -d --force-recreate simulator
+```
+
 ## Thay đổi so với spec
 
 Xem `../t153_edge/docs/CHANGELOG.md`. Phía server có thêm các cột và bảng sau, đều đánh dấu `[add]` trong `db/migrations/001_schema.sql`:

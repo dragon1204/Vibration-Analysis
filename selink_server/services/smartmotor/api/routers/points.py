@@ -11,12 +11,23 @@ from pydantic import BaseModel
 
 from ...common import dsp, wavefile
 from ...common.assets import AssetCache
+from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, check_point, current_user, require, time_range
 
 router = APIRouter(tags=["points"])
 
 RAW_FIELDS = {"vel_mm_s", "vel_mm_s_max", "disp_um", "freq_hz", "acc_g", "acc_rms_g", "vel_rms_mm_s", "disp_rms_mm", "crest",
               "kurtosis", "skew", "temp_c"}
+# Per-axis values computed by the edge from the raw waveform of each capture (features.axes.<axis>.<key>).
+# iso_vrms_mm_s is the ISO 20816 velocity RMS – the value comparable with a handheld meter.
+CAPTURE_FIELDS = {"iso_vrms_mm_s": "iso_vrms_mm_s", "cap_acc_rms_g": "acc_rms_g", "cap_acc_peak_g": "acc_peak_g",
+                  "cap_kurtosis": "kurtosis", "cap_crest": "crest"}
+
+
+async def _point_limits(c, point_id: str):
+    m = await c.fetchrow("""SELECT m.iso_group, m.foundation FROM measurement_points p JOIN machines m ON m.id=p.machine_id
+                            WHERE p.id=$1""", point_id)
+    return iso_limits(m["iso_group"], m["foundation"]) if m else None
 AGG_FIELDS = {"vel_mm_s": "vel_avg", "vel_mm_s_max": "vel_max", "acc_rms_g": "acc_rms_avg", "kurtosis": "kurt_max",
               "temp_c": "temp_avg", "vel_rms_mm_s": "vel_rms_avg"}
 
@@ -89,12 +100,27 @@ async def point_metrics(point_id: str, request: Request, rng=Depends(time_range)
                         axis: Optional[str] = None, agg: str = "auto", user: User = Depends(current_user)):
     await check_point(request.app.state.pool, user, point_id)
     frm, to = rng
-    flds = [f for f in fields.split(",") if f in RAW_FIELDS]
-    if not flds:
-        raise HTTPException(400, f"fields phải thuộc {sorted(RAW_FIELDS)}")
+    requested = fields.split(",")
+    flds = [f for f in requested if f in RAW_FIELDS]
+    cap_flds = [f for f in requested if f in CAPTURE_FIELDS]
+    if not flds and not cap_flds:
+        raise HTTPException(400, f"fields phải thuộc {sorted(RAW_FIELDS | set(CAPTURE_FIELDS))}")
     axes = [a for a in (axis or "x,y,z").split(",") if a in ("x", "y", "z")]
     use_agg = agg == "1h" or (agg == "auto" and to - frm > timedelta(days=2))
+    series: dict = {a: {f: [] for f in flds + cap_flds} for a in axes}
+    mode = "capture"
     async with request.app.state.pool.acquire() as c:
+        if cap_flds:
+            cols = ", ".join(f"(e.value->>'{CAPTURE_FIELDS[f]}')::float8 AS {f}" for f in cap_flds)
+            crows = await c.fetch(f"""SELECT c.ts, e.key AS axis, {cols} FROM captures c, jsonb_each(c.features->'axes') e
+                                      WHERE c.point_id=$1 AND c.ts BETWEEN $2 AND $3 AND e.key = ANY($4)
+                                      ORDER BY c.ts LIMIT 200000""", point_id, frm, to, axes)
+            for r in crows:
+                for f in cap_flds:
+                    if r[f] is not None and math.isfinite(r[f]):
+                        series[r["axis"]][f].append([r["ts"].isoformat(), round(float(r[f]), 4)])
+        if not flds:
+            return {"point_id": point_id, "agg": mode, "series": series}
         if use_agg and all(f in AGG_FIELDS for f in flds):
             cols = ", ".join(f"{AGG_FIELDS[f]} AS {f}" for f in flds)
             rows = await c.fetch(f"""SELECT bucket AS ts, axis, {cols} FROM vib_metrics_1h WHERE point_id=$1 AND bucket BETWEEN $2 AND $3
@@ -105,7 +131,6 @@ async def point_metrics(point_id: str, request: Request, rng=Depends(time_range)
             rows = await c.fetch(f"""SELECT ts, axis, {cols} FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
                                      AND axis = ANY($4) ORDER BY ts LIMIT 200000""", point_id, frm, to, axes)
             mode = "raw"
-    series: dict = {a: {f: [] for f in flds} for a in axes}
     for r in rows:
         for f in flds:
             if r[f] is not None:
@@ -125,7 +150,8 @@ async def point_captures(point_id: str, request: Request, rng=Depends(time_range
                                   features->'isolation'->'iso_vrms_max_mm_s' AS iso_isolated
                                 FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3 AND ($4::text IS NULL OR profile=$4)
                                 ORDER BY ts DESC LIMIT $5""", point_id, frm, to, profile, limit)
-    return [dict(r) for r in rows]
+        lim = await _point_limits(c, point_id)
+    return [rezone(dict(r), lim) if lim else dict(r) for r in rows]
 
 
 async def _capture(request: Request, user: User, capture_id: str) -> dict:
@@ -139,7 +165,10 @@ async def _capture(request: Request, user: User, capture_id: str) -> dict:
 
 @router.get("/captures/{capture_id}")
 async def capture_detail(capture_id: str, request: Request, user: User = Depends(current_user)):
-    return await _capture(request, user, capture_id)
+    cap = await _capture(request, user, capture_id)
+    async with request.app.state.pool.acquire() as c:
+        lim = await _point_limits(c, cap["point_id"])
+    return rezone(cap, lim) if lim else cap
 
 
 async def _samples(request: Request, cap: dict) -> tuple[dict, np.ndarray]:

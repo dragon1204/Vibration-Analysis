@@ -34,7 +34,7 @@ export default function Diagnosis() {
   const isBearing = diag?.fault?.startsWith('bearing')
   const { data: spec } = useQuery<any>({
     queryKey: ['spec', diag?.capture_id, specType, axis],
-    queryFn: () => api(`/captures/${diag.capture_id}/spectrum`, { params: { type: specType, axis } }),
+    queryFn: () => api(`/captures/${diag.capture_id}/spectrum`, { params: { type: specType, axis, fmax: 500 } }),
     enabled: !!diag?.capture_id && can('engineer'),
   })
   const { data: cap } = useQuery<any>({
@@ -68,7 +68,7 @@ export default function Diagnosis() {
         <Col xs={24} md={8} lg={6}>
           <Card size="small" title="Sức khỏe & bất thường">
             <Gauge value={data.health?.health_index} title="Chỉ số sức khỏe (24h)" />
-            <div style={{ textAlign: 'center' }}>Điểm bất thường AI: <b>{num(data.health?.anomaly_score, 2)}</b></div>
+            <div className="muted" style={{ textAlign: 'center' }}>Điểm bất thường AI: <b>{data.health?.anomaly_score != null ? num(data.health.anomaly_score, 2) : 'chưa có'}</b></div>
             {data.rul?.rul_days != null && (
               <Alert style={{ marginTop: 8 }} type="info" showIcon
                 message={<span>RUL <EstimateTag />: <b>{num(data.rul.rul_days, 0)} ngày</b></span>}

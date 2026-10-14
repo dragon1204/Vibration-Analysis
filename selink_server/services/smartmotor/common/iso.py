@@ -35,6 +35,17 @@ def iso_limits(group: int | None, foundation: str | None) -> ISOLimits:
     return ISOLimits(2.3, 4.5, 7.1) if flexible else ISOLimits(1.4, 2.8, 4.5)
 
 
+def rezone(row: dict, lim: ISOLimits) -> dict:
+    """Re-derive a capture's iso_zone from its RMS with the machine's *current* limits.
+
+    The zone stored with a capture reflects the limits at capture time; after the machine's
+    ISO group/foundation is corrected, every screen must agree with the new limits."""
+    v = row.get("iso_vrms_max_mm_s")
+    if v is not None:
+        row["iso_zone"] = lim.zone(float(v))
+    return row
+
+
 DEFAULT_BAND_LIMITS = [
     {"band": "1x", "warn": 1.5, "alarm": 2.3},
     {"band": "2x", "warn": 1.0, "alarm": 1.8},

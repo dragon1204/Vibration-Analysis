@@ -51,16 +51,17 @@ export default function Overview() {
                 {data.machines.map((m: any) => (
                   <Col xs={24} md={12} xxl={8} key={m.id}>
                     <Card className="machine-card glass-card" hoverable onClick={() => nav(`/machines/${m.id}/live`)}
-                      title={<Space><Badge color={STATUS[m.status]?.color} />{m.name}</Space>}
+                      title={<div className="machine-card-title"><Badge color={STATUS[m.status]?.color} /><span title={m.name}>{m.name}</span></div>}
                       extra={<StatusTag status={m.status} />}>
+                      <div className="machine-card-sub">{m.site_name || m.site_id}{m.rated_power_kw ? ` · ${num(m.rated_power_kw, 0)} kW` : ''}</div>
                       <Row gutter={8}>
-                        <Col span={8}>
+                        <Col span={8} className="health-gauge-cell">
                           <Tooltip title="Chỉ số sức khỏe (AI)">
                             <Progress type="dashboard" size={84} percent={m.health_index != null ? Math.round(m.health_index) : 0}
-                              format={() => (m.health_index != null ? Math.round(m.health_index) : '–')}
+                              format={() => (m.health_index != null ? Math.round(m.health_index) : <span className="gauge-empty">Chưa đủ<br />dữ liệu</span>)}
                               strokeColor={m.health_index == null ? '#d9d9d9' : m.health_index > 70 ? '#2e9d4f' : m.health_index > 40 ? '#fa8c16' : '#cf1322'} />
                           </Tooltip>
-                          <div className="muted" style={{ textAlign: 'center' }}>Sức khỏe</div>
+                          <div className="muted health-gauge-label">Sức khỏe</div>
                         </Col>
                         <Col span={16}>
                           <Space direction="vertical" size={5} style={{ width: '100%' }}>
@@ -70,7 +71,7 @@ export default function Overview() {
                                 ? <Tag icon={<ThunderboltOutlined />} color="green">Đang chạy{m.load_pct != null ? ` ${num(m.load_pct, 0)}%` : ''}</Tag>
                                 : <Tag icon={<PauseCircleOutlined />}>Dừng</Tag>}
                             </Space>
-                            <div className="metric-line"><span>Rung tối đa</span><strong>{num(m.vib_max_mm_s)} mm/s</strong></div>
+                            <div className="metric-line"><Tooltip title={m.iso_ts ? `Vận tốc RMS ISO lớn nhất (trục hướng kính) · capture ${ago(m.iso_ts)}` : 'Chưa có capture'}><span>Rung RMS ISO</span></Tooltip><strong>{num(m.vib_max_mm_s)} mm/s</strong></div>
                             <div className="metric-line"><span><FireOutlined /> Nhiệt độ ổ</span><strong>{num(m.bearing_temp_c, 1)} °C</strong></div>
                             <div className="metric-line"><span>Cuộn dây <EstimateTag /></span><strong>{num(m.winding_temp_est_c, 1)} °C</strong></div>
                             {m.rul_days != null && (
@@ -80,9 +81,10 @@ export default function Overview() {
                         </Col>
                       </Row>
                       <div style={{ marginTop: 10 }}>
-                        <TrendChart compact height={90} limits={m.iso_limits}
-                          series={[{ name: 'Rung (mm/s)', data: m.trend_7d }]} />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span className="muted">Xu hướng rung 7 ngày</span><span style={{ color: '#67e8f9', fontSize: 11 }}>Xem realtime <ArrowRightOutlined /></span></div>
+                        {m.trend_7d.length ? <TrendChart compact height={90} limits={m.iso_limits}
+                          series={[{ name: 'Rung RMS ISO (mm/s)', data: m.trend_7d, color: '#1d4ed8' }]} />
+                          : <div className="trend-empty">Chưa có dữ liệu xu hướng</div>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span className="muted">Xu hướng rung RMS · 7 ngày</span><span className="card-link">Xem realtime <ArrowRightOutlined /></span></div>
                       </div>
                     </Card>
                   </Col>
