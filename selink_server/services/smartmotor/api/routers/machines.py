@@ -1,8 +1,12 @@
 """Machines: CRUD, live status, power/temperature series, maintenance, diagnosis, health."""
+import bisect
+import csv
+import io
 from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +17,32 @@ from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
 router = APIRouter(tags=["machines"])
+
+VENDOR_TABLE_HEADER = [
+    "Time", "Device name", "Acceleration X(g)", "Acceleration Y(g)", "Acceleration Z(g)",
+    "X-axis vibration speed(mm/s)", "Abrg1(X)m/s", "Y-axis vibration speed(mm/s)", "Abrg1(Y) m/s",
+    "Z-axis vibration speed(mm/s)", "Abrg 1(Z)m/s", "X-axis vibration displacement(um)",
+    "Y-axis vibration displacement(um)", "Z-axis vibration displacement(um)", "Abrg2(X)m/s",
+    "Y-axis vibration speed(mm/s)", "Abrg2(Y) m/s", "Z-axis vibration speed(mm/s)", "Abrg 2(Z)m/s",
+    "Abase(X)m/s", "Abase(X)m/s", "Abase(X)m/s", "Tần số Z", "Chip Time()", "Temperature(℃)",
+]
+
+
+def _nearest_vendor_row(rows: list[dict], timestamps: list[datetime], target: datetime, max_skew_ms: int) -> dict | None:
+    if not rows:
+        return None
+    index = bisect.bisect_left(timestamps, target)
+    candidates = [i for i in (index - 1, index) if 0 <= i < len(rows)]
+    best = min(candidates, key=lambda i: abs((timestamps[i] - target).total_seconds()))
+    return rows[best] if abs((timestamps[best] - target).total_seconds() * 1000) <= max_skew_ms else None
+
+
+def _vendor_number(row: dict | None, key: str, digits: int = 4, scale: float = 1.0):
+    value = row.get(key) if row else None
+    if value is None:
+        return ""
+    number = float(value) * scale
+    return round(number) if digits == 0 else round(number, digits)
 
 MACHINE_FIELDS = ["site_id", "name", "type", "maker", "model", "serial", "rated_power_kw", "rated_speed_rpm", "poles",
                   "line_freq_hz", "rated_voltage_v", "rated_current_a", "insulation_class", "mounting", "iso_group",
@@ -66,6 +96,86 @@ async def get_machine(machine_id: str, request: Request, user: User = Depends(cu
                                WHERE p.machine_id=$1 ORDER BY p.id""", machine_id)
     lim = iso_limits(m["iso_group"], m["foundation"])
     return {**dict(m), "points": [dict(p) for p in pts], "iso_limits": {"ab": lim.ab, "bc": lim.bc, "cd": lim.cd}}
+
+
+@router.get("/machines/{machine_id}/vendor-table.csv")
+async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends(time_range),
+                                  point_id: Optional[str] = None,
+                                  device_name: Optional[str] = Query(None, max_length=64),
+                                  max_skew_ms: int = Query(1000, ge=0, le=10_000),
+                                  limit: int = Query(50_000, ge=1, le=100_000),
+                                  user: User = Depends(require("engineer"))):
+    """Export the 25-column CSV layout used by the comparison instrument."""
+    await check_machine(request.app.state.pool, user, machine_id)
+    frm, to = rng
+    async with request.app.state.pool.acquire() as c:
+        points = [dict(row) for row in await c.fetch(
+            "SELECT * FROM measurement_points WHERE machine_id=$1 ORDER BY id", machine_id)]
+        if not points:
+            raise HTTPException(404, "Máy chưa có điểm đo")
+        selected = next((p for p in points if p["id"] == point_id), None) if point_id else None
+        if point_id and not selected:
+            raise HTTPException(400, "Điểm đo không thuộc máy đã chọn")
+        brg1 = selected or next((p for p in points if p.get("role") == "bearing"), None) or points[0]
+        brg2 = next((p for p in points if p.get("role") == "bearing" and p["id"] != brg1["id"]), None)
+        base = next((p for p in points if p.get("role") == "base" and p["id"] != brg1["id"]), None)
+
+        async def metric_rows(pid: str | None) -> list[dict]:
+            if not pid:
+                return []
+            rows = await c.fetch("""SELECT ts,
+                       max(acc_g) FILTER (WHERE axis='x') AS acc_x,
+                       max(acc_g) FILTER (WHERE axis='y') AS acc_y,
+                       max(acc_g) FILTER (WHERE axis='z') AS acc_z,
+                       max(vel_mm_s) FILTER (WHERE axis='x') AS vel_x,
+                       max(vel_mm_s) FILTER (WHERE axis='y') AS vel_y,
+                       max(vel_mm_s) FILTER (WHERE axis='z') AS vel_z,
+                       max(disp_um) FILTER (WHERE axis='x') AS disp_x,
+                       max(disp_um) FILTER (WHERE axis='y') AS disp_y,
+                       max(disp_um) FILTER (WHERE axis='z') AS disp_z,
+                       max(freq_hz) FILTER (WHERE axis='z') AS freq_z,
+                       max(temp_c) AS temp_c
+                     FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                     GROUP BY ts ORDER BY ts LIMIT $4""", pid, frm, to, limit)
+            return [dict(row) for row in rows]
+
+        brg1_rows = await metric_rows(brg1["id"])
+        brg2_rows = await metric_rows(brg2["id"] if brg2 else None)
+        base_rows = await metric_rows(base["id"] if base else None)
+    if not brg1_rows:
+        raise HTTPException(404, "Không có dữ liệu metric trong khoảng thời gian đã chọn")
+
+    brg2_ts = [row["ts"] for row in brg2_rows]
+    base_ts = [row["ts"] for row in base_rows]
+    name = (device_name or brg1.get("sensor_serial") or brg1.get("gateway_id") or brg1["id"]).replace("\r", " ").replace("\n", " ")
+    timezone = ZoneInfo("Asia/Ho_Chi_Minh")
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\r\n")
+    writer.writerow(VENDOR_TABLE_HEADER)
+    for row in brg1_rows:
+        ts = row["ts"]
+        local = ts.astimezone(timezone)
+        second = _nearest_vendor_row(brg2_rows, brg2_ts, ts, max_skew_ms)
+        base_row = _nearest_vendor_row(base_rows, base_ts, ts, max_skew_ms)
+        writer.writerow([
+            local.strftime("%H:%M:%S.%f")[:-3], name,
+            _vendor_number(row, "acc_x"), _vendor_number(row, "acc_y"), _vendor_number(row, "acc_z"),
+            _vendor_number(row, "vel_x", 0, 100), _vendor_number(row, "vel_x", 4),
+            _vendor_number(row, "vel_y", 0, 100), _vendor_number(row, "vel_y", 4),
+            _vendor_number(row, "vel_z", 0, 100), _vendor_number(row, "vel_z", 4),
+            _vendor_number(row, "disp_x", 2), _vendor_number(row, "disp_y", 2), _vendor_number(row, "disp_z", 2),
+            _vendor_number(second, "vel_x", 4), _vendor_number(second, "vel_y", 0, 100),
+            _vendor_number(second, "vel_y", 4), _vendor_number(second, "vel_z", 0, 100),
+            _vendor_number(second, "vel_z", 4), _vendor_number(base_row, "vel_x", 4),
+            _vendor_number(base_row, "vel_y", 4), _vendor_number(base_row, "vel_z", 4),
+            _vendor_number(row, "freq_z", 3), local.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            _vendor_number(row, "temp_c", 2),
+        ])
+    filename = f"{machine_id}-{brg1['id']}-bang-hang.csv"
+    data = ("\ufeff" + output.getvalue()).encode("utf-8")
+    return Response(data, media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+    })
 
 
 @router.post("/machines", status_code=201)

@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
-  Alert, Button, Card, Col, Empty, InputNumber, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography,
+  Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography,
 } from 'antd'
 import { ApiOutlined, DownloadOutlined, NodeIndexOutlined, SearchOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
-import { api } from '../api/client'
+import { api, download } from '../api/client'
 import { MultiSpectrumChart } from '../components/charts'
 import { RangePicker, lastHours, rangeParams, type Range } from '../components/common'
 import { dt, num } from '../utils/format'
@@ -83,6 +83,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   const [baseHz, setBaseHz] = useState(50)
   const [tolerancePct, setTolerancePct] = useState(15)
   const [maxOrder, setMaxOrder] = useState(10)
+  const [deviceName, setDeviceName] = useState('')
   const [request, setRequest] = useState<AnalysisRequest>()
 
   useEffect(() => {
@@ -92,6 +93,10 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     const nominal = Number(machine?.rated_speed_rpm || 0) / 60
     if (nominal > 0) setBaseHz(Number(nominal.toFixed(3)))
   }, [machine?.rated_speed_rpm])
+  useEffect(() => {
+    const point = points.find((item: any) => item.id === pointId)
+    if (point) setDeviceName(point.sensor_serial || point.gateway_id || point.id)
+  }, [pointId, points])
 
   const analysis = useQuery<any>({
     queryKey: ['harmonic-analysis', request],
@@ -102,6 +107,9 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     enabled: !!request,
   })
   const result = analysis.data
+  const selectedPoint = points.find((point: any) => point.id === pointId)
+  const secondBearing = points.find((point: any) => point.role === 'bearing' && point.id !== pointId)
+  const basePoint = points.find((point: any) => point.role === 'base' && point.id !== pointId)
   const chartOption = result ? {
     animationDuration: 350,
     tooltip: { trigger: 'axis' },
@@ -137,7 +145,13 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   }
 
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
-    extra={result && <Button icon={<DownloadOutlined />} onClick={() => exportAnalysisCsv(result)}>Xuất CSV đối chứng</Button>}>
+    extra={result && <Space wrap>
+      <Button icon={<DownloadOutlined />} onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>
+      <Button type="primary" icon={<DownloadOutlined />} onClick={() => download(
+        `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${result.point_id}-bang-hang.csv`,
+        { from: result.from, to: result.to, point_id: result.point_id, device_name: deviceName, max_skew_ms: 1000 },
+      ).catch((error) => message.error(`Không xuất được bảng hãng: ${error.message}`))}>Xuất bảng giống hãng</Button>
+    </Space>}>
     <div className="fft-filter-grid">
       <label><span>Điểm đo</span><Select value={pointId} onChange={setPointId} options={points.map((p: any) => ({ value: p.id, label: `${p.name} (${p.id})` }))} /></label>
       <label className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></label>
@@ -146,6 +160,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <label><span>Order tracking</span><Select value={tracking} onChange={setTracking} options={[
         { value: 'capture', label: 'Theo tốc độ từng capture' }, { value: 'fixed', label: 'Cố định theo 1X nhập vào' },
       ]} /></label>
+      <label><span>Tên thiết bị trong bảng hãng</span><Input value={deviceName} maxLength={64} placeholder="Ví dụ: COM31" onChange={(event) => setDeviceName(event.target.value)} /></label>
       <label><span>{tracking === 'capture' ? '1X dự phòng khi thiếu tốc độ' : 'Tần số 1X cố định'}</span><InputNumber value={baseHz} onChange={(value) => value && setBaseHz(value)} min={0.1} max={1000} step={0.1} addonAfter="Hz" /></label>
       <label><span>Vùng bắt quanh mỗi hài</span><InputNumber value={tolerancePct} onChange={(value) => value && setTolerancePct(value)} min={1} max={30} addonBefore="±" addonAfter="%" /></label>
       <label><span>Phân tích đến</span><InputNumber value={maxOrder} onChange={(value) => value && setMaxOrder(value)} min={1} max={30} addonAfter="X" /></label>
@@ -154,6 +169,8 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     <Alert className="fft-sampling-note" type="warning" showIcon
       message="Không dùng bảng giá trị 68–72 ms để kết luận hài 50 Hz"
       description="Bảng mẫu có tần suất khoảng 14,3 mẫu/giây nên chỉ phân tích đúng đến khoảng 7,1 Hz (Nyquist). Chức năng này đọc phổ từ waveform tốc độ cao trong từng capture; để thấy đến 5X của 50 Hz, tần suất lấy mẫu phải trên 500 Hz và nên dùng 1.280 Hz trở lên." />
+    <Alert className="vendor-export-note" type="info" showIcon message="Bảng đối chứng 25 cột đúng cấu trúc của hãng"
+      description={<>Abrg1: <b>{selectedPoint?.name || pointId}</b> · Abrg2: <b>{secondBearing?.name || 'để trống nếu máy không có'}</b> · Abase: <b>{basePoint?.name || 'để trống nếu chưa gán điểm bệ'}</b>. Các kênh được ghép theo timestamp gần nhất trong 1 giây; ô không có phép đo thật được để trống.</>} />
     {analysis.isError && <Alert type="error" showIcon message="Không phân tích được" description={(analysis.error as Error).message} style={{ marginTop: 12 }} />}
     {analysis.isFetching && <div className="fft-loading"><Spin /><span>Đang đọc và tổng hợp phổ của các capture…</span></div>}
     {result && !analysis.isFetching && <>

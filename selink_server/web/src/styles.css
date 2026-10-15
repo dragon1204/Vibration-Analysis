@@ -123,6 +123,7 @@ body { background: #f4f6fb; color: #17213a; }
 .fft-filter-grid label > .ant-select,.fft-filter-grid label > .ant-input-number,.fft-filter-grid label > .ant-picker { width: 100%; }
 .fft-filter-grid > .ant-btn { width: 100%; }
 .fft-sampling-note { margin-top: 14px; }
+.vendor-export-note { margin-top: 10px; }
 .fft-loading { min-height: 180px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: #6f7b91; }
 .fft-kpis { margin: 14px 0 12px; }
 .fft-kpis .ant-card { height: 100%; background: #f8fafc; box-shadow: none; }

@@ -1,5 +1,7 @@
 import numpy as np
+from datetime import datetime, timedelta, timezone
 
+from smartmotor.api.routers.machines import VENDOR_TABLE_HEADER, _nearest_vendor_row, _vendor_number
 from smartmotor.api.routers.points import _harmonic_findings
 from smartmotor.common import dsp
 
@@ -35,3 +37,15 @@ def test_order_tracking_follows_speed_change():
     tracked = dsp.harmonic_peaks(values, 1.0, 48.0, max_order=2, tolerance=0.02)
     assert not fixed[0]["detected"]
     assert tracked[0]["detected"] and tracked[0]["peak_hz"] == 48
+
+
+def test_vendor_table_contract_and_timestamp_alignment():
+    assert len(VENDOR_TABLE_HEADER) == 25
+    assert VENDOR_TABLE_HEADER[:5] == ["Time", "Device name", "Acceleration X(g)", "Acceleration Y(g)", "Acceleration Z(g)"]
+    assert VENDOR_TABLE_HEADER.count("Abase(X)m/s") == 3  # preserve the instrument's duplicated headers exactly
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows = [{"ts": start, "vel_x": 17.11}, {"ts": start + timedelta(milliseconds=70), "vel_x": 18.0}]
+    timestamps = [row["ts"] for row in rows]
+    assert _nearest_vendor_row(rows, timestamps, start + timedelta(milliseconds=60), 20) is rows[1]
+    assert _nearest_vendor_row(rows, timestamps, start + timedelta(milliseconds=40), 5) is None
+    assert _vendor_number(rows[0], "vel_x", 0, 100) == 1711
