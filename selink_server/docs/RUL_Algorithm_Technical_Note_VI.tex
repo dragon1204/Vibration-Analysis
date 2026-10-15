@@ -1,0 +1,566 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setmonofont{Consolas}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{geometry}
+\geometry{top=2.2cm,bottom=2.2cm,left=2.5cm,right=2.2cm}
+\setlength{\emergencystretch}{3em}
+\usepackage{hyperref}
+\hypersetup{
+  hidelinks,
+  pdftitle={Thuyết minh kỹ thuật thuật toán RUL},
+  pdfauthor={HEM Smart Motor}
+}
+
+\newcommand{\RUL}{\mathrm{RUL}}
+\newcommand{\Rhat}{\widehat{\RUL}}
+\newcommand{\Rtwo}{R^{2}}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\status}[1]{\texttt{#1}}
+\renewcommand{\contentsname}{Mục lục}
+\renewcommand{\abstractname}{Tóm tắt}
+\renewcommand{\refname}{Tài liệu tham khảo}
+
+\title{\textbf{THUYẾT MINH KỸ THUẬT THUẬT TOÁN ƯỚC LƯỢNG RUL}\\[0.5em]
+\large Hệ thống giám sát tình trạng động cơ điện HEM Smart Motor}
+\author{Phiên bản thuật toán: \code{rul-exp-theilsen-v2}}
+\date{15 tháng 10 năm 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Tài liệu trình bày thuật toán ước lượng thời gian sử dụng còn lại (Remaining Useful Life---RUL) đang được triển khai trong hệ thống HEM Smart Motor. Thuật toán sử dụng mô hình tăng trưởng hàm mũ trong miền logarit, hồi quy bền vững Theil--Sen, kiểm định xu hướng Kendall và residual bootstrap để ước lượng thời gian một chỉ báo rung chạm ngưỡng cảnh báo của baseline. Kết quả là \emph{thời gian có điều kiện đến ngưỡng cảnh báo}, không phải tuổi thọ vật lý đến hỏng hóc đã được chứng nhận. Tài liệu mô tả giả định, công thức, điều kiện công bố kết quả, lượng hóa bất định, giới hạn khoa học, các phát hiện thẩm định mã nguồn và kế hoạch kiểm chứng.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Tuyên bố phạm vi}
+
+Trong tiên lượng và quản lý sức khỏe thiết bị (PHM), dự báo RUL bao gồm ba thành phần: ước lượng trạng thái hiện tại, dự báo sự phát triển tương lai và xác định ngưỡng kết thúc sử dụng. Bất định RUL là kết quả tổng hợp của bất định đo lường, mô hình, tham số và điều kiện vận hành tương lai \cite{sankararaman2013rul,sankararaman2013uncertain}.
+
+Trong implementation hiện tại, ngưỡng kết thúc là ngưỡng \code{alarm} học từ baseline rung. Do đó, đại lượng đầu ra phải được diễn giải là:
+
+\begin{quote}
+Thời gian dự báo có điều kiện cho đến khi chỉ báo rung chạm ngưỡng cảnh báo, với giả định chế độ vận hành và quy luật tăng trưởng hiện tại tiếp tục được duy trì.
+\end{quote}
+
+Đây không phải tuổi thọ danh định của ổ lăn, không phải xác suất hỏng trong một khoảng thời gian, và không phải chứng nhận an toàn cho thiết bị.
+
+Các đại lượng vận tốc rung tổng thể trong hệ thống được đặt trong bối cảnh đánh giá rung máy theo ISO 20816-1 và ISO 20816-3 \cite{iso20816-1,iso20816-3}. Tuy nhiên, các tiêu chuẩn này không tự cung cấp mô hình RUL; chúng chủ yếu hỗ trợ đánh giá mức rung và sự thay đổi mức rung.
+
+\section{Phát biểu bài toán}
+
+Tại thời điểm dự báo $t_n$, cho chỉ báo sức khỏe dương $y(t)$ và ngưỡng cảnh báo $H>0$. Thời điểm chạm ngưỡng đầu tiên là
+
+\begin{equation}
+  t_H=\inf\{t\ge t_n:y(t)\ge H\}.
+\end{equation}
+
+RUL được định nghĩa bởi
+
+\begin{equation}
+  \RUL(t_n)=\max(t_H-t_n,0).
+  \label{eq:rul-definition}
+\end{equation}
+
+Đơn vị phân tích, gọi là một \emph{candidate}, là bộ ba
+
+\begin{equation}
+  c=(\text{point\_id},\text{feature},\text{load\_bin}).
+\end{equation}
+
+Các đặc trưng được phép tham gia gồm:
+
+\begin{itemize}
+  \item \code{iso\_vrms\_mm\_s}: vận tốc rung RMS trong dải ISO;
+  \item \code{env.bpfo}: biên độ phổ bao tại tần số lỗi vòng ngoài ổ lăn;
+  \item \code{env.bpfi}: biên độ phổ bao tại tần số lỗi vòng trong ổ lăn.
+\end{itemize}
+
+Mỗi candidate sử dụng ngưỡng $H_c$ từ baseline tương ứng. Nếu nhiều candidate hợp lệ, hệ thống chọn giá trị nhỏ nhất để tạo kết quả bảo thủ cấp máy.
+
+\section{Dữ liệu và điều kiện tiên quyết}
+
+\subsection{Học baseline}
+
+Baseline được học từ giai đoạn đầu sau khi lắp đặt hoặc sau lần bảo trì có yêu cầu reset. Cửa sổ học mặc định không dài hơn 28 ngày từ mốc bắt đầu. Dữ liệu phải thỏa các điều kiện:
+
+\begin{enumerate}
+  \item máy đang chạy: \code{running = true};
+  \item vector đặc trưng tồn tại: \code{features IS NOT NULL};
+  \item không nằm trong khoảng $\pm 1$ giờ quanh cảnh báo \code{warning} hoặc \code{danger};
+  \item không mang cờ chất lượng loại trừ. Tập cờ gồm \code{saturated},
+  \code{flatline}, \code{spike}, \code{time\_unsynced} và
+  \code{speed\_low\_confidence}.
+\end{enumerate}
+
+Baseline dùng trung vị/MAD hoặc trung bình/độ lệch chuẩn theo cấu hình. Đối với đặc trưng capture, baseline chuyển sang trạng thái \code{active} khi có tối thiểu 200 mẫu. Đối với metric liên tục, ngưỡng mặc định là 500 mẫu.
+
+\subsection{Dữ liệu xu hướng}
+
+Job RUL lấy capture trong 180 ngày gần nhất. Mỗi capture phải có \code{running = true}, có features, không mang cờ loại trừ, phù hợp với \code{load\_bin}, và có giá trị đặc trưng hữu hạn, dương.
+
+Để một giai đoạn commissioning có tần suất lấy mẫu cao không lấn át lịch sử dài hạn, truy vấn chỉ giữ capture mới nhất trong mỗi bucket 15 phút.
+
+\subsection{Đồng nhất chế độ tốc độ}
+
+Nếu ít nhất
+
+\begin{equation}
+  \max(10,0.8N)
+\end{equation}
+
+mẫu có tốc độ hợp lệ, tốc độ trung tâm được xác định bởi
+
+\begin{equation}
+  f_c=\operatorname{median}_{i}(f_i).
+\end{equation}
+
+Thuật toán chỉ giữ các mẫu thỏa
+
+\begin{equation}
+  |f_i-f_c|\le \max(0.5\,\mathrm{Hz},0.05f_c).
+  \label{eq:speed-filter}
+\end{equation}
+
+Phép lọc này nhằm tránh trộn các phân bố rung thuộc các chế độ quay khác nhau.
+
+\section{Tiền xử lý chuỗi thời gian}
+
+\subsection{Điều kiện tối thiểu}
+
+Sau lọc, một candidate cần đồng thời có:
+
+\begin{itemize}
+  \item ít nhất 30 mẫu thô;
+  \item ít nhất 10 bin thời gian khác nhau;
+  \item thời gian quan sát ít nhất 14 ngày.
+\end{itemize}
+
+Các giá trị này là rào chắn kỹ thuật của implementation, không phải hằng số phổ quát. Chúng cần được hiệu chỉnh bằng dữ liệu thực nghiệm.
+
+\subsection{Trung vị theo ngày}
+
+Gọi $B_k$ là tập chỉ số thuộc bucket ngày thứ $k$. Chuỗi dùng để fit là
+
+\begin{align}
+  \widetilde{t}_k &= \operatorname{median}_{i\in B_k}(t_i),\\
+  \widetilde{y}_k &= \operatorname{median}_{i\in B_k}(y_i).
+  \label{eq:daily-median}
+\end{align}
+
+Trung vị theo ngày làm giảm ảnh hưởng của xung nhiễu, giảm sự chi phối của lấy mẫu dày và giúp từng ngày có trọng số gần tương đương.
+
+\section{Mô hình suy giảm}
+
+\subsection{Mô hình tăng trưởng hàm mũ}
+
+Thuật toán giả định chỉ báo dương phát triển theo
+
+\begin{equation}
+  y(t)=\exp(a+bt).
+  \label{eq:exponential}
+\end{equation}
+
+Sau phép biến đổi logarit:
+
+\begin{equation}
+  z(t)=\ln y(t)=a+bt+\varepsilon(t),
+  \label{eq:log-linear}
+\end{equation}
+
+trong đó $a$ là mức log-ban-đầu, $b$ là tốc độ tăng tương đối theo ngày, và $b>0$ biểu diễn suy giảm theo giả định mô hình. Đây là mô hình thực dụng, không phải mô hình vật lý đầy đủ của ổ lăn hoặc rotor.
+
+\subsection{Ước lượng Theil--Sen}
+
+Thay cho bình phương tối thiểu thông thường, implementation dùng ước lượng Theil--Sen. Hệ số dốc có thể được mô tả bằng trung vị của các độ dốc cặp:
+
+\begin{equation}
+  \widehat b=\operatorname{median}_{i<j}
+  \left(\frac{z_j-z_i}{t_j-t_i}\right).
+  \label{eq:theil-sen}
+\end{equation}
+
+Ước lượng này bắt nguồn từ công trình của Theil \cite{theil1950} và Sen \cite{sen1968}; nó bền vững hơn OLS trước một số dạng ngoại lai và không phụ thuộc chặt vào giả định Gaussian.
+
+\subsection{Loại ngoại lai theo residual}
+
+Sau fit sơ bộ, residual là
+
+\begin{equation}
+  r_i=z_i-(\widehat a+\widehat b t_i).
+\end{equation}
+
+Độ phân tán residual được ước lượng bền vững bằng
+
+\begin{equation}
+  s_r=\max\left[
+    1.4826\operatorname{median}_i
+    \left|r_i-\operatorname{median}(r)\right|,
+    10^{-9}
+  \right].
+\end{equation}
+
+Mẫu bị loại nếu
+
+\begin{equation}
+  \left|r_i-\operatorname{median}(r)\right|>4s_r.
+\end{equation}
+
+Mô hình Theil--Sen sau đó được fit lại. Candidate bị từ chối nếu còn dưới 10 bin.
+
+\section{Cổng chất lượng thống kê}
+
+Thuật toán có cơ chế \emph{abstention}: không đủ bằng chứng thì không xuất RUL. Candidate chỉ được công bố khi đồng thời thỏa:
+
+\begin{enumerate}
+  \item $\widehat b>0$;
+  \item cận dưới 95\% của độ dốc Theil--Sen lớn hơn 0;
+  \item độ phù hợp trong miền log
+  \begin{equation}
+    \Rtwo=1-
+    \frac{\sum_i(z_i-\widehat z_i)^2}
+         {\sum_i(z_i-\overline z)^2}
+    \ge 0.7;
+    \label{eq:r2}
+  \end{equation}
+  \item hệ số Kendall $\tau\ge0.5$;
+  \item kiểm định xu hướng có $p\le0.05$;
+  \item RUL không vượt quá 3.650 ngày.
+\end{enumerate}
+
+Các trạng thái từ chối gồm:
+
+\begin{itemize}
+  \item \status{insufficient\_samples}, \status{insufficient\_time\_bins},
+        \status{insufficient\_span};
+  \item \status{no\_significant\_positive\_trend}, \status{poor\_fit},
+        \status{weak\_monotonic\_trend};
+  \item \status{too\_many\_outliers}, \status{unstable\_bootstrap},
+        \status{horizon\_too\_long}.
+\end{itemize}
+
+Máy ổn định, không có xu hướng tăng rõ, sẽ không có giá trị RUL. Đây là hành vi mong muốn chứ không mặc nhiên là lỗi.
+
+\section{Tính thời gian chạm ngưỡng}
+
+Tại ngưỡng $H$:
+
+\begin{equation}
+  \ln H=\widehat a+\widehat b t_H.
+\end{equation}
+
+Suy ra
+
+\begin{equation}
+  t_H=\frac{\ln H-\widehat a}{\widehat b},
+\end{equation}
+
+và ước lượng RUL tại $t_n$ là
+
+\begin{equation}
+  \boxed{
+  \Rhat=\max\left(
+    \frac{\ln H-\widehat a}{\widehat b}-t_n,
+    0
+  \right).}
+  \label{eq:rul-estimator}
+\end{equation}
+
+Nếu giá trị mới nhất đã vượt ngưỡng thì hệ thống trả $\Rhat=0$ với trạng thái
+\status{threshold\_reached}.
+
+\subsection{Ví dụ số}
+
+Giả sử $\widehat a=\ln(1.5)$, $\widehat b=0.02\,\mathrm{day}^{-1}$, $t_n=30$ ngày và $H=4.5\,\mathrm{mm/s}$. Khi đó
+
+\begin{align}
+  t_H
+  &=\frac{\ln(4.5)-\ln(1.5)}{0.02}\\
+  &=\frac{\ln 3}{0.02}\\
+  &\approx54.93\ \text{ngày},
+\end{align}
+
+nên
+
+\begin{equation}
+  \Rhat\approx54.93-30=24.93\ \text{ngày}.
+\end{equation}
+
+Diễn giải: nếu chế độ vận hành và xu hướng giữ nguyên, chỉ báo được dự báo chạm ngưỡng alarm sau khoảng 25 ngày.
+
+\section{Lượng hóa bất định bằng bootstrap}
+
+Implementation thực hiện residual bootstrap với $B=500$ lần lặp, dựa trên nguyên lý bootstrap của Efron \cite{efron1979}:
+
+\begin{enumerate}
+  \item tính $\widehat z_i=\widehat a+\widehat b t_i$;
+  \item tính và tâm hóa residual $e_i=z_i-\widehat z_i$;
+  \item lấy mẫu có hoàn lại $e_i^*$ và sinh
+  \begin{equation}
+    z_i^*=\widehat z_i+e_i^*;
+  \end{equation}
+  \item fit Theil--Sen trên chuỗi bootstrap;
+  \item giữ các lần có dốc dương và tính $\RUL^*$;
+  \item yêu cầu ít nhất 250 trong 500 lần lặp hợp lệ.
+\end{enumerate}
+
+Code hiện dùng
+
+\begin{equation}
+  I_{0.80}=
+  \left[Q_{0.10}(\RUL^*),Q_{0.90}(\RUL^*)\right],
+  \label{eq:bootstrap-interval}
+\end{equation}
+
+tức khoảng trung tâm 80\%. Độ rộng tương đối là
+
+\begin{equation}
+  w_r=\frac{\RUL_{hi}-\RUL_{lo}}
+  {\max(\Rhat,1)}.
+\end{equation}
+
+Nhãn độ tin cậy được gán như sau:
+
+\begin{itemize}
+  \item \code{high}: $\Rtwo\ge0.85$ và $w_r\le0.5$;
+  \item \code{medium}: $w_r\le1$;
+  \item \code{low}: các trường hợp còn lại.
+\end{itemize}
+
+Khoảng bootstrap này mới phản ánh một phần bất định của đường xu hướng. Nó chưa lan truyền bất định ngưỡng baseline, sai số cảm biến, tải tương lai, chuyển chế độ suy giảm và sai số do lựa chọn dạng mô hình \cite{sankararaman2013rul}.
+
+\section{Hợp nhất kết quả cấp máy}
+
+Gọi $\mathcal C$ là tập candidate hợp lệ. Kết quả cấp máy là
+
+\begin{equation}
+  \RUL_{machine}=\min_{c\in\mathcal C}\RUL_c.
+  \label{eq:machine-rul}
+\end{equation}
+
+Đây là quy tắc bảo thủ: điểm đo hoặc đặc trưng được dự báo chạm ngưỡng sớm nhất chi phối kết quả. Toàn bộ candidate vẫn được lưu trong trường detail để truy vết.
+
+Nếu $|\mathcal C|=0$, hệ thống trả:
+
+\begin{itemize}
+  \item \status{no\_active\_baseline} khi không có baseline;
+  \item \status{no\_reliable\_trend} khi có baseline nhưng không candidate nào vượt qua các cổng chất lượng.
+\end{itemize}
+
+\section{Kiến trúc thực thi}
+
+\begin{center}
+\begin{tabular}{|c|p{0.78\textwidth}|}
+\hline
+\textbf{Bước} & \textbf{Thành phần và hành động}\\ \hline
+1 & Gateway/cảm biến phát features và capture qua MQTT.\\
+2 & Ingest kiểm tra schema và ghi PostgreSQL/TimescaleDB.\\
+3 & Analytics học baseline lúc 02:00 hằng ngày.\\
+4 & Analytics tính RUL lúc 04:00 hằng ngày hoặc theo lệnh thủ công.\\
+5 & Kết quả được ghi vào bảng \code{machine\_health}.\\
+6 & REST API cung cấp kết quả cho trang RUL và Overview.\\ \hline
+\end{tabular}
+\end{center}
+
+Job ghi một record cho mỗi máy trong mỗi lần chạy, kể cả khi không tính được. Cách này làm hết hiệu lực một dự báo cũ khi dữ liệu mới không còn hỗ trợ xu hướng.
+
+\section{Đánh giá khoa học}
+
+\subsection{Điểm mạnh}
+
+\begin{itemize}
+  \item Công thức, ngưỡng và lý do từ chối đều giải thích được.
+  \item Trung vị, MAD và Theil--Sen tăng độ bền trước ngoại lai.
+  \item Cơ chế abstention tránh tạo con số thiếu căn cứ.
+  \item Bucket 15 phút và trung vị ngày giảm thiên lệch do lấy mẫu dày.
+  \item Load bin và bộ lọc tốc độ giảm trộn chế độ vận hành.
+  \item Bootstrap cung cấp lượng hóa bất định sơ bộ.
+  \item Không yêu cầu ngay dữ liệu run-to-failure.
+\end{itemize}
+
+\subsection{Giới hạn}
+
+\begin{enumerate}
+  \item Đích là ngưỡng alarm thống kê, không phải hỏng cơ khí.
+  \item Dạng hàm mũ có thể sai khi suy giảm phi tuyến từng đoạn.
+  \item Điều kiện vận hành tương lai bị giả định giống quá khứ.
+  \item Ngưỡng baseline được coi là xác định dù bản thân nó có bất định.
+  \item Residual có thể còn tự tương quan và phương sai thay đổi.
+  \item Phép lấy minimum trên nhiều candidate tạo thiên lệch bảo thủ.
+  \item Khoảng dự báo chưa được hiệu chuẩn coverage ngoài mẫu.
+  \item Chưa có ground truth run-to-failure để tuyên bố độ chính xác tuổi thọ.
+\end{enumerate}
+
+\section{Phát hiện thẩm định implementation}
+
+\subsection{Sai khác 80\% và 95\%}
+
+Backend lấy $Q_{0.10}$ và $Q_{0.90}$, tương ứng khoảng trung tâm 80\%, nhưng giao diện hiện ghi ``cận dưới/cận trên 95\%''. Trước khi báo cáo chính thức phải:
+
+\begin{itemize}
+  \item đổi backend thành $Q_{0.025}$--$Q_{0.975}$; hoặc
+  \item giữ P10--P90 và đổi nhãn thành khoảng bootstrap 80\%.
+\end{itemize}
+
+\subsection{Baseline \code{frozen}}
+
+UI quản trị xem \code{active} và \code{frozen} đều là baseline hợp lệ, trong khi job RUL chỉ truy vấn \code{status='active'}. Nếu \code{frozen} có nghĩa ``đã duyệt và không tự cập nhật'', truy vấn RUL nên dùng \code{status IN ('active','frozen')} và frontend RUL phải xử lý tương ứng.
+
+\subsection{Job chạy thủ công}
+
+Nút ``Tính lại RUL'' gửi lệnh bất đồng bộ cho toàn bộ máy nhưng chỉ refetch một lần sau 2,5 giây. Khi job chưa hoàn thành, người dùng vẫn thấy kết quả cũ. Cần bổ sung \code{job\_id}, trạng thái tiến trình và polling/WebSocket đến khi hoàn tất.
+
+\subsection{Ngưỡng kỹ thuật chưa được hiệu chuẩn}
+
+Các ngưỡng 30 mẫu, 10 bin, 14 ngày, $\Rtwo=0.7$, $\tau=0.5$ và 3.650 ngày là giả thuyết thiết kế. Chúng phải trải qua sensitivity analysis và validation trên đối tượng máy cụ thể.
+
+\section{Kế hoạch kiểm chứng}
+
+\subsection{Kiểm thử mức hàm}
+
+Các ca bắt buộc gồm:
+
+\begin{itemize}
+  \item chuỗi hàm mũ sạch phải phục hồi RUL trong sai số cho phép;
+  \item chuỗi ổn định hoặc giảm không được sinh RUL;
+  \item thiếu mẫu hoặc thiếu thời gian phải trả đúng trạng thái;
+  \item ngoại lai lớn không được làm sụp ước lượng;
+  \item đã vượt ngưỡng phải trả $\RUL=0$;
+  \item ngưỡng không hợp lệ phải bị từ chối.
+\end{itemize}
+
+Repository hiện có các ca nền tảng tại \code{services/tests/test\_rul.py}.
+
+\subsection{Walk-forward backtesting}
+
+Với mỗi chuỗi lịch sử đủ dài:
+
+\begin{enumerate}
+  \item chọn nhiều thời điểm cắt $t_k$;
+  \item chỉ dùng dữ liệu có $t\le t_k$ để fit;
+  \item dự báo thời gian chạm ngưỡng;
+  \item so sánh với thời điểm chạm ngưỡng quan sát thực tế;
+  \item lặp lại theo thứ tự thời gian.
+\end{enumerate}
+
+Không được chia train/test ngẫu nhiên vì gây rò rỉ thông tin tương lai.
+
+\subsection{Chỉ số đánh giá}
+
+\begin{itemize}
+  \item MAE và median absolute error của thời gian đến ngưỡng;
+  \item tỷ lệ dự báo sớm và muộn;
+  \item prediction interval coverage probability;
+  \item độ rộng trung bình/trung vị của khoảng dự báo;
+  \item tỷ lệ abstention;
+  \item độ ổn định của RUL giữa các ngày liên tiếp;
+  \item lead time hữu ích cho kế hoạch bảo trì.
+\end{itemize}
+
+Do dự báo muộn thường nguy hiểm hơn dự báo sớm, nên bổ sung hàm mất mát bất đối xứng theo chi phí vận hành.
+
+\section{Hướng phát triển}
+
+\subsection{Giai đoạn 1: chuẩn hóa implementation}
+
+Sửa sai khác 80\%/95\%, thống nhất xử lý baseline \code{frozen}, thêm trạng thái job, version hóa tham số và lưu snapshot dữ liệu của từng lần dự báo.
+
+\subsection{Giai đoạn 2: hiệu chuẩn thống kê}
+
+Thực hiện walk-forward backtesting; dùng block bootstrap theo ngày khi residual còn tự tương quan; lan truyền bất định baseline; phân tích độ nhạy; và hiệu chuẩn coverage.
+
+\subsection{Giai đoạn 3: mô hình nâng cao}
+
+Khi có đủ dữ liệu, có thể đánh giá mô hình phân cấp theo loại máy, state-space/Bayesian degradation model, change-point detection, survival analysis cho dữ liệu kiểm duyệt, hoặc mô hình vật lý--dữ liệu lai. Mô hình mới chỉ nên thay thế baseline hiện tại khi chứng minh cải thiện ngoài mẫu.
+
+\section{Câu hỏi phản biện dự kiến}
+
+\paragraph{Tại sao dùng mô hình hàm mũ?}
+Vì mô hình biểu diễn tốc độ tăng tương đối và tuyến tính hóa được trong miền log. Đây là giả thuyết kiểm chứng được, không phải định luật phổ quát.
+
+\paragraph{Tại sao dùng Theil--Sen thay OLS?}
+Dữ liệu rung dễ có ngoại lai và residual không chuẩn. Theil--Sen bền vững hơn, trong khi hệ số dốc vẫn có diễn giải trực tiếp.
+
+\paragraph{Vì sao RUL không luôn xuất hiện?}
+Thuật toán biết từ chối dự báo. Khi chưa đủ dữ liệu hoặc xu hướng không đáng tin cậy, không đưa ra con số là lựa chọn khoa học hơn.
+
+\paragraph{Đây có phải tuổi thọ ổ bi không?}
+Không. Đây là thời gian có điều kiện đến ngưỡng cảnh báo rung. Muốn tuyên bố tuổi thọ ổ bi cần failure threshold phù hợp và validation run-to-failure.
+
+\paragraph{Khoảng dự báo đã chứa mọi bất định chưa?}
+Chưa. Bootstrap hiện chủ yếu phản ánh residual quanh mô hình xu hướng; chưa bao phủ đầy đủ tải tương lai, ngưỡng và sai số dạng mô hình.
+
+\paragraph{Tại sao chọn RUL nhỏ nhất?}
+Đó là nguyên tắc bảo thủ cho vận hành. Tuy nhiên cần luôn hiển thị candidate chi phối và kiểm soát thiên lệch do so sánh nhiều candidate.
+
+\section{Kết luận}
+
+Thuật toán hiện tại là một baseline tiên lượng có khả năng giải thích và biết từ chối, phù hợp trong giai đoạn chưa có dữ liệu run-to-failure. Đóng góp chính nằm ở kiểm soát chất lượng dữ liệu, hồi quy bền vững, cổng ý nghĩa thống kê và lượng hóa bất định sơ bộ. Để nâng từ công cụ hỗ trợ bảo trì lên mô hình RUL được xác nhận khoa học, cần sửa các bất nhất implementation, backtest theo thời gian trên dữ liệu thực và hiệu chuẩn khoảng dự báo.
+
+\appendix
+\section{Ánh xạ sang mã nguồn}
+
+\begin{description}
+  \item[\code{analytics/anomaly.py::rul\_exponential}] Mô hình, cổng thống kê và bootstrap.
+  \item[\code{analytics/service.py::job\_rul\_estimate}] Chọn dữ liệu, candidate và hợp nhất cấp máy.
+  \item[\code{analytics/service.py::job\_baseline\_learn}] Học baseline và ngưỡng alarm.
+  \item[\code{analytics/baseline.py::extract\_capture\_features}] Trích xuất đặc trưng.
+  \item[\code{api/routers/machines.py}] API diagnosis và lịch sử health/RUL.
+  \item[\code{web/src/pages/Rul.tsx}] Giao diện RUL.
+  \item[\code{services/tests/test\_rul.py}] Kiểm thử thuật toán.
+\end{description}
+
+\begin{thebibliography}{99}
+
+\bibitem{theil1950}
+H. Theil,
+``A Rank-Invariant Method of Linear and Polynomial Regression Analysis,''
+\emph{Proceedings of the Koninklijke Nederlandse Akademie van Wetenschappen},
+vol. 53, pp. 386--392, 521--525, 1397--1412, 1950.
+\url{https://ir.cwi.nl/pub/18449}
+
+\bibitem{sen1968}
+P. K. Sen,
+``Estimates of the Regression Coefficient Based on Kendall's Tau,''
+\emph{Journal of the American Statistical Association},
+vol. 63, no. 324, pp. 1379--1389, 1968.
+doi: \href{https://doi.org/10.1080/01621459.1968.10480934}{10.1080/01621459.1968.10480934}.
+
+\bibitem{efron1979}
+B. Efron,
+``Bootstrap Methods: Another Look at the Jackknife,''
+\emph{The Annals of Statistics}, vol. 7, no. 1, pp. 1--26, 1979.
+doi: \href{https://doi.org/10.1214/aos/1176344552}{10.1214/aos/1176344552}.
+
+\bibitem{sankararaman2013rul}
+S. Sankararaman and K. Goebel,
+``Remaining Useful Life Estimation in Prognosis: An Uncertainty Propagation Problem,''
+in \emph{AIAA Infotech@Aerospace Conference}, 2013.
+NASA Technical Reports Server: \url{https://ntrs.nasa.gov/api/citations/20140010623/downloads/20140010623.pdf}.
+
+\bibitem{sankararaman2013uncertain}
+S. Sankararaman and K. Goebel,
+``Why Is the Remaining Useful Life Prediction Uncertain?,''
+\emph{Annual Conference of the PHM Society}, vol. 5, no. 1, 2013.
+doi: \href{https://doi.org/10.36001/phmconf.2013.v5i1.2263}{10.36001/phmconf.2013.v5i1.2263}.
+
+\bibitem{iso20816-1}
+International Organization for Standardization,
+\emph{ISO 20816-1:2016 Mechanical Vibration---Measurement and Evaluation of Machine Vibration---Part 1: General Guidelines}, 2016.
+\url{https://www.iso.org/standard/63180.html}
+
+\bibitem{iso20816-3}
+International Organization for Standardization,
+\emph{ISO 20816-3:2022 Mechanical Vibration---Measurement and Evaluation of Machine Vibration---Part 3: Industrial Machinery}, 2022.
+\url{https://www.iso.org/standard/78311.html}
+
+\end{thebibliography}
+
+\end{document}

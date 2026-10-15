@@ -3,3 +3,10 @@
 *.pptx
 t153_edge/data-e2e/
 t153_edge/data-dev/
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+selink_server/docs/*_preview_*.png
+selink_server/web/tsconfig.tsbuildinfo

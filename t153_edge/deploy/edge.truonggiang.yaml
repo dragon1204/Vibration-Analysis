@@ -20,11 +20,12 @@ machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"
     type: pump
-    rated_speed_rpm: 2950           # [CẦN XÁC MINH] theo nhãn động cơ
+    rated_power_kw: 550
+    rated_speed_rpm: 2800           # theo web; 1X đo được ≈ 49,4 Hz (≈ 2960 v/ph) – kiểm tra lại nhãn
     poles: 2
     line_freq_hz: 50
-    iso_group: 2
-    foundation: flexible        # vùng ISO 20816-3 nhóm 2 nền mềm: A/B 2.3, B/C 4.5, C/D 7.1 mm/s
+    iso_group: 1                # khớp với server: nhóm 1 (> 300 kW), nền mềm → A/B 3.5, B/C 7.1, C/D 11 mm/s
+    foundation: flexible
     iso_band_hz: [10, 1000]
     points:
       - id: pump-tg-01-p1

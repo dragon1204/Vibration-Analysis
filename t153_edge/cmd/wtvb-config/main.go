@@ -56,6 +56,7 @@ func main() {
 	addrS := flag.String("addr", "0x50", "sensor address")
 	save := flag.Bool("save", false, "persist to sensor flash after writing")
 	sr := flag.Int("sr", -1, "raw: set SR code before reading (not persisted)")
+	rawTimeout := flag.Duration("raw-timeout", 6*time.Second, "raw: RAWFIFO transaction timeout (low SR needs seconds to fill 1024 samples)")
 	flag.Usage = usage
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -69,7 +70,7 @@ func main() {
 	m := bus.New("cfg", *port, *baud, log)
 	go m.Run(ctx)
 	ctx = bus.WithPriority(ctx, bus.P3)
-	s := wtvb05.New(m, wtvb05.Options{ID: "cfg", Addr: addr, Baud: *baud, Timeout: 300 * time.Millisecond}, log)
+	s := wtvb05.New(m, wtvb05.Options{ID: "cfg", Addr: addr, Baud: *baud, Timeout: 300 * time.Millisecond, RawTimeout: *rawTimeout}, log)
 	args := flag.Args()
 	die := func(err error) {
 		if err != nil {
