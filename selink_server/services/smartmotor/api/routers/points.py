@@ -3,7 +3,7 @@ import asyncio
 import gzip
 import json
 import math
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 import numpy as np
@@ -222,6 +222,52 @@ def _harmonic_effect(order: int) -> str:
     return "Hài bậc cao có thể liên quan va đập tuần hoàn, tần số cánh/răng hoặc cộng hưởng; không kết luận lỗi chỉ từ biên độ."
 
 
+def _harmonic_temporal(rows: list[dict]) -> dict:
+    """Describe persistence and a robust amplitude trend for one harmonic.
+
+    Trend uses only significant detections.  This avoids turning movement of the
+    local noise floor into an apparent machine trend.  The median pairwise
+    slope is deliberately used instead of least squares so a single impulsive
+    capture cannot dominate the result.
+    """
+    ordered = sorted(rows, key=lambda row: row["ts"])
+    found = [row for row in ordered if row.get("detected") and row.get("amplitude") is not None]
+    longest = current = 0
+    for row in ordered:
+        current = current + 1 if row.get("detected") else 0
+        longest = max(longest, current)
+
+    ratios = [float(row["peak_floor_ratio"]) for row in found if row.get("peak_floor_ratio") is not None]
+    result = {
+        "longest_streak": longest,
+        "persistence_pct": round(longest / len(ordered) * 100, 1) if ordered else 0.0,
+        "first_detected_ts": found[0]["ts"] if found else None,
+        "last_detected_ts": found[-1]["ts"] if found else None,
+        "median_peak_floor_ratio": round(float(np.median(ratios)), 2) if ratios else None,
+        "trend": "insufficient",
+        "trend_pct": None,
+        "slope_per_hour": None,
+        "trend_points": len(found),
+    }
+    if len(found) < 4:
+        return result
+
+    amplitudes = np.asarray([float(row["amplitude"]) for row in found], dtype=float)
+    split = max(2, len(amplitudes) // 2)
+    early = float(np.median(amplitudes[:split]))
+    late = float(np.median(amplitudes[-split:]))
+    change_pct = (late - early) / early * 100 if early > 0 else None
+    times = np.asarray([datetime.fromisoformat(row["ts"]).timestamp() / 3600 for row in found], dtype=float)
+    slopes = [(amplitudes[j] - amplitudes[i]) / (times[j] - times[i])
+              for i in range(len(found)) for j in range(i + 1, len(found)) if times[j] > times[i]]
+    slope = float(np.median(slopes)) if slopes else None
+    if change_pct is not None:
+        result["trend"] = "rising" if change_pct >= 20 else "falling" if change_pct <= -20 else "stable"
+        result["trend_pct"] = round(change_pct, 1)
+    result["slope_per_hour"] = round(slope, 6) if slope is not None and math.isfinite(slope) else None
+    return result
+
+
 def _harmonic_findings(harmonics: list[dict]) -> list[dict]:
     """Conservative, evidence-backed screening patterns (not final diagnoses)."""
     by_order = {x["order"]: x for x in harmonics}
@@ -248,13 +294,24 @@ def _harmonic_findings(harmonics: list[dict]) -> list[dict]:
                          "severity": "warning" if len(recurring) >= 4 else "watch",
                          "evidence": f"{', '.join(x['label'] for x in recurring)} cùng lặp lại trong ≥25% capture.",
                          "action": "Kiểm tra độ rơ/lỏng bulông, cọ xát, khe hở và dạng sóng thời gian để tìm va đập."})
+    growing = [x for x in harmonics if x.get("trend") == "rising" and x.get("trend_pct", 0) >= 25
+               and x.get("occurrence_pct", 0) >= 25]
+    if growing:
+        strongest = max(growing, key=lambda x: x.get("trend_pct", 0))
+        findings.append({"code": "rising_harmonic", "title": f"{strongest['label']} đang tăng theo thời gian",
+                         "confidence": min(92, round(45 + strongest["occurrence_pct"] * 0.25
+                                                     + min(strongest["trend_pct"], 100) * 0.2)),
+                         "severity": "warning" if strongest["trend_pct"] >= 50 else "watch",
+                         "evidence": f"Trung vị nửa sau cao hơn nửa đầu {strongest['trend_pct']}%; "
+                                     f"chuỗi liên tiếp dài nhất {strongest['longest_streak']} capture.",
+                         "action": "Rút ngắn chu kỳ theo dõi, kiểm tra tải/tốc độ cùng thời điểm và xác nhận lại bằng waveform, pha hoặc coherence."})
     return sorted(findings, key=lambda x: x["confidence"], reverse=True)
 
 
 @router.get("/captures/{capture_id}/spectrum")
 async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", type: str = "vel", fmax: Optional[float] = None,
                            user: User = Depends(require("engineer"))):
-    """type: acc (g RMS) | vel (mm/s RMS) | env (g peak) | iso (isolated velocity, Beer HN)."""
+    """type: acc (g RMS) | vel (mm/s RMS) | disp (µm) | env (g peak) | iso (isolated velocity, Beer HN)."""
     cap = await _capture(request, user, capture_id)
     pool = request.app.state.pool
     async with pool.acquire() as c:
@@ -295,6 +352,11 @@ async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", t
         f = np.arange(len(acc)) * df
         if type == "acc":
             vals, unit = (acc / dsp.G0).tolist(), "g"
+        elif type == "disp":
+            displacement = np.zeros_like(acc)
+            mask = (f >= float(machine.get("iso_band_lo_hz") or 2) * 0.5) & (f > 0)
+            displacement[mask] = acc[mask] / ((2 * np.pi * f[mask]) ** 2) * 1_000_000
+            vals, unit = displacement.tolist(), "µm"
         else:
             v = np.zeros_like(acc)
             lo = float(machine.get("iso_band_lo_hz") or 2) * 0.5
@@ -334,8 +396,8 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
     await check_point(request.app.state.pool, user, point_id)
     if axis not in ("x", "y", "z"):
         raise HTTPException(400, "axis phải là x|y|z")
-    if type not in ("vel", "acc", "env"):
-        raise HTTPException(400, "type phải là vel|acc|env")
+    if type not in ("vel", "acc", "disp", "env"):
+        raise HTTPException(400, "type phải là vel|acc|disp|env")
     frm, to = rng
     async with request.app.state.pool.acquire() as c:
         point = dict(await c.fetchrow("SELECT * FROM measurement_points WHERE id=$1", point_id))
@@ -349,7 +411,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
     nominal_hz = float(machine.get("rated_speed_rpm") or 0) / 60
     f1x = float(base_hz or nominal_hz or machine.get("line_freq_hz") or 50)
     tolerance = tolerance_pct / 100
-    unit = "g" if type in ("acc", "env") else "mm/s"
+    unit = "g" if type in ("acc", "env") else "µm" if type == "disp" else "mm/s"
     details: list[dict] = []
     skipped = 0
     max_available_hz: list[float] = []
@@ -378,6 +440,12 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
                 acc = np.asarray(doc["acc"][axis], dtype=float)
                 if type == "acc":
                     values = acc / dsp.G0
+                elif type == "disp":
+                    freq = np.arange(len(acc)) * df
+                    values = np.zeros_like(acc)
+                    low = float(machine.get("iso_band_lo_hz") or 2) * 0.5
+                    mask = (freq >= low) & (freq > 0)
+                    values[mask] = acc[mask] / ((2 * np.pi * freq[mask]) ** 2) * 1_000_000
                 else:
                     freq = np.arange(len(acc)) * df
                     values = np.zeros_like(acc)
@@ -416,7 +484,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         max_row = max(found, key=lambda x: x["amplitude"]) if found else None
         amps = [x["amplitude"] for x in found]
         occurrence = len(found) / analyzed * 100 if analyzed else 0
-        harmonics.append({
+        harmonic = {
             "order": order, "label": f"{order}X", "target_hz": round(order * summary_f1x, 4),
             "band_hz": [round(order * summary_f1x * (1 - tolerance), 4), round(order * summary_f1x * (1 + tolerance), 4)],
             "detections": len(found), "captures": analyzed, "occurrence_pct": round(occurrence, 1),
@@ -428,7 +496,9 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
             "peak_capture_id": max_row["capture_id"] if max_row else None,
             "level": "warning" if occurrence >= 60 else "watch" if occurrence >= 25 else "info" if found else "none",
             "effect": _harmonic_effect(order),
-        })
+        }
+        harmonic.update(_harmonic_temporal(rows))
+        harmonics.append(harmonic)
     one_max = next((x["peak_max"] for x in harmonics if x["order"] == 1), None)
     for row in harmonics:
         row["relative_to_1x"] = round(row["peak_max"] / one_max, 3) if one_max and row["peak_max"] is not None else None

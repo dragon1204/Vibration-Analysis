@@ -69,6 +69,7 @@ npm run gen:api                              # sinh kiểu TS từ OpenAPI
 | 3 | AI chẩn đoán: sức khỏe, nguyên nhân theo độ tin cậy, bằng chứng, phổ đánh dấu 1X…6X/BPFO/100 Hz, cô lập nhiễu S1–S4, phản hồi Đúng/Sai/Lỗi khác | `/machines/:id/diagnosis` |
 | 4–5 | Chi tiết máy, Xu hướng (nhiều điểm/trục, chồng % tải, đánh dấu bảo trì, CSV) | `/machines/:id`, `/machines/:id/trends` |
 | 6 | Phân tích phổ: vận tốc/gia tốc/phổ bao/đã cô lập, trục theo bậc X, so sánh baseline, dạng sóng, waterfall, CSV | `/points/:id/spectrum` |
+| 6b | Phân tích sâu FFT: chọn metric/trục/thời gian, order tracking 1X–30X, xu hướng và độ dai dẳng, order–time heatmap, cảnh báo chất lượng; xuất FFT, bảng hãng 25 cột và bảng sai số đối chiếu CSV hãng | `/machines/:id/deep-analysis` |
 | 7 | Cảnh báo: lọc, luồng Mới → Đã xem → Đã chẩn đoán → Đã xử lý → Đóng, bình luận, phản hồi | `/events` |
 | 8 | Bảo trì (+ học lại baseline) | `/machines/:id/maintenance` |
 | 9 | Kiểm chứng sai số < 5% (nhập tay/CSV, ghép capture, biên bản PDF) | `/accuracy` |

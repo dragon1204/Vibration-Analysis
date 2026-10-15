@@ -131,6 +131,11 @@ body { background: #f4f6fb; color: #17213a; }
 .fft-findings { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 12px 0; }
 .fft-findings .ant-alert-description { display: flex; flex-direction: column; gap: 5px; line-height: 1.5; }
 .fft-issue-list { margin: 4px 0 0; padding-left: 19px; }
+.vendor-compare-card { margin-top: 14px; border-color: #bfdbfe !important; }
+.vendor-compare-card > .ant-card-head { background: linear-gradient(90deg,#eff6ff,#fff); }
+.vendor-compare-kpis { margin: 14px 0; }
+.vendor-compare-kpis .ant-statistic { height: 100%; padding: 12px; border: 1px solid #e5eaf2; border-radius: 8px; background: #fafcff; }
+.vendor-compare-kpis .ant-statistic-content { font-size: 20px; font-weight: 720; overflow-wrap: anywhere; }
 .deep-section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0 12px; }
 .deep-section-title > div { display: flex; flex-direction: column; gap: 2px; }
 .deep-section-title b { color: #17213a; font-size: 16px; }

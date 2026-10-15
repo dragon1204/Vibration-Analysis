@@ -2,7 +2,7 @@ import numpy as np
 from datetime import datetime, timedelta, timezone
 
 from smartmotor.api.routers.machines import VENDOR_TABLE_HEADER, _nearest_vendor_row, _vendor_number
-from smartmotor.api.routers.points import _harmonic_findings
+from smartmotor.api.routers.points import _harmonic_findings, _harmonic_temporal
 from smartmotor.common import dsp
 
 
@@ -37,6 +37,28 @@ def test_order_tracking_follows_speed_change():
     tracked = dsp.harmonic_peaks(values, 1.0, 48.0, max_order=2, tolerance=0.02)
     assert not fixed[0]["detected"]
     assert tracked[0]["detected"] and tracked[0]["peak_hz"] == 48
+
+
+def test_harmonic_temporal_detects_robust_growth_and_streak():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    amplitudes = [1.0, 1.1, 1.0, 8.0, 2.0, 2.2, 2.1]
+    rows = [{"ts": (start + timedelta(hours=i)).isoformat(), "detected": i != 3,
+             "amplitude": value, "peak_floor_ratio": 4 + i} for i, value in enumerate(amplitudes)]
+    result = _harmonic_temporal(rows)
+    assert result["trend"] == "rising"
+    assert result["trend_pct"] >= 90
+    assert result["longest_streak"] == 3
+    assert result["persistence_pct"] == 42.9
+    assert result["slope_per_hour"] > 0
+
+
+def test_harmonic_temporal_needs_four_real_detections():
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rows = [{"ts": (start + timedelta(minutes=i)).isoformat(), "detected": i < 3,
+             "amplitude": float(i + 1), "peak_floor_ratio": 3.5} for i in range(5)]
+    result = _harmonic_temporal(rows)
+    assert result["trend"] == "insufficient"
+    assert result["trend_pct"] is None
 
 
 def test_vendor_table_contract_and_timestamp_alignment():

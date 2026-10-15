@@ -1,4 +1,4 @@
-fastapi==0.115.6
+fastapi==0.143.2
 uvicorn[standard]==0.32.1
 asyncpg==0.30.0
 redis==5.2.1
@@ -13,8 +13,8 @@ scikit-learn==1.6.0
 joblib==1.4.2
 apscheduler==3.11.0
 bcrypt==4.2.1
-pyjwt==2.10.1
+pyjwt==2.15.1
 httpx==0.28.1
-python-multipart==0.0.20
+python-multipart==0.0.32
 reportlab==4.2.5
 pyyaml==6.0.2

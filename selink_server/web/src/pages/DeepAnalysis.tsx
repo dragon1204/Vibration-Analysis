@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
-  Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography,
+  Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography, Upload,
 } from 'antd'
-import { ApiOutlined, DownloadOutlined, NodeIndexOutlined, SearchOutlined } from '@ant-design/icons'
+import { ApiOutlined, DownloadOutlined, NodeIndexOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { api, download } from '../api/client'
 import { MultiSpectrumChart } from '../components/charts'
@@ -16,8 +16,111 @@ const COLORS = ['#2563eb', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f'
 const METRICS = [
   { value: 'vel', label: 'Phổ vận tốc (mm/s RMS)' },
   { value: 'acc', label: 'Phổ gia tốc (g RMS)' },
+  { value: 'disp', label: 'Phổ dịch chuyển (µm)' },
   { value: 'env', label: 'Phổ bao (g)' },
 ]
+
+const VENDOR_METRICS = [
+  { index: 2, label: 'Gia tốc X', unit: 'g' }, { index: 3, label: 'Gia tốc Y', unit: 'g' },
+  { index: 4, label: 'Gia tốc Z', unit: 'g' }, { index: 6, label: 'Abrg1 X', unit: 'mm/s' },
+  { index: 8, label: 'Abrg1 Y', unit: 'mm/s' }, { index: 10, label: 'Abrg1 Z', unit: 'mm/s' },
+  { index: 11, label: 'Dịch chuyển X', unit: 'µm' }, { index: 12, label: 'Dịch chuyển Y', unit: 'µm' },
+  { index: 13, label: 'Dịch chuyển Z', unit: 'µm' }, { index: 14, label: 'Abrg2 X', unit: 'mm/s' },
+  { index: 16, label: 'Abrg2 Y', unit: 'mm/s' }, { index: 18, label: 'Abrg2 Z', unit: 'mm/s' },
+  { index: 19, label: 'Abase X', unit: 'mm/s' }, { index: 20, label: 'Abase Y', unit: 'mm/s' },
+  { index: 21, label: 'Abase Z', unit: 'mm/s' }, { index: 22, label: 'Tần số Z', unit: 'Hz' },
+  { index: 24, label: 'Nhiệt độ', unit: '°C', absoluteLimit: 2 },
+]
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false
+  const source = text.replace(/^\ufeff/, '')
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i]
+    if (char === '"') {
+      if (quoted && source[i + 1] === '"') { cell += '"'; i += 1 } else quoted = !quoted
+    } else if (char === ',' && !quoted) { row.push(cell.trim()); cell = ''
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && source[i + 1] === '\n') i += 1
+      row.push(cell.trim()); cell = ''
+      if (row.some((value) => value !== '')) rows.push(row)
+      row = []
+    } else cell += char
+  }
+  if (cell || row.length) { row.push(cell.trim()); if (row.some((value) => value !== '')) rows.push(row) }
+  return rows
+}
+
+function timeOfDayMs(value: string) {
+  const match = value.trim().match(/(\d{1,2}):(\d{2}):(\d{2})(?:[.,](\d{1,3}))?/)
+  if (!match) return null
+  return ((Number(match[1]) * 60 + Number(match[2])) * 60 + Number(match[3])) * 1000
+    + Number((match[4] || '').padEnd(3, '0'))
+}
+
+function percentile(values: number[], pct: number) {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const position = (sorted.length - 1) * pct
+  const lower = Math.floor(position); const upper = Math.ceil(position)
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
+}
+
+function compareVendorTables(reference: string[][], system: string[][], toleranceMs: number) {
+  if (reference[0]?.[0] !== 'Time' || reference[0]?.[1] !== 'Device name' || reference[0].length < 25) {
+    throw new Error('File hãng không đúng cấu trúc 25 cột (Time, Device name, …).')
+  }
+  if (system[0]?.length < 25) throw new Error('Bảng hệ thống xuất ra không đủ 25 cột.')
+  const timedRows = (rows: string[][]) => {
+    let dayOffset = 0; let previous = -1
+    return rows.slice(1).map((cells, index) => {
+      const rawTime = timeOfDayMs(cells[0] || '')
+      if (rawTime == null) return null
+      let time = rawTime + dayOffset
+      if (previous >= 0 && time < previous - 43_200_000) { dayOffset += 86_400_000; time += 86_400_000 }
+      previous = time
+      return { cells, index: index + 2, time }
+    }).filter((row): row is { cells: string[]; index: number; time: number } => row != null)
+  }
+  const refRows = timedRows(reference); const sysRows = timedRows(system)
+  const used = new Set<number>(); const pairs: any[] = []
+  refRows.forEach((ref) => {
+    let lo = 0; let hi = sysRows.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sysRows[mid].time < ref.time) lo = mid + 1; else hi = mid }
+    let left = lo - 1; let right = lo; let best = -1; let bestDistance = Number.POSITIVE_INFINITY
+    while (left >= 0 || right < sysRows.length) {
+      const leftDistance = left >= 0 ? Math.abs(sysRows[left].time - ref.time) : Number.POSITIVE_INFINITY
+      const rightDistance = right < sysRows.length ? Math.abs(sysRows[right].time - ref.time) : Number.POSITIVE_INFINITY
+      const index = leftDistance <= rightDistance ? left-- : right++
+      const distance = Math.min(leftDistance, rightDistance)
+      if (distance > toleranceMs || distance >= bestDistance) break
+      if (!used.has(index)) { best = index; bestDistance = distance; break }
+    }
+    if (best >= 0 && bestDistance <= toleranceMs) { used.add(best); pairs.push({ ref, sys: sysRows[best], offsetMs: bestDistance }) }
+  })
+  const details: any[] = []
+  const metrics = VENDOR_METRICS.map((metric) => {
+    const absoluteErrors: number[] = []; const percentErrors: number[] = []
+    pairs.forEach((pair) => {
+      const refValue = Number(pair.ref.cells[metric.index]); const systemValue = Number(pair.sys.cells[metric.index])
+      if (!Number.isFinite(refValue) || !Number.isFinite(systemValue) || pair.ref.cells[metric.index] === '' || pair.sys.cells[metric.index] === '') return
+      const absoluteError = Math.abs(systemValue - refValue)
+      const percentError = Math.abs(refValue) > 1e-12 ? absoluteError / Math.abs(refValue) * 100 : null
+      absoluteErrors.push(absoluteError); if (percentError != null) percentErrors.push(percentError)
+      details.push({ referenceTime: pair.ref.cells[0], systemTime: pair.sys.cells[0], offsetMs: pair.offsetMs,
+        metric: metric.label, unit: metric.unit, reference: refValue, system: systemValue, absoluteError, percentError })
+    })
+    const meanAbs = absoluteErrors.length ? absoluteErrors.reduce((a, b) => a + b, 0) / absoluteErrors.length : null
+    const meanPct = percentErrors.length ? percentErrors.reduce((a, b) => a + b, 0) / percentErrors.length : null
+    const p95Pct = percentile(percentErrors, 0.95); const p95Abs = percentile(absoluteErrors, 0.95)
+    const passed = metric.absoluteLimit != null ? p95Abs != null && p95Abs <= metric.absoluteLimit
+      : meanPct != null && p95Pct != null && meanPct <= 5 && p95Pct <= 8
+    return { ...metric, samples: absoluteErrors.length, meanAbs, meanPct, p95Pct, p95Abs,
+      maxPct: percentErrors.length ? Math.max(...percentErrors) : null, status: absoluteErrors.length ? (passed ? 'pass' : 'fail') : 'no_data' }
+  })
+  return { referenceRows: refRows.length, systemRows: sysRows.length, matchedRows: pairs.length,
+    coveragePct: refRows.length ? pairs.length / refRows.length * 100 : 0, toleranceMs, metrics, details }
+}
 
 type AnalysisRequest = {
   pointId: string
@@ -55,14 +158,16 @@ function exportAnalysisCsv(result: any) {
     '1X used (Hz)', 'FFT resolution (Hz)',
     'Order', 'Target (Hz)', 'Band min (Hz)', 'Band max (Hz)',
     'Detected', 'Peak frequency (Hz)', `Peak amplitude (${result.unit})`, `Noise floor (${result.unit})`, 'Peak/Floor',
-    'Occurrence (%)', `Max amplitude (${result.unit})`, `Mean amplitude (${result.unit})`, 'Impact / interpretation',
+    'Occurrence (%)', `Max amplitude (${result.unit})`, `Mean amplitude (${result.unit})`, 'Trend', 'Trend (%)',
+    'Longest streak', 'Persistence (%)', 'Impact / interpretation',
   ]
   const rows = (result.details || []).map((row: any) => {
     const agg: any = summary.get(row.order) || {}
     return [row.ts, row.capture_id, result.point_name || result.point_id, result.type, result.axis.toUpperCase(), result.settings.tracking,
       row.capture_speed_hz, row.speed_confidence, row.base_hz_used, row.df_hz, `${row.order}X`,
       row.target_hz, row.band_hz?.[0], row.band_hz?.[1], row.detected ? 'YES' : 'NO', row.peak_hz, row.amplitude,
-      row.floor, row.peak_floor_ratio, agg.occurrence_pct, agg.peak_max, agg.peak_mean, agg.effect]
+      row.floor, row.peak_floor_ratio, agg.occurrence_pct, agg.peak_max, agg.peak_mean, agg.trend, agg.trend_pct,
+      agg.longest_streak, agg.persistence_pct, agg.effect]
   })
   const csv = '\ufeff' + [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
@@ -71,6 +176,15 @@ function exportAnalysisCsv(result: any) {
   a.download = `${result.point_id}_FFT_${result.axis}_${result.settings.base_hz}Hz.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function exportComparisonCsv(comparison: any, machineId: string) {
+  const header = ['Reference time', 'System time', 'Offset (ms)', 'Metric', 'Unit', 'Reference', 'System', 'Absolute error', 'Error (%)']
+  const rows = comparison.details.map((row: any) => [row.referenceTime, row.systemTime, row.offsetMs, row.metric, row.unit,
+    row.reference, row.system, row.absoluteError, row.percentError])
+  const csv = '\ufeff' + [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a'); a.href = url; a.download = `${machineId}-doi-chieu-hang.csv`; a.click(); URL.revokeObjectURL(url)
 }
 
 function HarmonicAnalysis({ machine }: { machine: any }) {
@@ -85,6 +199,10 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   const [maxOrder, setMaxOrder] = useState(10)
   const [deviceName, setDeviceName] = useState('')
   const [request, setRequest] = useState<AnalysisRequest>()
+  const [compareToleranceMs, setCompareToleranceMs] = useState(1000)
+  const [comparison, setComparison] = useState<any>()
+  const [compareLoading, setCompareLoading] = useState(false)
+  const [vendorFileName, setVendorFileName] = useState('')
 
   useEffect(() => {
     if (!pointId && points.length) setPointId((points.find((p: any) => p.role === 'bearing') || points[0]).id)
@@ -137,11 +255,54 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
         .sort((a: any, b: any) => Date.parse(a.ts) - Date.parse(b.ts)).map((x: any) => [x.ts, x.amplitude]),
     })),
   } : undefined
+  const orderMapOption = result ? (() => {
+    const times = [...new Set(result.details.map((row: any) => row.ts))].sort() as string[]
+    const orders = result.harmonics.map((row: any) => row.label)
+    const values = result.details.filter((row: any) => row.detected).map((row: any) => [
+      times.indexOf(row.ts), row.order - 1, row.amplitude, row.peak_floor_ratio, row.peak_hz,
+    ])
+    const maximum = Math.max(0.000001, ...values.map((row: any) => Number(row[2]) || 0))
+    return {
+      animationDuration: 250,
+      tooltip: { formatter: (item: any) => {
+        const value = item.value
+        return `<b>${orders[value[1]]}</b><br/>${dt(times[value[0]])}<br/>Biên độ: ${num(value[2], 4)} ${result.unit}<br/>Tần số: ${num(value[4], 2)} Hz<br/>Đỉnh/nền: ${num(value[3], 1)}×`
+      } },
+      grid: { left: 65, right: 32, top: 18, bottom: 82 },
+      xAxis: { type: 'category', data: times, axisLabel: { formatter: (value: string) => dt(value), hideOverlap: true }, splitArea: { show: true } },
+      yAxis: { type: 'category', data: orders, name: 'Bậc hài', splitArea: { show: true } },
+      dataZoom: [{ type: 'inside', xAxisIndex: 0 }, { type: 'slider', xAxisIndex: 0, height: 18, bottom: 30 }],
+      visualMap: { min: 0, max: maximum, calculable: true, orient: 'horizontal', left: 'center', bottom: 0,
+        text: [`${result.unit} cao`, 'thấp'], inRange: { color: ['#dbeafe', '#38bdf8', '#2563eb', '#f59e0b', '#dc2626'] } },
+      series: [{ type: 'heatmap', data: values, emphasis: { itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,.35)' } } }],
+    }
+  })() : undefined
 
   const run = () => {
     if (!pointId || !baseHz) return
     const p = rangeParams(range)
+    setComparison(undefined); setVendorFileName('')
     setRequest({ pointId, ...p, axis, metric, tracking, baseHz, tolerancePct, maxOrder, runId: Date.now() })
+  }
+
+  const compareVendorFile = async (file: File) => {
+    if (!result) { message.warning('Hãy chạy phân tích trước khi nạp file hãng.'); return }
+    if (file.size > 15 * 1024 * 1024) { message.error('File đối chiếu vượt quá giới hạn 15 MB.'); return }
+    setCompareLoading(true)
+    try {
+      const [referenceText, systemBlob] = await Promise.all([
+        file.text(),
+        api<Blob>(`/machines/${machine.id}/vendor-table.csv`, { raw: true, params: {
+          from: result.from, to: result.to, point_id: result.point_id, device_name: deviceName, max_skew_ms: compareToleranceMs,
+        } }),
+      ])
+      const compared = compareVendorTables(parseCsv(referenceText), parseCsv(await systemBlob.text()), compareToleranceMs)
+      if (!compared.referenceRows) throw new Error('File hãng không có dòng dữ liệu hợp lệ.')
+      setComparison(compared); setVendorFileName(file.name)
+      message.success(`Đã ghép ${compared.matchedRows}/${compared.referenceRows} dòng theo timestamp.`)
+    } catch (error) {
+      setComparison(undefined); setVendorFileName(''); message.error(`Không đối chiếu được: ${(error as Error).message}`)
+    } finally { setCompareLoading(false) }
   }
 
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
@@ -192,7 +353,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       </div>}
       {result.harmonics.length ? <Row gutter={[14, 14]} style={{ marginTop: 6 }}>
         <Col xs={24} xl={10}><Card size="small" title={`Biên độ đỉnh theo bậc hài · ${result.unit}`}><ReactECharts option={chartOption} style={{ height: 350 }} /></Card></Col>
-        <Col xs={24} xl={14}><Card size="small" title="Bảng đếm và đánh giá 1X–nX"><Table rowKey="order" size="small" pagination={false} scroll={{ x: 1050 }} dataSource={result.harmonics} columns={[
+        <Col xs={24} xl={14}><Card size="small" title="Bảng đếm và đánh giá 1X–nX"><Table rowKey="order" size="small" pagination={false} scroll={{ x: 1370 }} dataSource={result.harmonics} columns={[
           { title: 'Bậc', dataIndex: 'label', fixed: 'left', width: 62, render: (value, row: any) => <Tag color={row.level === 'warning' ? 'red' : row.level === 'watch' ? 'gold' : row.level === 'info' ? 'blue' : 'default'}>{value}</Tag> },
           { title: 'Dải bắt (Hz)', width: 145, render: (_, row: any) => `${num(row.band_hz[0], 1)}–${num(row.band_hz[1], 1)}` },
           { title: 'Số lần bắt', width: 140, render: (_, row: any) => <Progress percent={row.occurrence_pct} size="small" format={() => `${row.detections}/${row.captures}`} /> },
@@ -200,10 +361,48 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
           { title: 'Tại Hz', dataIndex: 'peak_freq_hz', width: 85, align: 'right', render: (value) => value == null ? '—' : num(value, 2) },
           { title: `TB đỉnh (${result.unit})`, dataIndex: 'peak_mean', width: 125, align: 'right', render: (value) => value == null ? '—' : num(value, 4) },
           { title: 'So với 1X', dataIndex: 'relative_to_1x', width: 90, render: (value) => value == null ? '—' : `${num(value, 2)}×` },
+          { title: 'Xu hướng', width: 125, render: (_, row: any) => row.trend === 'insufficient' ? <Tag>Chưa đủ mẫu</Tag>
+            : <Tag color={row.trend === 'rising' ? 'red' : row.trend === 'falling' ? 'green' : 'blue'}>
+              {row.trend === 'rising' ? 'Tăng' : row.trend === 'falling' ? 'Giảm' : 'Ổn định'} {row.trend_pct > 0 ? '+' : ''}{num(row.trend_pct, 1)}%
+            </Tag> },
+          { title: 'Dai dẳng', width: 125, render: (_, row: any) => <span>{row.longest_streak} capture<br/><small className="muted">{num(row.persistence_pct, 1)}% liên tiếp</small></span> },
           { title: 'Ảnh hưởng / gợi ý kiểm tra', dataIndex: 'effect', width: 360 },
         ]} /></Card></Col>
         {result.harmonics.some((x: any) => x.detections) && <Col span={24}><Card size="small" title="Xu hướng biên độ các hài đã phát hiện theo thời gian"><ReactECharts option={trendOption} style={{ height: 360 }} /></Card></Col>}
+        {result.harmonics.some((x: any) => x.detections) && <Col span={24}><Card size="small" title="Bản đồ order–time · màu thể hiện biên độ đỉnh nổi bật">
+          <ReactECharts option={orderMapOption} style={{ height: Math.max(360, result.harmonics.length * 27 + 150) }} />
+        </Card></Col>}
       </Row> : <Empty description="Không có dải hài nào nằm trong phổ khả dụng" />}
+      <Card size="small" className="vendor-compare-card" title="Đối chiếu định lượng với file của hãng" extra={<Space wrap>
+        <span className="muted">Ghép thời gian ±</span><InputNumber value={compareToleranceMs} min={10} max={5000} step={10}
+          onChange={(value) => value != null && setCompareToleranceMs(value)} addonAfter="ms" />
+        <Upload accept=".csv,text/csv" showUploadList={false} beforeUpload={(file) => { void compareVendorFile(file); return false }}>
+          <Button icon={<UploadOutlined />} loading={compareLoading}>Nạp CSV hãng</Button>
+        </Upload>
+        {comparison && <Button icon={<DownloadOutlined />} onClick={() => exportComparisonCsv(comparison, machine.id)}>Xuất bảng sai số</Button>}
+      </Space>}>
+        <Alert type="info" showIcon message="File được xử lý tại phiên làm việc, không ghi đè dữ liệu gốc"
+          description="Hệ thống ghép từng dòng theo timestamp gần nhất, tính sai số tuyệt đối, trung bình, P95 và cực đại cho từng kênh. Chuẩn mặc định: sai số trung bình ≤5%, P95 ≤8%; nhiệt độ P95 ≤2°C." />
+        {comparison && <>
+          <Row gutter={[12, 12]} className="vendor-compare-kpis">
+            <Col xs={12} md={6}><Statistic title="File đối chiếu" value={vendorFileName} /></Col>
+            <Col xs={12} md={6}><Statistic title="Dòng ghép được" value={comparison.matchedRows} suffix={`/ ${comparison.referenceRows}`} /></Col>
+            <Col xs={12} md={6}><Statistic title="Độ phủ ghép" value={comparison.coveragePct} precision={1} suffix="%" valueStyle={{ color: comparison.coveragePct >= 90 ? '#17895d' : '#c4383e' }} /></Col>
+            <Col xs={12} md={6}><Statistic title="Kênh đạt chuẩn" value={comparison.metrics.filter((row: any) => row.status === 'pass').length} suffix={`/ ${comparison.metrics.filter((row: any) => row.status !== 'no_data').length}`} /></Col>
+          </Row>
+          {comparison.coveragePct < 80 && <Alert type="warning" showIcon message="Độ phủ ghép timestamp thấp"
+            description="Kiểm tra múi giờ/khoảng thời gian hoặc tăng dung sai ghép. Không nên kết luận độ chính xác khi độ phủ dưới 80%." style={{ marginBottom: 10 }} />}
+          <Table rowKey="index" size="small" pagination={false} scroll={{ x: 930 }} dataSource={comparison.metrics} columns={[
+            { title: 'Kênh / metric', dataIndex: 'label', fixed: 'left', width: 155 },
+            { title: 'Số cặp', dataIndex: 'samples', width: 75, align: 'right' },
+            { title: 'Sai số TB', width: 120, align: 'right', render: (_, row: any) => row.meanAbs == null ? '—' : `${num(row.meanAbs, 4)} ${row.unit}` },
+            { title: 'TB (%)', dataIndex: 'meanPct', width: 95, align: 'right', render: (value, row: any) => row.absoluteLimit ? 'Theo °C' : value == null ? '—' : `${num(value, 2)}%` },
+            { title: 'P95 (%)', dataIndex: 'p95Pct', width: 95, align: 'right', render: (value, row: any) => row.absoluteLimit ? `${num(row.p95Abs, 3)} °C` : value == null ? '—' : `${num(value, 2)}%` },
+            { title: 'Max (%)', dataIndex: 'maxPct', width: 95, align: 'right', render: (value) => value == null ? '—' : `${num(value, 2)}%` },
+            { title: 'Kết quả', dataIndex: 'status', width: 110, render: (value) => <Tag color={value === 'pass' ? 'success' : value === 'fail' ? 'error' : 'default'}>{value === 'pass' ? 'ĐẠT' : value === 'fail' ? 'KHÔNG ĐẠT' : 'KHÔNG CÓ DỮ LIỆU'}</Tag> },
+          ]} />
+        </>}
+      </Card>
     </>}
   </Card>
 }
