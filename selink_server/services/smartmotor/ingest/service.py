@@ -288,7 +288,10 @@ class Ingest:
                 d.df_hz, d.running, _num(d.load_pct), _num(d.speed_hz), d.speed_confidence, features, _num(v), zone,
                 d.quality_flags)
         summary = {"type": "capture", "capture_id": d.capture_id, "point_id": d.point_id, "profile": d.profile,
-                   "ts": d.ts.isoformat(), "iso_vrms_max_mm_s": v, "iso_zone": zone, "speed_hz": d.speed_hz}
+                   "ts": d.ts.isoformat(), "iso_vrms_max_mm_s": v, "iso_zone": zone, "speed_hz": d.speed_hz,
+                   # per-axis values so the live page can update its cards straight from the push
+                   "axes_iso": {a: {k: (d.axes[a] or {}).get(k) for k in ("iso_vrms_mm_s", "acc_rms_g", "acc_peak_g")}
+                                for a in d.axes}}
         await bus.publish(self.redis, f"rt:point:{d.point_id}", summary)
         if machine:
             await bus.publish(self.redis, f"rt:machine:{machine['id']}", summary)

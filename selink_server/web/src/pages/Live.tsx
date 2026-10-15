@@ -17,7 +17,7 @@ const axisColor: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e85
 const zoneClass: Record<string, string> = { A: 'zone-a', B: 'zone-b', C: 'zone-c', D: 'zone-d' }
 const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận được', C: 'Cảnh báo', D: 'Nguy hiểm' }
 /** Data older than this is not "live": the gateway sends indicators every 10 s. */
-const LIVE_MAX_AGE_MS = 2 * 60_000
+const LIVE_MAX_AGE_MS = 60_000
 
 function getZone(value: number | null | undefined, limits: any): string | null {
   if (value == null || !limits) return null
@@ -82,6 +82,8 @@ export default function Live() {
   const { data: status, isLoading } = useQuery<any>({ queryKey: ['status', id], queryFn: () => api(`/machines/${id}/status`), refetchInterval: 15_000 })
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
+  const [, setTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
 
   // ISO RMS per point × axis over the last 6 h (one value per capture) – trend chart and 60-min sparklines.
   const isoQueries: { data?: any }[] = useQueries({
@@ -109,9 +111,42 @@ export default function Live() {
     }
   }, [machine, nav, searchParams])
 
+  // Push updates are applied to the cached data directly (no refetch round-trip):
+  // a capture updates the per-axis ISO cards, sparklines, trend and waveform; indicators update freshness.
   useRealtime([`machine:${id}`], (message) => {
+    const d = message.data || {}
+    if (d.type === 'capture' && d.axes_iso) {
+      qc.setQueryData(['status', id], (old: any) => old && ({
+        ...old,
+        points: old.points.map((p: any) => p.id !== d.point_id ? p : {
+          ...p, last_capture: { ...(p.last_capture || {}), capture_id: d.capture_id, ts: d.ts, iso_zone: d.iso_zone,
+            iso_vrms_max_mm_s: d.iso_vrms_max_mm_s, speed_hz: d.speed_hz, axes_iso: d.axes_iso },
+        }),
+      }))
+      qc.setQueryData(['iso-series', d.point_id], (old: any) => {
+        if (!old) return old
+        const cutoff = Date.now() - 6 * 3_600_000
+        const series = { ...old.series }
+        Object.entries(d.axes_iso).forEach(([axis, v]: any) => {
+          if (v?.iso_vrms_mm_s == null || !series[axis]) return
+          const prev = series[axis].iso_vrms_mm_s || []
+          series[axis] = { ...series[axis], iso_vrms_mm_s: [...prev, [d.ts, v.iso_vrms_mm_s]].filter(([t]: any) => Date.parse(t) >= cutoff) }
+        })
+        return { ...old, series }
+      })
+      return
+    }
+    if (d.type === 'vib') {
+      qc.setQueryData(['status', id], (old: any) => old && ({
+        ...old,
+        points: old.points.map((p: any) => p.id !== d.point_id ? p : {
+          ...p, gateway_online: true,
+          axes: Object.fromEntries(['x', 'y', 'z'].map((a) => [a, { ...(p.axes?.[a] || {}), ts: d.ts }])),
+        }),
+      }))
+      return
+    }
     qc.invalidateQueries({ queryKey: ['status', id] })
-    if (message.data?.type !== 'vib') qc.invalidateQueries({ queryKey: ['iso-series'] })
   })
 
   const lastCapture = useMemo(() => status?.points?.find((point: any) => point.id === wavePoint)?.last_capture, [status, wavePoint])

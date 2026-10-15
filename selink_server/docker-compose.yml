@@ -11,7 +11,7 @@ x-svc: &svc
   build:
     context: .
     dockerfile: services/Dockerfile
-  image: smartmotor/services:latest
+  image: ${SM_REGISTRY:-smartmotor}/services:${SM_TAG:-latest}
   env_file: .env
   restart: unless-stopped
   init: true
@@ -163,7 +163,7 @@ services:
     build:
       context: .
       dockerfile: web/Dockerfile
-    image: smartmotor/web:latest
+    image: ${SM_REGISTRY:-smartmotor}/web:${SM_TAG:-latest}
     restart: unless-stopped
     logging: *default-logging
     environment:

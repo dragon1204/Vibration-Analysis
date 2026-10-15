@@ -8,11 +8,14 @@ mqtt:
   password_file: /etc/edge-agent/mqtt.token
   ca_file: /etc/edge-agent/ca.pem
   send_waveforms: true
-storage: {dir: /data/edge, retention_days: 7}
+# Board eMMC has ~1 GB free (no TF card yet): cap local storage; captures every 5 s ≈ 200 MB/day.
+storage: {dir: /data/edge, retention_days: 2, max_bytes: 600000000}
 log: {level: info, file: /data/edge/logs/edge-agent.log}
 buses:
-  # Sensor still at factory 9600 bps: one RAWFIFO frame takes ~6.5 s on the wire.
-  - {id: busA, device: /dev/ttyS6, baud: 9600, timeout_ms: 300, raw_timeout_ms: 15000}
+  # Sensor set to 115200 bps (BAUD code 0x06, saved): one RAWFIFO frame ≈ 0.55 s on the wire.
+  - {id: busA, device: /dev/ttyS6, baud: 115200, timeout_ms: 150, raw_timeout_ms: 3000}
+# Near-real-time: indicators every 2 s, capture (ISO RMS from raw waveform) every 5 s.
+intervals: {b1_s: 2, window_s: 2}
 machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"
@@ -32,5 +35,5 @@ machines:
         iso_axes: [x, z]
         idle_sr: 4
         profiles:
-          - {name: orders, sr: 4, frames: 1, every_s: 60}   # 1 frame: a 2nd back-to-back frame times out at 9600 bps
+          - {name: orders, sr: 4, frames: 1, every_s: 5}
 local_alarm: {enabled: false}

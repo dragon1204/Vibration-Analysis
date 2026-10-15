@@ -7,8 +7,9 @@ import {
   FundProjectionScreenOutlined, UnorderedListOutlined,
   ApartmentOutlined,
 } from '@ant-design/icons'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './auth'
+import { useRealtime } from './api/realtime'
 import { api, logout } from './api/client'
 import Login from './pages/Login'
 
@@ -41,6 +42,10 @@ export default function App() {
   const { data: gateways = [] } = useQuery<any[]>({
     queryKey: ['shell-gateways'], queryFn: () => api('/gateways'), enabled: loggedIn, refetchInterval: 30_000,
   })
+
+  // Gateway online/offline is pushed on rt:gateways; refresh the header instead of waiting for the 30 s poll.
+  const qc = useQueryClient()
+  useRealtime(['gateways'], (m) => { if (m.data?.type === 'status') qc.invalidateQueries({ queryKey: ['shell-gateways'] }) })
 
   if (!ready) return <Spin style={{ marginTop: '40vh', width: '100%' }} size="large" />
   if (!loggedIn) return <Login />
