@@ -1,0 +1,5 @@
+
+# large / generated, not for the repo
+*.pptx
+t153_edge/data-e2e/
+t153_edge/data-dev/
