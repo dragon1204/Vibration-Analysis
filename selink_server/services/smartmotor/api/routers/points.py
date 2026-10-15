@@ -1,4 +1,5 @@
 """Measurement points, time series, captures, waveform, spectrum, waterfall (screens 2, 5, 6)."""
+import asyncio
 import gzip
 import json
 import math
@@ -211,6 +212,45 @@ def _markers(cap: dict, point: dict, machine: dict) -> list[dict]:
     return out
 
 
+def _harmonic_effect(order: int) -> str:
+    if order == 1:
+        return "Thành phần đồng bộ tốc độ quay; khi trội có thể liên quan mất cân bằng, lệch tâm hoặc cộng hưởng."
+    if order == 2:
+        return "2X lặp lại mạnh thường gợi ý lệch trục, trục cong hoặc lỏng cơ khí; cần đối chiếu pha và phương đo."
+    if order <= 5:
+        return "Nhiều hài 3X–5X thường đi cùng độ rơ, lỏng liên kết, cọ xát hoặc đáp ứng phi tuyến."
+    return "Hài bậc cao có thể liên quan va đập tuần hoàn, tần số cánh/răng hoặc cộng hưởng; không kết luận lỗi chỉ từ biên độ."
+
+
+def _harmonic_findings(harmonics: list[dict]) -> list[dict]:
+    """Conservative, evidence-backed screening patterns (not final diagnoses)."""
+    by_order = {x["order"]: x for x in harmonics}
+    one, two = by_order.get(1), by_order.get(2)
+    higher = [x for x in harmonics if 3 <= x["order"] <= 8 and x["detections"]]
+    findings = []
+    if one and one["occurrence_pct"] >= 35:
+        confidence = min(95, round(45 + one["occurrence_pct"] * 0.45))
+        findings.append({"code": "rotational_1x", "title": "Kích thích đồng bộ 1X", "confidence": confidence,
+                         "severity": "warning" if one["occurrence_pct"] >= 70 else "watch",
+                         "evidence": f"1X xuất hiện {one['detections']}/{one['captures']} capture; đỉnh {one['peak_max']}.",
+                         "action": "Kiểm tra cân bằng, độ đảo/lệch tâm và khả năng cộng hưởng; đối chiếu pha trước khi kết luận."})
+    if two and two["occurrence_pct"] >= 25 and (two.get("relative_to_1x") or 0) >= 0.35:
+        confidence = min(92, round(35 + two["occurrence_pct"] * 0.45 + min(two["relative_to_1x"], 1) * 20))
+        findings.append({"code": "alignment_2x", "title": "Mẫu 2X cần kiểm tra đồng tâm", "confidence": confidence,
+                         "severity": "warning" if two["relative_to_1x"] >= 0.7 else "watch",
+                         "evidence": f"2X xuất hiện {two['occurrence_pct']}% và bằng {two['relative_to_1x']}× đỉnh 1X.",
+                         "action": "Đo pha hướng tâm/dọc trục, kiểm tra đồng tâm khớp nối, trục cong và chân mềm."})
+    recurring = [x for x in higher if x["occurrence_pct"] >= 25]
+    if len(recurring) >= 2:
+        avg_occurrence = float(np.mean([x["occurrence_pct"] for x in recurring]))
+        findings.append({"code": "high_order_train", "title": "Chuỗi hài bậc cao lặp lại",
+                         "confidence": min(90, round(38 + 8 * len(recurring) + avg_occurrence * 0.25)),
+                         "severity": "warning" if len(recurring) >= 4 else "watch",
+                         "evidence": f"{', '.join(x['label'] for x in recurring)} cùng lặp lại trong ≥25% capture.",
+                         "action": "Kiểm tra độ rơ/lỏng bulông, cọ xát, khe hở và dạng sóng thời gian để tìm va đập."})
+    return sorted(findings, key=lambda x: x["confidence"], reverse=True)
+
+
 @router.get("/captures/{capture_id}/spectrum")
 async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", type: str = "vel", fmax: Optional[float] = None,
                            user: User = Depends(require("engineer"))):
@@ -282,6 +322,172 @@ async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", t
         vals = vals[: int(fmax / df) + 1]
     return {"capture_id": capture_id, "axis": axis, "type": type, "unit": unit, "df_hz": df,
             "values": [round(x, 6) for x in vals], "speed_hz": cap.get("speed_hz"), "markers": _markers(cap, point, machine)}
+
+
+@router.get("/points/{point_id}/harmonic-analysis")
+async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_range), axis: str = "x", type: str = "vel",
+                            base_hz: Optional[float] = Query(None, gt=0), tolerance_pct: float = Query(15, ge=1, le=30),
+                            max_order: int = Query(10, ge=1, le=30), prominence_ratio: float = Query(3, ge=1.2, le=10),
+                            tracking: str = Query("capture", pattern="^(fixed|capture)$"),
+                            limit: int = Query(300, ge=1, le=500), user: User = Depends(require("engineer"))):
+    """Aggregate significant 1X…nX peaks with fixed-speed or per-capture order tracking."""
+    await check_point(request.app.state.pool, user, point_id)
+    if axis not in ("x", "y", "z"):
+        raise HTTPException(400, "axis phải là x|y|z")
+    if type not in ("vel", "acc", "env"):
+        raise HTTPException(400, "type phải là vel|acc|env")
+    frm, to = rng
+    async with request.app.state.pool.acquire() as c:
+        point = dict(await c.fetchrow("SELECT * FROM measurement_points WHERE id=$1", point_id))
+        machine = dict(await c.fetchrow("SELECT * FROM machines WHERE id=$1", point["machine_id"]))
+        available = await c.fetchval("""SELECT count(*) FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                         AND spectrum_key IS NOT NULL""", point_id, frm, to)
+        caps = await c.fetch("""SELECT capture_id, ts, speed_hz, speed_confidence, fs_hz, spectrum_key
+                                FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                  AND spectrum_key IS NOT NULL
+                                ORDER BY ts DESC LIMIT $4""", point_id, frm, to, limit)
+    nominal_hz = float(machine.get("rated_speed_rpm") or 0) / 60
+    f1x = float(base_hz or nominal_hz or machine.get("line_freq_hz") or 50)
+    tolerance = tolerance_pct / 100
+    unit = "g" if type in ("acc", "env") else "mm/s"
+    details: list[dict] = []
+    skipped = 0
+    max_available_hz: list[float] = []
+    resolutions_hz: list[float] = []
+    bases_hz: list[float] = []
+    capture_speeds_hz: list[float] = []
+    semaphore = asyncio.Semaphore(8)
+
+    async def load_spectrum(cap):
+        async with semaphore:
+            return cap, await request.app.state.storage.get(cap["spectrum_key"])
+
+    loaded = await asyncio.gather(*(load_spectrum(cap) for cap in caps))
+    for cap, raw in loaded:
+        if not raw:
+            skipped += 1
+            continue
+        try:
+            doc = json.loads(gzip.decompress(raw))
+            if type == "env":
+                env = doc.get("env") or {}
+                df = float(env["df_hz"])
+                values = np.asarray(env["amp_g"][axis], dtype=float)
+            else:
+                df = float(doc["df_hz"])
+                acc = np.asarray(doc["acc"][axis], dtype=float)
+                if type == "acc":
+                    values = acc / dsp.G0
+                else:
+                    freq = np.arange(len(acc)) * df
+                    values = np.zeros_like(acc)
+                    low = float(machine.get("iso_band_lo_hz") or 2) * 0.5
+                    mask = (freq >= low) & (freq > 0)
+                    values[mask] = acc[mask] / (2 * np.pi * freq[mask]) * 1000
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+            skipped += 1
+            continue
+        capture_speed = float(cap["speed_hz"]) if cap["speed_hz"] is not None and float(cap["speed_hz"]) > 0 else None
+        reliable_speed = capture_speed if cap["speed_confidence"] == "high" else None
+        used_f1x = reliable_speed if tracking == "capture" and reliable_speed else f1x
+        max_available_hz.append((len(values) - 1) * df)
+        resolutions_hz.append(df)
+        bases_hz.append(used_f1x)
+        if reliable_speed:
+            capture_speeds_hz.append(reliable_speed)
+        for peak in dsp.harmonic_peaks(values, df, used_f1x, max_order, tolerance, prominence_ratio):
+            clean_peak = {k: (round(v, 6) if math.isfinite(v) else None) if isinstance(v, float) else v
+                          for k, v in peak.items()}
+            details.append({
+                "capture_id": cap["capture_id"], "ts": cap["ts"].isoformat(),
+                "capture_speed_hz": round(capture_speed, 4) if capture_speed else None,
+                "speed_confidence": cap["speed_confidence"],
+                "base_hz_used": round(used_f1x, 4), "df_hz": round(df, 6),
+                **clean_peak,
+            })
+    analyzed = len(caps) - skipped
+    summary_f1x = float(np.median(bases_hz)) if bases_hz else f1x
+    harmonics = []
+    for order in range(1, max_order + 1):
+        rows = [x for x in details if x["order"] == order]
+        if not rows:
+            continue
+        found = [x for x in rows if x["detected"]]
+        max_row = max(found, key=lambda x: x["amplitude"]) if found else None
+        amps = [x["amplitude"] for x in found]
+        occurrence = len(found) / analyzed * 100 if analyzed else 0
+        harmonics.append({
+            "order": order, "label": f"{order}X", "target_hz": round(order * summary_f1x, 4),
+            "band_hz": [round(order * summary_f1x * (1 - tolerance), 4), round(order * summary_f1x * (1 + tolerance), 4)],
+            "detections": len(found), "captures": analyzed, "occurrence_pct": round(occurrence, 1),
+            "peak_max": round(max(amps), 6) if amps else None,
+            "peak_mean": round(float(np.mean(amps)), 6) if amps else None,
+            "peak_p95": round(float(np.percentile(amps, 95)), 6) if amps else None,
+            "peak_freq_hz": max_row["peak_hz"] if max_row else None,
+            "peak_ts": max_row["ts"] if max_row else None,
+            "peak_capture_id": max_row["capture_id"] if max_row else None,
+            "level": "warning" if occurrence >= 60 else "watch" if occurrence >= 25 else "info" if found else "none",
+            "effect": _harmonic_effect(order),
+        })
+    one_max = next((x["peak_max"] for x in harmonics if x["order"] == 1), None)
+    for row in harmonics:
+        row["relative_to_1x"] = round(row["peak_max"] / one_max, 3) if one_max and row["peak_max"] is not None else None
+    min_fmax = min(max_available_hz) if max_available_hz else 0.0
+    median_df = float(np.median(resolutions_hz)) if resolutions_hz else 0.0
+    resolution_pct = median_df / summary_f1x * 100 if summary_f1x else 0.0
+    covered_order = min(max_order, int(min_fmax // summary_f1x)) if summary_f1x else 0
+    speed_coverage = len(capture_speeds_hz) / analyzed * 100 if analyzed else 0.0
+    speed_spread = ((max(capture_speeds_hz) - min(capture_speeds_hz)) / float(np.median(capture_speeds_hz)) * 100
+                    if len(capture_speeds_hz) > 1 and np.median(capture_speeds_hz) else 0.0)
+    skipped_pct = skipped / len(caps) * 100 if caps else 0.0
+    confidence_score = 100.0
+    confidence_score -= min(35, skipped_pct * 0.7)
+    confidence_score -= min(25, max(0.0, resolution_pct - 2) * 3)
+    confidence_score -= max(0, max_order - covered_order) * 5
+    if tracking == "capture":
+        confidence_score -= max(0.0, 90 - speed_coverage) * 0.25
+    confidence_score = round(max(0.0, min(100.0, confidence_score)))
+    quality_issues = []
+    if resolution_pct > 5:
+        quality_issues.append(f"Độ phân giải FFT {median_df:.3f} Hz ({resolution_pct:.1f}% của 1X) còn thô; nên tăng độ dài waveform.")
+    if covered_order < max_order:
+        quality_issues.append(f"Phổ chỉ đủ phủ đến khoảng {covered_order}X; không đánh giá các bậc cao hơn.")
+    if skipped:
+        quality_issues.append(f"Bỏ qua {skipped} capture do thiếu hoặc lỗi dữ liệu phổ.")
+    if tracking == "capture" and speed_coverage < 90:
+        quality_issues.append(f"Chỉ {speed_coverage:.0f}% capture có tốc độ quay độ tin cậy cao; capture còn lại dùng 1X cố định.")
+    if int(available or 0) > len(caps):
+        quality_issues.append(f"Khoảng chọn có {available} capture; kết quả dùng {len(caps)} capture mới nhất theo giới hạn truy vấn.")
+    findings = _harmonic_findings(harmonics)
+    for finding in findings:
+        finding["confidence"] = round(finding["confidence"] * confidence_score / 100)
+    detected = [x for x in harmonics if x["detections"]]
+    dominant = max(detected, key=lambda x: x["peak_max"]) if detected else None
+    conclusions = []
+    if not analyzed:
+        conclusions.append("Không có capture chứa phổ trong khoảng đã chọn.")
+    elif dominant:
+        conclusions.append(f"{dominant['label']} có đỉnh lớn nhất {dominant['peak_max']} {unit} tại {dominant['peak_freq_hz']} Hz, xuất hiện trong {dominant['occurrence_pct']}% capture.")
+    else:
+        conclusions.append(f"Chưa có đỉnh nào vượt ngưỡng nổi bật {prominence_ratio}× nền phổ trong các dải hài đã chọn.")
+    if quality_issues:
+        conclusions.append(f"Chất lượng phân tích {confidence_score}/100; cần xem các cảnh báo chất lượng trước khi sử dụng kết quả.")
+    conclusions.append("Kết quả là chỉ báo sàng lọc, không thay thế chẩn đoán có pha/coherence và kiểm tra cơ khí tại hiện trường.")
+    return {
+        "point_id": point_id, "point_name": point.get("name"), "axis": axis, "type": type, "unit": unit,
+        "from": frm.isoformat(), "to": to.isoformat(),
+        "settings": {"base_hz": round(f1x, 6), "representative_base_hz": round(summary_f1x, 6),
+                     "tracking": tracking, "tolerance_pct": tolerance_pct, "max_order": max_order,
+                     "prominence_ratio": prominence_ratio},
+        "total_captures": int(available or 0), "selected_captures": len(caps), "analyzed_captures": analyzed,
+        "skipped_captures": skipped, "truncated": int(available or 0) > len(caps),
+        "max_available_hz": round(min_fmax, 3) if max_available_hz else None,
+        "quality": {"score": confidence_score, "grade": "high" if confidence_score >= 80 else "medium" if confidence_score >= 60 else "low",
+                    "resolution_hz": round(median_df, 6), "resolution_pct_1x": round(resolution_pct, 2),
+                    "covered_order": covered_order, "speed_coverage_pct": round(speed_coverage, 1),
+                    "speed_spread_pct": round(speed_spread, 1), "issues": quality_issues},
+        "harmonics": harmonics, "details": details, "findings": findings, "conclusions": conclusions,
+    }
 
 
 @router.get("/points/{point_id}/waterfall")

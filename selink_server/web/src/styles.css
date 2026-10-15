@@ -117,6 +117,23 @@ body { background: #f4f6fb; color: #17213a; }
 .sensor-flow-arrow { position: absolute; z-index: 2; right: -25px; top: 42px; width: 30px; color: #91a0b8; font-size: 19px; }
 .assessment-card { height: 100%; }
 .series-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.fft-analysis-card { margin-bottom: 20px; border-top: 3px solid #2563eb !important; }
+.fft-filter-grid { display: grid; grid-template-columns: minmax(220px,1.3fr) minmax(350px,2fr) minmax(220px,1.3fr) minmax(170px,1fr); gap: 12px; align-items: end; }
+.fft-filter-grid label { min-width: 0; display: flex; flex-direction: column; gap: 6px; color: #657087; font-size: 11px; font-weight: 650; }
+.fft-filter-grid label > .ant-select,.fft-filter-grid label > .ant-input-number,.fft-filter-grid label > .ant-picker { width: 100%; }
+.fft-filter-grid > .ant-btn { width: 100%; }
+.fft-sampling-note { margin-top: 14px; }
+.fft-loading { min-height: 180px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; color: #6f7b91; }
+.fft-kpis { margin: 14px 0 12px; }
+.fft-kpis .ant-card { height: 100%; background: #f8fafc; box-shadow: none; }
+.fft-kpis .ant-statistic-content { color: #17213a; font-size: 23px; font-weight: 750; }
+.fft-findings { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin: 12px 0; }
+.fft-findings .ant-alert-description { display: flex; flex-direction: column; gap: 5px; line-height: 1.5; }
+.fft-issue-list { margin: 4px 0 0; padding-left: 19px; }
+.deep-section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 24px 0 12px; }
+.deep-section-title > div { display: flex; flex-direction: column; gap: 2px; }
+.deep-section-title b { color: #17213a; font-size: 16px; }
+.deep-section-title span { color: #8190a6; font-size: 11px; }
 
 .login-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0,1.15fr) minmax(380px,.85fr); background: #071225; overflow: hidden; }
 .login-visual { position: relative; padding: clamp(36px,7vw,96px); display: flex; flex-direction: column; justify-content: space-between; background: radial-gradient(circle at 38% 45%,rgba(26,89,190,.38),transparent 38%),linear-gradient(145deg,#0d2452,#071225 78%); }
@@ -177,6 +194,8 @@ body { background: #f4f6fb; color: #17213a; }
 @media (max-width: 1180px) {
   .hide-tablet { display: none !important; }
   .top-brand span { display: none; }
+  .fft-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .fft-findings { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
   .page { padding: 14px 10px 24px; }
@@ -190,5 +209,6 @@ body { background: #f4f6fb; color: #17213a; }
   .dashboard-card .ant-card-head-title { white-space: normal; line-height: 1.3; }
   .chart-toolbar-left .muted { display: none; }
   .sensor-flow { grid-template-columns: 1fr 1fr; gap: 9px; }.sensor-flow-arrow { display: none; }
+  .fft-filter-grid { grid-template-columns: 1fr; }.fft-range .ant-picker { width: 100%; }.deep-section-title { align-items: stretch; flex-direction: column; }
   .login-shell { grid-template-columns: 1fr; }.login-visual { min-height: 300px; padding: 32px 24px; }.login-copy h1 { font-size: 40px; }.login-copy p { font-size: 14px; }.login-signal { gap: 14px; }.login-panel { padding: 34px 22px; }
 }

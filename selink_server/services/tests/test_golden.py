@@ -70,3 +70,32 @@ def test_isolation_learn_and_cancel():
     iso = dsp.isolate(s3, dsp.compute_spectrum(base, fs), [{"f_hz": fm, "alpha": alpha}])
     assert dsp.order_amp_acc(iso, fm) / (2 * np.pi * fm) * 1000 < 0.1
     assert abs(dsp.order_amp_acc(iso, 49.17) / (2 * np.pi * 49.17) * 1000 - 2.0) < 0.05
+
+
+def test_harmonic_peaks_uses_tolerance_and_prominence():
+    df = 1.0
+    values = np.full(401, 0.1)
+    # 1X has drifted +10 %, 2X is nominal and 3X is only noise.
+    values[55] = 2.5
+    values[100] = 1.5
+    values[150] = 0.2
+    peaks = dsp.harmonic_peaks(values, df, 50.0, max_order=5, tolerance=0.15, prominence_ratio=3.0)
+    assert [p["order"] for p in peaks] == [1, 2, 3, 4, 5]
+    assert peaks[0]["detected"] and peaks[0]["peak_hz"] == 55
+    assert peaks[1]["detected"] and peaks[1]["peak_hz"] == 100
+    assert not peaks[2]["detected"]
+
+
+def test_harmonic_peaks_stops_above_available_spectrum():
+    peaks = dsp.harmonic_peaks(np.ones(121), 1.0, 50.0, max_order=10)
+    assert [p["order"] for p in peaks] == [1, 2]
+
+
+def test_harmonic_peaks_does_not_double_count_overlapping_bands():
+    values = np.full(401, 0.1)
+    values[225] = 5.0  # shared boundary/strongest line for the 4X and 5X bands
+    peaks = dsp.harmonic_peaks(values, 1.0, 50.0, max_order=6, tolerance=0.15)
+    owners = [p for p in peaks if p["detected"] and p["peak_hz"] == 225]
+    rejected = [p for p in peaks if p["overlap_rejected"]]
+    assert len(owners) == 1
+    assert len(rejected) == 1

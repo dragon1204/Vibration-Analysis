@@ -15,9 +15,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 2500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          echarts: ['echarts', 'echarts-for-react'],
-          antd: ['antd', '@ant-design/icons'],
+        manualChunks(id) {
+          if (id.includes('/echarts/') || id.includes('/echarts-for-react/')) return 'echarts'
+          if (id.includes('/antd/') || id.includes('/@ant-design/icons/')) return 'antd'
         },
       },
     },

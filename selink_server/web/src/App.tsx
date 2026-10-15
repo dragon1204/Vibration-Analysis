@@ -67,7 +67,7 @@ export default function App() {
     { key: '/events', icon: <AlertOutlined />, label: <span>Cảnh báo & sự kiện {eventCount > 0 && <Badge count={eventCount} size="small" />}</span> },
     { type: 'group', label: 'PHÂN TÍCH NÂNG CAO', children: [
       { key: diagnosisPath, icon: <RobotOutlined />, label: 'AI chẩn đoán' },
-      { key: deepPath, icon: <ApartmentOutlined />, label: 'Phân tích sâu S1–S4' },
+      { key: deepPath, icon: <ApartmentOutlined />, label: 'Phân tích sâu FFT' },
       { key: rulPath, icon: <FieldTimeOutlined />, label: 'Dự đoán RUL' },
       { key: '/reports', icon: <FileTextOutlined />, label: 'Lịch sử & báo cáo' },
     ] },

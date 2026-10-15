@@ -95,6 +95,83 @@ def orders(s: Spectrum, f1x: float, ks=DEFAULT_ORDERS) -> dict[str, float]:
     return out
 
 
+def harmonic_peaks(values: np.ndarray, df: float, f1x: float, max_order: int = 10,
+                   tolerance: float = 0.15, prominence_ratio: float = 3.0) -> list[dict]:
+    """Find the strongest significant peak around each integer order.
+
+    ``values`` is a one-sided amplitude spectrum in its presentation unit.  An
+    order is considered present when its strongest bin is at least
+    ``prominence_ratio`` times the local median floor.  The search window is a
+    percentage of the nominal order frequency, which makes the result useful
+    when speed varies slightly between captures (the UI defaults to ±15%).
+    """
+    arr = np.asarray(values, dtype=np.float64)
+    if arr.ndim != 1 or len(arr) < 3 or df <= 0 or f1x <= 0:
+        return []
+    max_order = max(1, min(int(max_order), 50))
+    tolerance = max(0.001, min(float(tolerance), 0.49))
+    prominence_ratio = max(1.0, float(prominence_ratio))
+    fmax = (len(arr) - 1) * df
+    out: list[dict] = []
+    for order in range(1, max_order + 1):
+        target = order * f1x
+        lo, hi = target * (1 - tolerance), target * (1 + tolerance)
+        if lo > fmax:
+            break
+        i0 = max(1, int(math.ceil(lo / df)))
+        i1 = min(len(arr) - 1, int(math.floor(hi / df)))
+        if i0 > i1:
+            continue
+        band = arr[i0:i1 + 1]
+        finite = np.isfinite(band)
+        if not finite.any():
+            continue
+        safe = np.where(finite, band, -np.inf)
+        peak_i = i0 + int(np.argmax(safe))
+        peak = float(arr[peak_i])
+        # Use the order band itself as a local baseline, excluding the peak and
+        # its two neighbouring bins.  Expand the context for low-resolution FFTs.
+        pad = max(4, i1 - i0 + 1)
+        c0, c1 = max(1, i0 - pad), min(len(arr) - 1, i1 + pad)
+        floor_values = np.concatenate((arr[c0:max(c0, peak_i - 2)], arr[min(c1 + 1, peak_i + 3):c1 + 1]))
+        floor_values = floor_values[np.isfinite(floor_values) & (floor_values >= 0)]
+        floor = float(np.median(floor_values)) if len(floor_values) else 0.0
+        ratio = peak / floor if floor > 0 else (float("inf") if peak > 0 else 0.0)
+        out.append({
+            "order": order,
+            "target_hz": round(target, 6),
+            "band_hz": [round(lo, 6), round(min(hi, fmax), 6)],
+            "peak_hz": round(peak_i * df, 6),
+            "amplitude": peak,
+            "floor": floor,
+            "peak_floor_ratio": ratio,
+            "detected": bool(peak > 0 and ratio >= prominence_ratio),
+            "overlap_rejected": False,
+            "_peak_bin": peak_i,
+        })
+    # Relative tolerance bands overlap from the higher orders onward.  A very
+    # strong physical line must not therefore be counted as two different
+    # harmonics.  Assign a shared winning bin to the nearest nominal order.
+    owners: dict[int, dict] = {}
+    for peak in out:
+        if not peak["detected"]:
+            continue
+        bin_index = peak["_peak_bin"]
+        previous = owners.get(bin_index)
+        error = abs(peak["peak_hz"] - peak["target_hz"]) / peak["target_hz"]
+        if previous is None:
+            owners[bin_index] = peak
+            continue
+        previous_error = abs(previous["peak_hz"] - previous["target_hz"]) / previous["target_hz"]
+        loser, winner = (previous, peak) if error < previous_error else (peak, previous)
+        loser["detected"] = False
+        loser["overlap_rejected"] = True
+        owners[bin_index] = winner
+    for peak in out:
+        peak.pop("_peak_bin", None)
+    return out
+
+
 def _okey(k: float) -> str:
     return str(int(k)) if float(k).is_integer() else repr(float(k))
 
