@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { Button, Segmented, Typography } from 'antd'
 import { DownloadOutlined } from '@ant-design/icons'
@@ -58,8 +58,12 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
   // The secondary axis exists only when a series actually uses it (no empty "% tải" axis without a power meter).
   const hasY2 = !!y2Name && series.some((s) => s.yAxisIndex === 1 && s.data.length)
   const yMax = limits ? niceMax(Math.max(max * 1.1, limits.cd * 1.15)) : max > 0 ? niceMax(max * 1.1) : undefined
-  const option = {
-    animation: false,
+  const option = useMemo(() => ({
+    animation: true,
+    animationDuration: 350,
+    animationDurationUpdate: 350,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     grid: compact ? { left: 34, right: 8, top: 8, bottom: 20 } : { left: 56, right: hasY2 ? 56 : 16, top: 40, bottom: 62 },
     tooltip: compact ? undefined : { trigger: 'axis', valueFormatter: (v: number) => (v == null ? '—' : num(v, 2)) },
     legend: compact ? undefined : { top: 0, left: 'center', type: 'scroll' },
@@ -72,6 +76,7 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
         axisLabel: { fontSize: 11 } }] : []),
     ],
     series: series.filter((s) => hasY2 || !s.yAxisIndex).map((s, i) => ({
+      id: `trend-${s.name}`,
       name: s.name, type: 'line', showSymbol: s.data.length < 3, symbolSize: 5, connectNulls: false,
       yAxisIndex: s.yAxisIndex || 0,
       lineStyle: { width: compact ? 1.4 : 1.8, type: s.dashed ? 'dashed' : 'solid' }, color: s.color,
@@ -82,7 +87,8 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
         data: markers.map((m) => ({ name: m.label, xAxis: vnMs(m.ts) })),
       } : undefined,
     })),
-  }
+  }), [series, limits, max, hasY2, yMax, compact, yName, y2Name, markers])
+
   return (
     <div>
       {csvName && (
@@ -91,7 +97,7 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
             saveCSV(csvName, [['series', 'ts', 'value'], ...series.flatMap((s) => s.data.map(([t, v]) => [s.name, t, v]))])}>CSV</Button>
         </div>
       )}
-      <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+      <ReactECharts option={option} style={{ height }} notMerge={false} lazyUpdate />
     </div>
   )
 }
@@ -133,8 +139,12 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
   const conv = (f: number) => (showOrders && speedHz ? f / speedHz : f)
   const data = values.map((v, i) => [conv(i * df), v])
   const fmax = conv(values.length * df)
-  const option = {
-    animation: false,
+  const option = useMemo(() => ({
+    animation: true,
+    animationDuration: 350,
+    animationDurationUpdate: 350,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     title: title ? { text: title, left: 'center', textStyle: { fontSize: 13 } } : undefined,
     grid: { left: 60, right: 28, top: title ? 78 : 62, bottom: 60 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v, 4)} ${unit}`,
@@ -145,16 +155,19 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
     yAxis: { type: 'value', name: unit, min: 0, nameLocation: 'middle', nameRotate: 90, nameGap: 42, axisLabel: { formatter: axisNum } },
     series: [
       {
+        id: 'spectrum-current',
         name: 'Hiện tại', type: 'line', showSymbol: false, data, lineStyle: { width: 1.3 }, color: '#0b4f6c',
         areaStyle: { color: 'rgba(11,79,108,.06)' },
         markLine: markerLines(markers, fmax, conv),
       },
       ...(compare ? [{
+        id: 'spectrum-compare',
         name: compare.name, type: 'line', showSymbol: false, color: '#bfbfbf', lineStyle: { width: 1 },
         data: compare.values.map((v, i) => [conv(i * compare.df), v]),
       }] : []),
     ],
-  }
+  }), [df, values, unit, markers, compare, showOrders, speedHz, title, fmax, data, conv])
+
   return (
     <div>
       {csvName && (
@@ -163,7 +176,7 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
             onClick={() => saveCSV(csvName, [['freq_hz', `value_${unit}`], ...values.map((v, i) => [i * df, v])])}>CSV</Button>
         </div>
       )}
-      <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+      <ReactECharts option={option} style={{ height }} notMerge={false} lazyUpdate />
     </div>
   )
 }
@@ -172,8 +185,12 @@ export function MultiSpectrumChart({ spectra, markers = [], fmax = 500, height =
   spectra: { name: string; df: number; values: number[]; color: string }[]
   markers?: Marker[]; fmax?: number; height?: number; unit?: string
 }) {
-  const option = {
-    animation: false,
+  const option = useMemo(() => ({
+    animation: true,
+    animationDuration: 350,
+    animationDurationUpdate: 350,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
     color: spectra.map((item) => item.color),
     grid: { left: 58, right: 28, top: 84, bottom: 62 },
     legend: { top: 4, type: 'scroll' },
@@ -182,12 +199,14 @@ export function MultiSpectrumChart({ spectra, markers = [], fmax = 500, height =
     xAxis: { type: 'value', name: 'Hz', min: 0, max: fmax, axisLabel: { formatter: axisNum } },
     yAxis: { type: 'value', name: unit, min: 0, scale: true, nameLocation: 'middle', nameRotate: 90, nameGap: 42, axisLabel: { formatter: axisNum } },
     series: spectra.map((spectrum, index) => ({
+      id: `multi-spec-${spectrum.name}`,
       name: spectrum.name, type: 'line', showSymbol: false, sampling: 'lttb', lineStyle: { width: 1.6 },
       data: spectrum.values.slice(0, Math.floor(fmax / spectrum.df) + 1).map((value, i) => [i * spectrum.df, value]),
       markLine: index === 0 ? markerLines(markers, fmax) : undefined,
     })),
-  }
-  return <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+  }), [spectra, markers, fmax, unit])
+
+  return <ReactECharts option={option} style={{ height }} notMerge={false} lazyUpdate />
 }
 
 const AXIS_COLOR: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
@@ -199,35 +218,126 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
   axes: Record<string, number[]>; dt: number; unit?: string; height?: number; defaultAxis?: string; windowS?: number
 }) {
   const names = Object.keys(axes)
-  const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0])
-  const shown = sel === 'all' ? names : [sel]
-  const total = Math.max(0, ...names.map((a) => axes[a].length)) * dt
-  const endPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
-  const option = {
-    animation: false,
-    grid: { left: 52, right: 16, top: 16, bottom: 56 },
-    tooltip: { trigger: 'axis', valueFormatter: (v: number) => `${num(v, 3)} ${unit}`,
-      axisPointer: { label: { formatter: (p: any) => (p.axisDimension === 'x' ? `${num(p.value * 1000, 1)} ms` : num(p.value, 3)) } } },
-    dataZoom: [{ type: 'inside', start: 0, end: endPct }, { type: 'slider', height: 18, bottom: 8, start: 0, end: endPct,
-      labelFormatter: (v: number) => `${num(v * 1000, 0)} ms` }],
-    xAxis: { type: 'value', name: 'ms', nameGap: 6, max: 'dataMax', axisLabel: { formatter: (v: number) => num(v * 1000, 0) } },
-    yAxis: { type: 'value', name: unit, nameTextStyle: { align: 'left' }, axisLabel: { formatter: axisNum } },
-    series: shown.map((a) => ({
-      name: AXIS_LABEL[a] || a.toUpperCase(), type: 'line', showSymbol: false, color: AXIS_COLOR[a],
-      lineStyle: { width: shown.length > 1 ? 1 : 1.5, opacity: shown.length > 1 ? 0.85 : 1 },
-      data: axes[a].map((v, i) => [i * dt, v]),
-    })),
-  }
+  const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
+  const total = Math.max(0, ...names.map((a) => axes[a]?.length || 0)) * dt
+  const defaultEndPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
+
+  // Track zoom position so switching axes does NOT reset the user's pan/zoom position
+  const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: defaultEndPct })
+  const prevAxesRef = useRef(axes)
+
+  useEffect(() => {
+    if (prevAxesRef.current !== axes) {
+      prevAxesRef.current = axes
+      setZoomRange({ start: 0, end: defaultEndPct })
+    }
+  }, [axes, defaultEndPct])
+
+  useEffect(() => {
+    if (defaultAxis && names.includes(defaultAxis) && !names.includes(sel)) {
+      setSel(defaultAxis)
+    }
+  }, [defaultAxis, names, sel])
+
+  const onEvents = useMemo(() => ({
+    datazoom: (evt: any) => {
+      const s = evt.start ?? evt.batch?.[0]?.start
+      const e = evt.end ?? evt.batch?.[0]?.end
+      if (s != null && e != null) {
+        setZoomRange({ start: s, end: e })
+      }
+    },
+  }), [])
+
+  const option = useMemo(() => {
+    const isAll = sel === 'all'
+    return {
+      animation: true,
+      animationDuration: 300,
+      animationDurationUpdate: 300,
+      animationEasing: 'cubicOut',
+      animationEasingUpdate: 'cubicOut',
+      grid: { left: 52, right: 16, top: 16, bottom: 56 },
+      tooltip: {
+        trigger: 'axis',
+        valueFormatter: (v: number) => `${num(v, 3)} ${unit}`,
+        axisPointer: {
+          label: {
+            formatter: (p: any) => (p.axisDimension === 'x' ? `${num(p.value * 1000, 1)} ms` : num(p.value, 3)),
+          },
+        },
+      },
+      dataZoom: [
+        { type: 'inside', start: zoomRange.start, end: zoomRange.end },
+        {
+          type: 'slider',
+          height: 18,
+          bottom: 8,
+          start: zoomRange.start,
+          end: zoomRange.end,
+          labelFormatter: (v: number) => `${num(v * 1000, 0)} ms`,
+        },
+      ],
+      xAxis: {
+        type: 'value',
+        name: 'ms',
+        nameGap: 6,
+        max: 'dataMax',
+        axisLabel: { formatter: (v: number) => num(v * 1000, 0) },
+      },
+      yAxis: {
+        type: 'value',
+        name: unit,
+        nameTextStyle: { align: 'left' },
+        axisLabel: { formatter: axisNum },
+      },
+      series: names.map((a) => {
+        const isShown = isAll || sel === a
+        return {
+          id: `waveform-${a}`,
+          name: AXIS_LABEL[a] || a.toUpperCase(),
+          type: 'line',
+          showSymbol: false,
+          color: AXIS_COLOR[a],
+          lineStyle: {
+            width: isAll ? 1 : 1.5,
+            opacity: isShown ? (isAll ? 0.85 : 1) : 0,
+          },
+          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, v]) : [],
+        }
+      }),
+    }
+  }, [axes, dt, unit, names, sel, zoomRange])
+
   return (
     <div>
       <div className="chart-toolbar chart-toolbar-left">
-        <Segmented size="small" value={sel} onChange={(v) => setSel(String(v))}
-          options={[...names.map((a) => ({ value: a, label: (
-            <span><span className="series-dot" style={{ background: AXIS_COLOR[a], marginRight: 5 }} />{AXIS_LABEL[a] || a.toUpperCase()}</span>
-          ) })), { value: 'all', label: 'Cả 3 trục' }]} />
+        <Segmented
+          size="small"
+          value={sel}
+          onChange={(v) => setSel(String(v))}
+          options={[
+            ...names.map((a) => ({
+              value: a,
+              label: (
+                <span>
+                  <span className="series-dot" style={{ background: AXIS_COLOR[a], marginRight: 5 }} />
+                  {AXIS_LABEL[a] || a.toUpperCase()}
+                </span>
+              ),
+            })),
+            { value: 'all', label: 'Cả 3 trục' },
+          ]}
+        />
         <span className="muted">Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
       </div>
-      <ReactECharts option={option} style={{ height }} notMerge lazyUpdate />
+      <ReactECharts
+        option={option}
+        style={{ height }}
+        notMerge={false}
+        lazyUpdate
+        onEvents={onEvents}
+      />
     </div>
   )
 }

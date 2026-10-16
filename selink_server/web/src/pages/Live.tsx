@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Col, Empty, Row, Select, Spin, Table, Tag } from 'antd'
 import { DisconnectOutlined, LineChartOutlined, WifiOutlined } from '@ant-design/icons'
 import { api } from '../api/client'
@@ -40,6 +40,63 @@ function isoValue(sensor: Sensor): { value: number | null; acc: number | null; p
   return { value: null, acc: null, peak: null, source: 'chờ capture đầu tiên' }
 }
 
+export function AnimatedNumber({ value, decimals = 2, fallback = '—' }: { value: number | null | undefined; decimals?: number; fallback?: string }) {
+  const [displayValue, setDisplayValue] = useState<number | null>(value ?? null)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const prevValueRef = useRef(value)
+
+  useEffect(() => {
+    if (value == null) {
+      setDisplayValue(null)
+      prevValueRef.current = value
+      return
+    }
+    const prev = prevValueRef.current
+    prevValueRef.current = value
+
+    if (prev == null || Math.abs(prev - value) < 1e-6) {
+      setDisplayValue(value)
+      return
+    }
+
+    setIsUpdating(true)
+    const timer = setTimeout(() => setIsUpdating(false), 700)
+
+    const startTime = performance.now()
+    const duration = 350
+    const startVal = prev
+    const endVal = value
+
+    let rafId: number
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const ease = 1 - Math.pow(1 - progress, 3)
+      const current = startVal + (endVal - startVal) * ease
+      setDisplayValue(current)
+
+      if (progress < 1) {
+        rafId = requestAnimationFrame(animate)
+      } else {
+        setDisplayValue(endVal)
+      }
+    }
+
+    rafId = requestAnimationFrame(animate)
+    return () => {
+      cancelAnimationFrame(rafId)
+      clearTimeout(timer)
+    }
+  }, [value])
+
+  if (displayValue == null) return <span>{fallback}</span>
+  return (
+    <span className={`animated-num ${isUpdating ? 'num-updating' : ''}`}>
+      {num(displayValue, decimals)}
+    </span>
+  )
+}
+
 function Spark({ series, color }: { series: [string, number][]; color: string }) {
   if (series.length < 2) return <span>Chưa đủ dữ liệu xu hướng 60 phút</span>
   const values = series.map((item) => item[1])
@@ -48,7 +105,19 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
   const t0 = Date.parse(series[0][0])
   const span = Math.max(Date.parse(series[series.length - 1][0]) - t0, 1)
   const pts = series.map(([t, v]) => `${((Date.parse(t) - t0) / span) * 100},${26 - ((v - min) / (max - min || 1)) * 23}`).join(' ')
-  return <svg viewBox="0 0 100 28" preserveAspectRatio="none"><polyline points={pts} style={{ stroke: color }} /></svg>
+  const gradId = `spark-grad-${color.replace('#', '')}`
+  return (
+    <svg viewBox="0 0 100 28" preserveAspectRatio="none" className="spark-svg">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={`0,28 ${pts} 100,28`} fill={`url(#${gradId})`} className="spark-area" />
+      <polyline points={pts} style={{ stroke: color }} className="spark-line" />
+    </svg>
+  )
 }
 
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
@@ -61,10 +130,10 @@ function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: an
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
-      <div className="sensor-primary"><strong>{num(value, 2)}</strong><span>mm/s</span></div>
+      <div className="sensor-primary"><strong><AnimatedNumber value={value} decimals={2} /></strong><span>mm/s</span></div>
       <div className="sensor-secondary">
-        <div><span>Gia tốc RMS</span><b>{num(acc, 2)} <small>g</small></b></div>
-        <div><span>Gia tốc đỉnh</span><b>{num(peak, 2)} <small>g</small></b></div>
+        <div><span>Gia tốc RMS</span><b><AnimatedNumber value={acc} decimals={2} /> <small>g</small></b></div>
+        <div><span>Gia tốc đỉnh</span><b><AnimatedNumber value={peak} decimals={2} /> <small>g</small></b></div>
       </div>
       <div className="sensor-spark" title="Vận tốc RMS ISO · 60 phút gần nhất">
         <Spark series={sensor.series} color={axisColor[sensor.axis] || '#3270ed'} />
@@ -78,8 +147,17 @@ export default function Live() {
   const nav = useNavigate()
   const [searchParams] = useSearchParams()
   const qc = useQueryClient()
-  const { data: machine } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
-  const { data: status, isLoading } = useQuery<any>({ queryKey: ['status', id], queryFn: () => api(`/machines/${id}/status`), refetchInterval: 15_000 })
+  const { data: machine, isFetching: isFetchingMachine } = useQuery<any>({
+    queryKey: ['machine', id],
+    queryFn: () => api(`/machines/${id}`),
+    placeholderData: keepPreviousData,
+  })
+  const { data: status, isLoading: isLoadingStatus, isFetching: isFetchingStatus } = useQuery<any>({
+    queryKey: ['status', id],
+    queryFn: () => api(`/machines/${id}/status`),
+    refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+  })
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
   const [, setTick] = useState(0)
@@ -91,6 +169,7 @@ export default function Live() {
       queryKey: ['iso-series', point.id],
       queryFn: () => api(`/points/${point.id}/metrics`, { params: { ...rangeParams(lastHours(6)), fields: 'iso_vrms_mm_s' } }),
       refetchInterval: 60_000,
+      placeholderData: keepPreviousData,
     })),
   })
   const isoSeries: Record<string, IsoSeries> = {}
@@ -100,9 +179,12 @@ export default function Live() {
   })
 
   useEffect(() => {
-    if (!machine) return
-    setWavePoint((current) => current || machine.points.find((point: any) => point.role === 'bearing')?.id || machine.points[0]?.id)
-  }, [machine])
+    if (!machine?.points?.length) return
+    const exists = machine.points.some((point: any) => point.id === wavePoint)
+    if (!exists || !wavePoint) {
+      setWavePoint(machine.points.find((point: any) => point.role === 'bearing')?.id || machine.points[0]?.id)
+    }
+  }, [machine, wavePoint])
 
   useEffect(() => {
     if (searchParams.get('focus') === 'spectrum' && machine?.points?.length) {
@@ -150,13 +232,15 @@ export default function Live() {
   })
 
   const lastCapture = useMemo(() => status?.points?.find((point: any) => point.id === wavePoint)?.last_capture, [status, wavePoint])
-  const { data: wave } = useQuery<any>({
+  const { data: wave, isFetching: isFetchingWave } = useQuery<any>({
     queryKey: ['wave', lastCapture?.capture_id],
     queryFn: () => api(`/captures/${lastCapture.capture_id}/waveform`, { params: { max_points: 4096 } }),
     enabled: !!lastCapture?.capture_id,
+    placeholderData: keepPreviousData,
   })
 
-  if (isLoading || !status || !machine) return <div className="page page-loading"><Spin size="large" /></div>
+  const isInitialLoading = (isLoadingStatus || !status || !machine) && !machine
+  if (isInitialLoading) return <div className="page page-loading"><Spin size="large" /></div>
 
   const points = status.points || []
   // One card per (point, axis), no duplicates: a single-point machine shows X, Z, Y of that point;
@@ -205,72 +289,88 @@ export default function Live() {
     `ISO 20816-3 nhóm ${machine.iso_group} · ${machine.foundation === 'flexible' ? 'nền mềm' : 'nền cứng'}`,
   ].filter(Boolean).join(' · ')
 
+  const isSwitching = isFetchingMachine || isFetchingStatus
+
   return (
-    <div className="page live-page">
-      <div className="live-titlebar">
-        <div><h1>{machine.id.toUpperCase()} · {machine.name}</h1><p>{subtitle}</p></div>
-        <div className="live-actions">
-          <Tag className={`state-tag ${overallZone ? zoneClass[overallZone] : ''}`}>
-            {overallZone ? `Vùng ${overallZone} · ${zoneText[overallZone]}` : 'Chưa phân vùng ISO'}
-          </Tag>
-          {isLive
-            ? <Tag className="live-tag"><WifiOutlined /> Trực tiếp · cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
-            : <Tag className="offline-tag"><DisconnectOutlined /> {lastTs ? `Mất kết nối · dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'Gateway chưa gửi dữ liệu'}</Tag>}
-          <Select value={id} style={{ minWidth: 190 }} onChange={(value) => nav(`/machines/${value}/live`)}
-            options={(overview?.machines || []).map((item: any) => ({ value: item.id, label: item.name }))} />
-        </div>
-      </div>
-
-      <Row gutter={[14, 14]}>
-        {sensors.map((sensor) => <Col xs={24} sm={12} xl={cardSpan} key={`${sensor.point.id}-${sensor.axis}`}>
-          <SensorCard sensor={sensor} limits={machine.iso_limits} onSpectrum={() => nav(`/points/${sensor.point.id}/spectrum`)} />
-        </Col>)}
-        {!sensors.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}
-
-        <Col xs={24} xl={15}>
-          <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc"
-            extra={machine.points.length > 1 && <Select size="small" value={wavePoint} onChange={setWavePoint} style={{ width: 150 }}
-              options={machine.points.map((point: any) => ({ value: point.id, label: point.name }))} />}>
-            <div className="card-subtitle">
-              {wave ? `${wavePointObj?.name || ''} · ${num(wave.fs_hz / 1000, 1)} kS/s · capture ${ago(lastCapture?.ts)}` : 'Dữ liệu capture mới nhất'}
-            </div>
-            {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} height={250} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
-          </Card>
-        </Col>
-        <Col xs={24} xl={9}>
-          <div className="stack-cards">
-            <Card className="data-list-card" size="small" title="Nhiệt độ">
-              {temperatureRows.length ? temperatureRows.map(([label, value]) => <div className="data-row" key={String(label)}><span>{label}</span><b>{`${num(value as number, 1)} °C`}</b></div>)
-                : <div className="card-empty-line">Chưa nhận dữ liệu nhiệt độ</div>}
-              {temps && <div className="data-foot">Cập nhật {ago(temps.ts)}</div>}
-            </Card>
-            <Card className="data-list-card" size="small" title="Thông số điện">
-              {power ? <>
-                {powerRows.map(([label, value]) => <div className="data-row" key={String(label)}><span>{label}</span><b>{value}</b></div>)}
-                <div className="data-foot">Cập nhật {ago(power.ts)}</div>
-              </> : <div className="card-empty-line">Chưa kết nối đồng hồ điện · các chỉ số dòng, áp, % tải và nhiệt cuộn dây sẽ hiện khi có đồng hồ</div>}
-            </Card>
+    <>
+      <div className={`machine-switch-loader ${isSwitching ? 'loading' : ''}`} />
+      <div className={`page live-page ${isSwitching ? 'page-updating' : ''}`}>
+        <div className="live-titlebar">
+          <div><h1>{machine.id.toUpperCase()} · {machine.name}</h1><p>{subtitle}</p></div>
+          <div className="live-actions">
+            <Tag className={`state-tag ${overallZone ? zoneClass[overallZone] : ''}`}>
+              {overallZone ? `Vùng ${overallZone} · ${zoneText[overallZone]}` : 'Chưa phân vùng ISO'}
+            </Tag>
+            {isLive
+              ? <Tag className="live-tag"><WifiOutlined /> Trực tiếp · cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
+              : <Tag className="offline-tag"><DisconnectOutlined /> {lastTs ? `Mất kết nối · dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'Gateway chưa gửi dữ liệu'}</Tag>}
+            <Select value={id} style={{ minWidth: 190 }} onChange={(value) => nav(`/machines/${value}/live`)}
+              options={(overview?.machines || []).map((item: any) => ({ value: item.id, label: item.name }))} />
           </div>
-        </Col>
+        </div>
 
-        <Col xs={24} xl={15}>
-          <Card className="dashboard-card" title="Xu hướng vận tốc RMS ISO · 6 giờ"
-            extra={trendPoint && <Button size="small" icon={<LineChartOutlined />} onClick={() => nav(`/points/${trendPoint}/spectrum`)}>Xem phổ</Button>}>
-            {trendSeries.length ? <TrendChart height={270} limits={machine.iso_limits} yName="mm/s" series={trendSeries} />
-              : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có capture trong 6 giờ qua" />}
-          </Card>
-        </Col>
-        <Col xs={24} xl={9}>
-          <Card className="accuracy-card" size="small" title="Độ chính xác đo" extra={<span className="accuracy-requirement">Yêu cầu sai lệch &lt; 5%</span>}>
-            {(status.accuracy || []).length ? <Table size="small" pagination={false} rowKey="quantity" dataSource={status.accuracy} columns={[
-              { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Số mẫu', dataIndex: 'n' },
-              { title: 'Sai lệch TB', dataIndex: 'mean_pct', render: (value) => `${num(value, 1)} %` },
-              { title: 'P95', dataIndex: 'p95_pct', render: (value) => `${num(value, 1)} %` },
-              { title: 'Kết quả', render: (_value, row: any) => row.mean_pct <= 5 ? <Tag color="success">Đạt</Tag> : <Tag color="error">Không đạt</Tag> },
-            ]} /> : <div className="card-empty-line">Chưa có biên bản đối chứng. <a onClick={() => nav('/accuracy')}>Nhập kết quả đo bằng đồng hồ →</a></div>}
-          </Card>
-        </Col>
-      </Row>
-    </div>
+        <Row gutter={[14, 14]}>
+          {sensors.map((sensor) => <Col xs={24} sm={12} xl={cardSpan} key={`${sensor.point.id}-${sensor.axis}`}>
+            <SensorCard sensor={sensor} limits={machine.iso_limits} onSpectrum={() => nav(`/points/${sensor.point.id}/spectrum`)} />
+          </Col>)}
+          {!sensors.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}
+
+          <Col xs={24} xl={15}>
+            <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc"
+              extra={machine.points.length > 1 && <Select size="small" value={wavePoint} onChange={setWavePoint} style={{ width: 150 }}
+                options={machine.points.map((point: any) => ({ value: point.id, label: point.name }))} />}>
+              <div className="card-subtitle">
+                {wave ? `${wavePointObj?.name || ''} · ${num(wave.fs_hz / 1000, 1)} kS/s · capture ${ago(lastCapture?.ts)}` : 'Dữ liệu capture mới nhất'}
+              </div>
+              <div className={`waveform-chart-wrap ${isFetchingWave ? 'chart-loading' : ''}`}>
+                {isFetchingWave && (
+                  <div className="waveform-loading-overlay">
+                    <Spin size="small" /> <span>Đang cập nhật...</span>
+                  </div>
+                )}
+                {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} height={250} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
+              </div>
+            </Card>
+          </Col>
+          <Col xs={24} xl={9}>
+            <div className="stack-cards">
+              <Card className="data-list-card" size="small" title="Nhiệt độ">
+                {temperatureRows.length ? temperatureRows.map(([label, value]) => (
+                  <div className="data-row" key={String(label)}>
+                    <span>{label}</span>
+                    <b><AnimatedNumber value={value as number} decimals={1} /> °C</b>
+                  </div>
+                )) : <div className="card-empty-line">Chưa nhận dữ liệu nhiệt độ</div>}
+                {temps && <div className="data-foot">Cập nhật {ago(temps.ts)}</div>}
+              </Card>
+              <Card className="data-list-card" size="small" title="Thông số điện">
+                {power ? <>
+                  {powerRows.map(([label, value]) => <div className="data-row" key={String(label)}><span>{label}</span><b>{value}</b></div>)}
+                  <div className="data-foot">Cập nhật {ago(power.ts)}</div>
+                </> : <div className="card-empty-line">Chưa kết nối đồng hồ điện · các chỉ số dòng, áp, % tải và nhiệt cuộn dây sẽ hiện khi có đồng hồ</div>}
+              </Card>
+            </div>
+          </Col>
+
+          <Col xs={24} xl={15}>
+            <Card className="dashboard-card" title="Xu hướng vận tốc RMS ISO · 6 giờ"
+              extra={trendPoint && <Button size="small" icon={<LineChartOutlined />} onClick={() => nav(`/points/${trendPoint}/spectrum`)}>Xem phổ</Button>}>
+              {trendSeries.length ? <TrendChart height={270} limits={machine.iso_limits} yName="mm/s" series={trendSeries} />
+                : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có capture trong 6 giờ qua" />}
+            </Card>
+          </Col>
+          <Col xs={24} xl={9}>
+            <Card className="accuracy-card" size="small" title="Độ chính xác đo" extra={<span className="accuracy-requirement">Yêu cầu sai lệch &lt; 5%</span>}>
+              {(status.accuracy || []).length ? <Table size="small" pagination={false} rowKey="quantity" dataSource={status.accuracy} columns={[
+                { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Số mẫu', dataIndex: 'n' },
+                { title: 'Sai lệch TB', dataIndex: 'mean_pct', render: (value) => `${num(value, 1)} %` },
+                { title: 'P95', dataIndex: 'p95_pct', render: (value) => `${num(value, 1)} %` },
+                { title: 'Kết quả', render: (_value, row: any) => row.mean_pct <= 5 ? <Tag color="success">Đạt</Tag> : <Tag color="error">Không đạt</Tag> },
+              ]} /> : <div className="card-empty-line">Chưa có biên bản đối chứng. <a onClick={() => nav('/accuracy')}>Nhập kết quả đo bằng đồng hồ →</a></div>}
+            </Card>
+          </Col>
+        </Row>
+      </div>
+    </>
   )
 }
