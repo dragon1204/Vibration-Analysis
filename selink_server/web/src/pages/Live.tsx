@@ -32,12 +32,6 @@ function getZone(value: number | null | undefined, limits: any): string | null {
 function isoValue(sensor: Sensor): { value: number | null; acc: number | null; peak: number | null; source: string } {
   const cap = sensor.point.last_capture
   const iso = cap?.axes_iso?.[sensor.axis]
-  const liveTs = Date.parse(sensor.data?.ts || '') || 0
-  const captureTs = Date.parse(cap?.ts || '') || 0
-  const liveVrms = sensor.data?.vel_rms_mm_s
-  if (liveVrms != null && liveTs >= captureTs) {
-    return { value: liveVrms, acc: sensor.data?.acc_rms_g ?? null, peak: iso?.acc_peak_g ?? null, source: `realtime 1 giây · ${ago(sensor.data.ts)}` }
-  }
   if (iso?.iso_vrms_mm_s != null) {
     return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, peak: iso.acc_peak_g ?? null, source: `capture ${ago(cap.ts)}` }
   }
@@ -129,16 +123,20 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
   const { value, acc, peak, source } = isoValue(sensor)
   const zone = getZone(value, limits)
+  const liveFresh = Date.now() - (Date.parse(sensor.data?.ts || '') || 0) < 5_000
+  const liveVelocity = liveFresh ? sensor.data?.vel_mm_s : null
+  const liveAcceleration = liveFresh ? sensor.data?.acc_g : null
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
-        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS ISO · {source}</span></div>
+        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>RMS ISO {num(value, 2)} mm/s · {source}</span></div>
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
-      <div className="sensor-primary"><strong><AnimatedNumber value={value} decimals={2} /></strong><span>mm/s</span></div>
+      <div className="sensor-live-label">Vận tốc realtime · cập nhật 1 giây</div>
+      <div className="sensor-primary"><strong><AnimatedNumber value={liveVelocity ?? value} decimals={2} /></strong><span>mm/s</span></div>
       <div className="sensor-secondary">
-        <div><span>Gia tốc RMS</span><b><AnimatedNumber value={acc} decimals={2} /> <small>g</small></b></div>
+        <div><span>{liveAcceleration != null ? 'Gia tốc realtime' : 'Gia tốc RMS'}</span><b><AnimatedNumber value={liveAcceleration ?? acc} decimals={2} /> <small>g</small></b></div>
         <div><span>Gia tốc đỉnh</span><b><AnimatedNumber value={peak} decimals={2} /> <small>g</small></b></div>
       </div>
       <div className="sensor-spark" title="Vận tốc RMS ISO · 60 phút gần nhất">
@@ -232,8 +230,21 @@ export default function Live() {
   // a capture updates the per-axis ISO cards, sparklines, trend and waveform; indicators update freshness.
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
-    if (d.type === 'vibstat') {
-      pendingStats.current.set(d.point_id, d)
+    if (d.type === 'vibstat' || d.type === 'vib') {
+      const pending = pendingStats.current.get(d.point_id) || { point_id: d.point_id, axes: {} }
+      const axes = { ...pending.axes }
+      for (const axis of ['x', 'y', 'z']) {
+        axes[axis] = {
+          ...(axes[axis] || {}),
+          ...(d.type === 'vibstat' ? d.axes?.[axis] : {
+            vel_mm_s: d.vel_mm_s?.[axis],
+            acc_g: d.acc_g?.[axis],
+            disp_um: d.disp_um?.[axis],
+            freq_hz: d.freq_hz?.[axis],
+          }),
+        }
+      }
+      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, axes })
       return
     }
     if (d.type === 'capture' && d.axes_iso) {
@@ -255,16 +266,6 @@ export default function Live() {
         })
         return { ...old, series }
       })
-      return
-    }
-    if (d.type === 'vib') {
-      qc.setQueryData(['status', id], (old: any) => old && ({
-        ...old,
-        points: old.points.map((p: any) => p.id !== d.point_id ? p : {
-          ...p, gateway_online: true,
-          axes: Object.fromEntries(['x', 'y', 'z'].map((a) => [a, { ...(p.axes?.[a] || {}), ts: d.ts }])),
-        }),
-      }))
       return
     }
     qc.invalidateQueries({ queryKey: ['status', id] })
