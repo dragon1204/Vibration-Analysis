@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Component, type ErrorInfo, type ReactNode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,6 +11,35 @@ import { AuthProvider } from './auth'
 import './styles.css'
 
 dayjs.locale('vi')
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Unhandled application error', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#f4f6fb' }}>
+          <div style={{ maxWidth: 520, padding: 28, borderRadius: 12, background: '#fff', boxShadow: '0 8px 30px rgba(15,39,92,.12)', textAlign: 'center' }}>
+            <h2>Không thể hiển thị màn hình này</h2>
+            <p>Ứng dụng vừa gặp lỗi hiển thị. Dữ liệu thiết bị không bị ảnh hưởng.</p>
+            <button onClick={() => window.location.reload()} style={{ padding: '9px 18px', border: 0, borderRadius: 8, color: '#fff', background: '#2563eb', cursor: 'pointer' }}>
+              Tải lại trang
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 15_000 } },
@@ -36,7 +65,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={qc}>
           <BrowserRouter>
             <AuthProvider>
-              <App />
+              <AppErrorBoundary><App /></AppErrorBoundary>
             </AuthProvider>
           </BrowserRouter>
         </QueryClientProvider>

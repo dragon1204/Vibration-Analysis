@@ -239,7 +239,11 @@ export default function Live() {
     placeholderData: keepPreviousData,
   })
 
-  const isInitialLoading = (isLoadingStatus || !status || !machine) && !machine
+  // Machine metadata and live status are fetched independently. Either request
+  // may finish first, so never render the dashboard until both are available.
+  // The previous condition only waited when `machine` was missing and crashed
+  // on `status.points` when the machine request won the race.
+  const isInitialLoading = isLoadingStatus || !status || !machine
   if (isInitialLoading) return <div className="page page-loading"><Spin size="large" /></div>
 
   const points = status.points || []
