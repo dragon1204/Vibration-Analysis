@@ -8,14 +8,16 @@ mqtt:
   password_file: /etc/edge-agent/mqtt.token
   ca_file: /etc/edge-agent/ca.pem
   send_waveforms: true
-# Board eMMC has ~1 GB free (no TF card yet): cap local storage; captures every 5 s ≈ 200 MB/day.
+# Board eMMC has ~1 GB free (no TF card yet): cap local storage; routine captures
+# every 30 s while alarms can still request an immediate capture.
 storage: {dir: /data/edge, retention_days: 2, max_bytes: 600000000}
 log: {level: info, file: /data/edge/logs/edge-agent.log}
 buses:
   # Sensor set to 115200 bps (BAUD code 0x06, saved): one RAWFIFO frame ≈ 0.55 s on the wire.
   - {id: busA, device: /dev/ttyS6, baud: 115200, timeout_ms: 150, raw_timeout_ms: 3000}
 # Near-real-time vendor-table metrics: poll B1 every 250 ms and publish one real
-# aggregate every 500 ms. Raw FFT capture remains every 5 s (one frame takes ~0.55 s).
+# aggregate every 500 ms. Raw FFT capture runs every 30 s (one frame takes ~0.55 s)
+# so it does not repeatedly interrupt the sub-second indicator stream.
 intervals: {b1_ms: 250, vib_window_ms: 500, window_s: 2}
 machines:
   - id: pump-tg-01
@@ -37,5 +39,5 @@ machines:
         iso_axes: [x, z]
         idle_sr: 4
         profiles:
-          - {name: orders, sr: 4, frames: 1, every_s: 5}
+          - {name: orders, sr: 4, frames: 1, every_s: 30}
 local_alarm: {enabled: false}
