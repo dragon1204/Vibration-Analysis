@@ -123,7 +123,9 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
   const { value, acc, peak, source } = isoValue(sensor)
   const zone = getZone(value, limits)
-  const liveFresh = Date.now() - (Date.parse(sensor.data?.ts || '') || 0) < 5_000
+  // Device timestamps may trail wall-clock time while queued data is drained.
+  // Freshness for the live tile must therefore use browser receive time.
+  const liveFresh = Date.now() - (sensor.data?.received_at_ms || 0) < 3_000
   const liveVelocity = liveFresh ? sensor.data?.vel_mm_s : null
   const liveAcceleration = liveFresh ? sensor.data?.acc_g : null
   return (
@@ -186,6 +188,7 @@ export default function Live() {
                 ...(point.axes?.[axis] || {}),
                 ...(stat.axes?.[axis] || {}),
                 ts: stat.ts,
+                received_at_ms: stat.receivedAtMs,
               }])),
             }
           }),
@@ -244,7 +247,7 @@ export default function Live() {
           }),
         }
       }
-      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, axes })
+      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, receivedAtMs: Date.now(), axes })
       return
     }
     if (d.type === 'capture' && d.axes_iso) {
