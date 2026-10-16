@@ -440,7 +440,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
                                       max(ms) AS max_ms FROM diffs WHERE ms > 0""", point_id, frm, to, profile)
         metric_cadence = await c.fetchrow("""WITH recent AS (
                                       SELECT DISTINCT ts FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
-                                      ORDER BY ts DESC LIMIT 5000
+                                      ORDER BY ts DESC LIMIT 200
                                     ), diffs AS (
                                       SELECT extract(epoch FROM (ts-lag(ts) OVER (ORDER BY ts)))*1000 AS ms FROM recent
                                     )
