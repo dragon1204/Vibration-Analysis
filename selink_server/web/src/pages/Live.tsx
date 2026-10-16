@@ -32,6 +32,12 @@ function getZone(value: number | null | undefined, limits: any): string | null {
 function isoValue(sensor: Sensor): { value: number | null; acc: number | null; peak: number | null; source: string } {
   const cap = sensor.point.last_capture
   const iso = cap?.axes_iso?.[sensor.axis]
+  const liveTs = Date.parse(sensor.data?.ts || '') || 0
+  const captureTs = Date.parse(cap?.ts || '') || 0
+  const liveVrms = sensor.data?.vel_rms_mm_s
+  if (liveVrms != null && liveTs >= captureTs) {
+    return { value: liveVrms, acc: sensor.data?.acc_rms_g ?? null, peak: iso?.acc_peak_g ?? null, source: `realtime 1 giây · ${ago(sensor.data.ts)}` }
+  }
   if (iso?.iso_vrms_mm_s != null) {
     return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, peak: iso.acc_peak_g ?? null, source: `capture ${ago(cap.ts)}` }
   }
@@ -155,13 +161,42 @@ export default function Live() {
   const { data: status, isLoading: isLoadingStatus, isFetching: isFetchingStatus } = useQuery<any>({
     queryKey: ['status', id],
     queryFn: () => api(`/machines/${id}/status`),
-    refetchInterval: 15_000,
+    // WebSocket is primary; this is a safety net if a proxy/network drops it.
+    refetchInterval: 5_000,
     placeholderData: keepPreviousData,
   })
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
+  const pendingStats = useRef(new Map<string, any>())
   const [, setTick] = useState(0)
-  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
+  useEffect(() => {
+    const t = setInterval(() => {
+      // Render at a stable 1 Hz even though the gateway can deliver metrics at
+      // 50 ms. Keeping only the latest sample prevents flicker and excess work.
+      if (pendingStats.current.size) {
+        const latest = new Map(pendingStats.current)
+        pendingStats.current.clear()
+        qc.setQueryData(['status', id], (old: any) => old && ({
+          ...old,
+          points: old.points.map((point: any) => {
+            const stat = latest.get(point.id)
+            if (!stat) return point
+            return {
+              ...point,
+              gateway_online: true,
+              axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, {
+                ...(point.axes?.[axis] || {}),
+                ...(stat.axes?.[axis] || {}),
+                ts: stat.ts,
+              }])),
+            }
+          }),
+        }))
+      }
+      setTick((n) => n + 1)
+    }, 1000)
+    return () => clearInterval(t)
+  }, [id, qc])
 
   // ISO RMS per point × axis over the last 6 h (one value per capture) – trend chart and 60-min sparklines.
   const isoQueries: { data?: any }[] = useQueries({
@@ -197,6 +232,10 @@ export default function Live() {
   // a capture updates the per-axis ISO cards, sparklines, trend and waveform; indicators update freshness.
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
+    if (d.type === 'vibstat') {
+      pendingStats.current.set(d.point_id, d)
+      return
+    }
     if (d.type === 'capture' && d.axes_iso) {
       qc.setQueryData(['status', id], (old: any) => old && ({
         ...old,

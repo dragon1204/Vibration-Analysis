@@ -235,6 +235,11 @@ class Ingest:
         msg = {"type": "vibstat", "point_id": d.point_id, "ts": d.ts.isoformat(),
                "axes": {a: s.model_dump() for a, s in d.axes.items()}}
         await bus.publish(self.redis, f"rt:point:{d.point_id}", msg)
+        # The live machine dashboard subscribes once at machine level. Forward
+        # statistics there as well so RMS values can update without polling.
+        machine = self.assets.machine_of(d.point_id)
+        if machine:
+            await bus.publish(self.redis, f"rt:machine:{machine['id']}", msg)
 
     async def on_metrics_vibenergy(self, t: Topic, d) -> None:
         if not self._point_ok(d.point_id):

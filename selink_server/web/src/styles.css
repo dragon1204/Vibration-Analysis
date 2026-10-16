@@ -122,12 +122,12 @@ body { background: #f4f6fb; color: #17213a; }
 }
 
 .sensor-primary { display: flex; align-items: baseline; gap: 5px; margin: 10px 0 9px; }
-.sensor-primary strong { color: #14203c; font-size: 31px; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.sensor-primary span { color: #6e7a8e; font-size: 12px; }
+.sensor-primary strong { color: #14203c; font-size: clamp(40px, 2.6vw, 50px); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.sensor-primary span { color: #59677d; font-size: 15px; font-weight: 600; }
 .sensor-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .sensor-secondary div { display: flex; flex-direction: column; }
-.sensor-secondary span { color: #7a869a; font-size: 11px; }
-.sensor-secondary b { color: #17213a; margin-top: 3px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sensor-secondary span { color: #69758a; font-size: 13px; }
+.sensor-secondary b { color: #17213a; margin-top: 4px; font-size: 19px; font-variant-numeric: tabular-nums; }
 .sensor-secondary small { color: #6e7a8e; font-weight: 500; }
 .sensor-spark { height: 30px; margin-top: 9px; border-top: 1px solid #eef1f5; padding-top: 4px; color: #9aa5b5; font-size: 9px; }
 .sensor-spark svg { display: block; width: 100%; height: 26px; overflow: visible; }
