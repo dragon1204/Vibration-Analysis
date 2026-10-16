@@ -224,6 +224,12 @@ async def machine_status(machine_id: str, request: Request, user: User = Depends
             rows = await c.fetch("""SELECT DISTINCT ON (axis) axis, ts, vel_mm_s, vel_mm_s_max, disp_um, freq_hz, acc_g, temp_c,
                                       acc_rms_g, vel_rms_mm_s, kurtosis, crest FROM vib_metrics
                                     WHERE point_id=$1 AND ts > now() - interval '1 hour' ORDER BY axis, ts DESC""", p["id"])
+            # The newest row per axis is usually a B1 row without RMS statistics; the 1 s RMS row is older.
+            # Overlay the latest non-null RMS fields so a refetch never drops the fast values.
+            rms_rows = await c.fetch("""SELECT DISTINCT ON (axis) axis, ts AS rms_ts, acc_rms_g, vel_rms_mm_s, kurtosis, crest
+                                        FROM vib_metrics WHERE point_id=$1 AND ts > now() - interval '1 hour'
+                                          AND vel_rms_mm_s IS NOT NULL ORDER BY axis, ts DESC""", p["id"])
+            rms_by_axis = {r["axis"]: dict(r) for r in rms_rows}
             # axes_iso: per-axis ISO velocity RMS / acc RMS computed from the raw waveform – the values
             # comparable with a handheld meter (the sensor's VX register is not an RMS value).
             cap = await c.fetchrow("""SELECT capture_id, ts, profile, iso_vrms_max_mm_s, iso_zone, speed_hz, anomaly_score,
@@ -234,7 +240,7 @@ async def machine_status(machine_id: str, request: Request, user: User = Depends
                                            FROM jsonb_each(features->'axes') AS e(k, v)) AS axes_iso
                                       FROM captures WHERE point_id=$1 AND features IS NOT NULL
                                       ORDER BY ts DESC LIMIT 1""", p["id"])
-            out_pts.append({**dict(p), "axes": {r["axis"]: dict(r) for r in rows},
+            out_pts.append({**dict(p), "axes": {r["axis"]: {**dict(r), **{k: v for k, v in rms_by_axis.get(r["axis"], {}).items() if k != "axis"}} for r in rows},
                             "last_capture": rezone(dict(cap), lim) if cap else None})
         power = await c.fetchrow("SELECT * FROM power_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
         temp = await c.fetchrow("SELECT * FROM temp_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)

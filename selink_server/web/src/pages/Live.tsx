@@ -203,6 +203,8 @@ export default function Live() {
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
   const [, setTick] = useState(0)
+  // Arrival time (browser clock) of the last live push: immune to browser/server clock skew.
+  const lastPushAt = useRef(0)
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
 
   // ISO RMS per point × axis over the last 6 h (one value per capture) – trend chart and 60-min sparklines.
@@ -239,6 +241,7 @@ export default function Live() {
   // a capture updates the ISO reference, while vibstat updates the fast RMS cards once per second.
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
+    if (d.type === 'vib' || d.type === 'vibstat' || d.type === 'capture') lastPushAt.current = Date.now()
     if (d.type === 'vib') {
       qc.setQueryData(['status', id], (old: any) => old && ({
         ...old,
@@ -318,8 +321,10 @@ export default function Live() {
   const maxValue = Math.max(...sensors.map((sensor) => isoValue(sensor).value ?? 0))
 
   // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
-  const lastTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
+  const dataTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
   const gatewayOnline = points.some((p: any) => p.gateway_online)
+  const pushFresh = lastPushAt.current > 0 && Date.now() - lastPushAt.current < LIVE_MAX_AGE_MS
+  const lastTs = pushFresh ? lastPushAt.current : dataTs
   const isLive = gatewayOnline && lastTs > 0 && Date.now() - lastTs < LIVE_MAX_AGE_MS
 
   const wavePointObj = machine.points.find((point: any) => point.id === wavePoint)
@@ -349,7 +354,8 @@ export default function Live() {
     `ISO 20816-3 nhóm ${machine.iso_group} · ${machine.foundation === 'flexible' ? 'nền mềm' : 'nền cứng'}`,
   ].filter(Boolean).join(' · ')
 
-  const isSwitching = isFetchingMachine || isFetchingStatus
+  // Background status polling (every 5 s) must not dim the page; only a machine switch does.
+  const isSwitching = isFetchingMachine || (isFetchingStatus && !status)
 
   return (
     <>
