@@ -47,8 +47,6 @@ function isoValue(sensor: Sensor): { value: number | null; acc: number | null; s
   if (iso?.iso_vrms_mm_s != null) {
     return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, source: `ISO capture ${ago(cap.ts)}`, reference: null, referenceSource: '' }
   }
-  const vrms = sensor.data?.vel_rms_mm_s
-  if (vrms != null) return { value: vrms, acc: sensor.data?.acc_rms_g ?? null, source: 'RMS cảm biến (dữ liệu cũ)', reference: null, referenceSource: '' }
   return { value: null, acc: null, source: 'chờ dữ liệu RMS', reference: null, referenceSource: '' }
 }
 
@@ -221,7 +219,7 @@ export default function Live() {
       }))
       return
     }
-    if (d.type === 'vibstat' && d.axes) {
+    if (d.type === 'vibstat' && d.source === 'edge_raw_iso' && d.axes) {
       qc.setQueryData(['status', id], (old: any) => old && ({
         ...old,
         points: old.points.map((point: any) => point.id !== d.point_id ? point : {

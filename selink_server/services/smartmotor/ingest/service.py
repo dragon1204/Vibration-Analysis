@@ -232,7 +232,7 @@ class Ingest:
                          _num(s.kurtosis), _num(s.skew), _num(s.wave_index), _num(s.peak_index), _num(s.pulse_coef),
                          _num(s.acc_var), _num(s.vel_kurt), s.err_code))
         await self.batch.add(SQL_VIBSTAT, rows)
-        msg = {"type": "vibstat", "point_id": d.point_id, "ts": d.ts.isoformat(),
+        msg = {"type": "vibstat", "point_id": d.point_id, "ts": d.ts.isoformat(), "source": d.source,
                "axes": {a: s.model_dump() for a, s in d.axes.items()}}
         await bus.publish(self.redis, f"rt:point:{d.point_id}", msg)
         # The live machine dashboard subscribes once at machine level. Forward

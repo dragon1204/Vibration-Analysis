@@ -310,7 +310,7 @@ func (p *pointRT) flushWindow(end time.Time) {
 	}
 	if stats != nil {
 		msg := vibStat{MsgID: ulid.New(), TS: ts, PointID: p.cfg.ID, SrCode: info.SrCode, Mode: info.Mode,
-			Axes: map[string]vibStatAxis{}, Flags: []string{}}
+			Source: "sensor_b2", Axes: map[string]vibStatAxis{}, Flags: []string{}}
 		for a := 0; a < 3; a++ {
 			msg.Axes[drivers.AxisNames[a]] = vibStatAxis{
 				Crest: fptr(stats.CrestFactor[a]), Kurtosis: fptr(stats.Kurtosis[a]), AccAbsMeanG: fptr(stats.AccAbsMeanG[a]),

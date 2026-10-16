@@ -163,6 +163,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			p := p
 			a.goLoop(ctx, p.runIndicators)
 			a.goLoop(ctx, p.runCaptures)
+			if a.cfg.Intervals.FastRMSMS > 0 {
+				a.goLoop(ctx, p.runFastRMS)
+			}
 		}
 		if m.isolationEnabled() {
 			a.goLoop(ctx, m.runIsolation)

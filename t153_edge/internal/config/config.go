@@ -259,6 +259,7 @@ type Intervals struct {
 	B1S         int `yaml:"b1_s" json:"b1_s"`
 	B1MS        int `yaml:"b1_ms,omitempty" json:"b1_ms,omitempty"`
 	B2S         int `yaml:"b2_s" json:"b2_s"`
+	FastRMSMS   int `yaml:"fast_rms_ms,omitempty" json:"fast_rms_ms,omitempty"`
 	B3S         int `yaml:"b3_s" json:"b3_s"`
 	WindowS     int `yaml:"window_s" json:"window_s"`
 	VibWindowMS int `yaml:"vib_window_ms,omitempty" json:"vib_window_ms,omitempty"`
@@ -442,6 +443,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Intervals.VibWindowMS != 0 && (c.Intervals.VibWindowMS < 50 || c.Intervals.VibWindowMS >= 1000) {
 		errs = append(errs, "intervals.vib_window_ms must be 50..999 ms when set")
+	}
+	if c.Intervals.FastRMSMS != 0 && (c.Intervals.FastRMSMS < 1000 || c.Intervals.FastRMSMS > 60000) {
+		errs = append(errs, "intervals.fast_rms_ms must be 1000..60000 ms when set")
 	}
 	if c.Intervals.B1MS > 0 && c.Intervals.VibWindowMS > 0 && c.Intervals.VibWindowMS < c.Intervals.B1MS {
 		errs = append(errs, "intervals.vib_window_ms must be >= intervals.b1_ms")

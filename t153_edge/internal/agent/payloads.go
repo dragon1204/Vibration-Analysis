@@ -56,6 +56,7 @@ type vibStat struct {
 	PointID string                 `json:"point_id"`
 	SrCode  uint8                  `json:"sr_code"`
 	Mode    uint8                  `json:"mode"`
+	Source  string                 `json:"source,omitempty"`
 	Axes    map[string]vibStatAxis `json:"axes"`
 	Flags   []string               `json:"flags"`
 }

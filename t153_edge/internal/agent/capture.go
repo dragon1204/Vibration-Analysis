@@ -82,6 +82,32 @@ func (p *pointRT) setSR(ctx context.Context, sr uint8) error {
 	return p.sensor.SetSampleRate(ctx, sr, true)
 }
 
+// prepareSR changes the sample rate only when required. The FIFO is stale
+// immediately after an SR change, so let the sensor settle and discard exactly
+// one frame. Keeping a fixed SR avoids throwing away two frames on every fast
+// RMS update.
+func (p *pointRT) prepareSR(ctx context.Context, sr uint8) (bool, error) {
+	current, err := p.sensor.SampleRate(ctx)
+	if err != nil {
+		return false, err
+	}
+	if current == sr {
+		return false, nil
+	}
+	if err := p.setSR(ctx, sr); err != nil {
+		return false, err
+	}
+	select {
+	case <-ctx.Done():
+		return true, ctx.Err()
+	case <-time.After(500 * time.Millisecond):
+	}
+	if _, err := p.sensor.ReadRawFrame(ctx); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 // capturedData is the raw result of one capture.
 type capturedData struct {
 	cap  features.Capture
@@ -102,7 +128,7 @@ func (p *pointRT) acquire(ctx context.Context, profileName string, prio bus.Prio
 	if !ok {
 		return nil, fmt.Errorf("invalid sr %d", sr)
 	}
-	if err := p.setSR(ctx, sr); err != nil {
+	if _, err := p.prepareSR(ctx, sr); err != nil {
 		p.recordResult(err)
 		return nil, err
 	}
@@ -114,16 +140,6 @@ func (p *pointRT) acquire(ctx context.Context, profileName string, prio bus.Prio
 			}
 		}
 	}()
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(500 * time.Millisecond):
-	}
-	// Discard one frame (stale FIFO content from the previous SR).
-	if _, err := p.sensor.ReadRawFrame(ctx); err != nil {
-		p.recordResult(err)
-		return nil, err
-	}
 	start := time.Now().UTC()
 	frames := make([]drivers.RawFrame, 0, prof.Frames)
 	for i := 0; i < prof.Frames; i++ {

@@ -66,6 +66,7 @@ class VibStat(_M):
     point_id: str
     sr_code: Optional[int] = None
     mode: Optional[int] = None
+    source: Optional[str] = None
     axes: dict[str, VibStatAxis]
     flags: list[str] = Field(default_factory=list)
 

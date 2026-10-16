@@ -15,15 +15,11 @@ log: {level: info, file: /data/edge/logs/edge-agent.log}
 buses:
   # Sensor set to 115200 bps (BAUD code 0x06, saved): one RAWFIFO frame ≈ 0.55 s on the wire.
   - {id: busA, device: /dev/ttyS6, baud: 115200, timeout_ms: 150, raw_timeout_ms: 3000}
-# Near-real-time vendor-table metrics: poll B1 and publish one real row every
-# 50 ms. Production can sustain a 50 ms median; P95 is ~100 ms because some
-# windows are skipped when the serial transaction crosses a window boundary.
-# Raw FFT capture runs every 30 s (one frame takes ~0.55 s)
-# so it does not repeatedly interrupt the sub-second indicator stream.
-# B2 exposes the sensor-computed velocity RMS. Poll it once per second so the
-# live dashboard follows the handheld meter without turning every update into
-# a RAWFIFO/FFT capture. The 30 s capture below remains the ISO/FFT reference.
-intervals: {b1_ms: 50, b2_s: 1, vib_window_ms: 50, window_s: 2}
+# The firmware's B2/VRMS registers are zero in MODE=1 and are not usable.
+# Compute the fast RMS from a real 1024-sample RAWFIFO frame every second.
+# B1 is retained at 500 ms for running/frequency hints without starving RAWFIFO.
+# Full FFT captures remain separate and run every 30 seconds.
+intervals: {b1_ms: 500, fast_rms_ms: 1000, vib_window_ms: 500, window_s: 2}
 machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"
@@ -42,7 +38,9 @@ machines:
         sensor: {driver: wtvb05, bus: busA, addr: 0x02, velocity_scale: 0.01}
         axes_map: {x: radial_h, y: axial, z: radial_v}
         iso_axes: [x, z]
-        idle_sr: 4
+        # Keep the sensor at 4 kS/s so the 1 s RMS loop does not switch SR or
+        # discard FIFO frames. One frame represents 256 ms of vibration.
+        idle_sr: 3
         profiles:
           # 4 kS/s keeps the full ISO 10–1000 Hz band inside the validated
           # anti-alias range (fs/2.56 = 1562.5 Hz). At 2 kS/s it was truncated
