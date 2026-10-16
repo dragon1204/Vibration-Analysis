@@ -122,11 +122,11 @@ body { background: #f4f6fb; color: #17213a; }
 }
 
 .sensor-primary { display: flex; align-items: baseline; gap: 5px; margin: 10px 0 9px; }
-.sensor-live-label { color: #2563eb; font-size: 11px; font-weight: 700; letter-spacing: .02em; margin-top: 10px; text-transform: uppercase; }
 .sensor-primary strong { color: #14203c; font-size: clamp(40px, 2.6vw, 50px); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .sensor-primary strong .animated-num { color: inherit; font-size: inherit; font-weight: inherit; }
 .sensor-primary > span { color: #59677d; font-size: 15px; font-weight: 600; }
 .sensor-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sensor-secondary.sensor-secondary-single { grid-template-columns: 1fr; }
 .sensor-secondary div { display: flex; flex-direction: column; }
 .sensor-secondary span { color: #69758a; font-size: 13px; }
 .sensor-secondary b { color: #17213a; margin-top: 4px; font-size: 19px; font-variant-numeric: tabular-nums; }

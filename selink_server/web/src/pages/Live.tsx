@@ -19,13 +19,6 @@ const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận đượ
 /** Data older than this is not "live": the gateway sends indicators every 10 s. */
 const LIVE_MAX_AGE_MS = 60_000
 
-function median(values: number[]): number | undefined {
-  const finite = values.filter(Number.isFinite).sort((a, b) => a - b)
-  if (!finite.length) return undefined
-  const middle = Math.floor(finite.length / 2)
-  return finite.length % 2 ? finite[middle] : (finite[middle - 1] + finite[middle]) / 2
-}
-
 function getZone(value: number | null | undefined, limits: any): string | null {
   if (value == null || !limits) return null
   if (value <= limits.ab) return 'A'
@@ -128,25 +121,18 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
 }
 
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
-  const { value, acc, peak, source } = isoValue(sensor)
+  const { value, acc, source } = isoValue(sensor)
   const zone = getZone(value, limits)
-  // Device timestamps may trail wall-clock time while queued data is drained.
-  // Freshness for the live tile must therefore use browser receive time.
-  const liveFresh = Date.now() - (sensor.data?.received_at_ms || 0) < 3_000
-  const liveVelocity = liveFresh ? sensor.data?.vel_mm_s : null
-  const liveAcceleration = liveFresh ? sensor.data?.acc_g : null
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
-        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>RMS ISO {num(value, 2)} mm/s · {source}</span></div>
+        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS ISO · {source}</span></div>
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
-      <div className="sensor-live-label">Vận tốc realtime · trung vị cửa sổ 1 giây</div>
-      <div className="sensor-primary"><strong><AnimatedNumber value={liveVelocity ?? value} decimals={2} /></strong><span>mm/s</span></div>
-      <div className="sensor-secondary">
-        <div><span>{liveAcceleration != null ? 'Gia tốc realtime' : 'Gia tốc RMS'}</span><b><AnimatedNumber value={liveAcceleration ?? acc} decimals={2} /> <small>g</small></b></div>
-        <div><span>Gia tốc đỉnh</span><b><AnimatedNumber value={peak} decimals={2} /> <small>g</small></b></div>
+      <div className="sensor-primary"><strong><AnimatedNumber value={value} decimals={2} /></strong><span>mm/s RMS</span></div>
+      <div className="sensor-secondary sensor-secondary-single">
+        <div><span>Gia tốc RMS từ capture</span><b><AnimatedNumber value={acc} decimals={2} /> <small>g</small></b></div>
       </div>
       <div className="sensor-spark" title="Vận tốc RMS ISO · 60 phút gần nhất">
         <Spark series={sensor.series} color={axisColor[sensor.axis] || '#3270ed'} />
@@ -174,40 +160,8 @@ export default function Live() {
   })
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
   const [wavePoint, setWavePoint] = useState<string>()
-  const pendingStats = useRef(new Map<string, any>())
   const [, setTick] = useState(0)
-  useEffect(() => {
-    const t = setInterval(() => {
-      // Render at a stable 1 Hz even though the gateway can deliver metrics at
-      // 50 ms. Keeping only the latest sample prevents flicker and excess work.
-      if (pendingStats.current.size) {
-        const latest = new Map(pendingStats.current)
-        pendingStats.current.clear()
-        qc.setQueryData(['status', id], (old: any) => old && ({
-          ...old,
-          points: old.points.map((point: any) => {
-            const stat = latest.get(point.id)
-            if (!stat) return point
-            return {
-              ...point,
-              gateway_online: true,
-              axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, {
-                ...(point.axes?.[axis] || {}),
-                ...(stat.axes?.[axis] || {}),
-                vel_mm_s: median(stat.samples?.[axis]?.vel || []) ?? stat.axes?.[axis]?.vel_mm_s,
-                acc_g: median(stat.samples?.[axis]?.acc || []) ?? stat.axes?.[axis]?.acc_g,
-                ts: stat.ts,
-                received_at_ms: stat.receivedAtMs,
-                live_sample_count: stat.samples?.[axis]?.vel?.length || 0,
-              }])),
-            }
-          }),
-        }))
-      }
-      setTick((n) => n + 1)
-    }, 1000)
-    return () => clearInterval(t)
-  }, [id, qc])
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 1000); return () => clearInterval(t) }, [])
 
   // ISO RMS per point × axis over the last 6 h (one value per capture) – trend chart and 60-min sparklines.
   const isoQueries: { data?: any }[] = useQueries({
@@ -243,29 +197,15 @@ export default function Live() {
   // a capture updates the per-axis ISO cards, sparklines, trend and waveform; indicators update freshness.
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
-    if (d.type === 'vibstat' || d.type === 'vib') {
-      const pending = pendingStats.current.get(d.point_id) || { point_id: d.point_id, axes: {}, samples: {} }
-      const axes = { ...pending.axes }
-      const samples = { ...pending.samples }
-      for (const axis of ['x', 'y', 'z']) {
-        axes[axis] = {
-          ...(axes[axis] || {}),
-          ...(d.type === 'vibstat' ? d.axes?.[axis] : {
-            vel_mm_s: d.vel_mm_s?.[axis],
-            acc_g: d.acc_g?.[axis],
-            disp_um: d.disp_um?.[axis],
-            freq_hz: d.freq_hz?.[axis],
-          }),
-        }
-        if (d.type === 'vib') {
-          const previous = samples[axis] || { vel: [], acc: [] }
-          samples[axis] = {
-            vel: d.vel_mm_s?.[axis] == null ? previous.vel : [...previous.vel, d.vel_mm_s[axis]],
-            acc: d.acc_g?.[axis] == null ? previous.acc : [...previous.acc, d.acc_g[axis]],
-          }
-        }
-      }
-      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, receivedAtMs: Date.now(), axes, samples })
+    if (d.type === 'vib') {
+      qc.setQueryData(['status', id], (old: any) => old && ({
+        ...old,
+        points: old.points.map((point: any) => point.id !== d.point_id ? point : {
+          ...point,
+          gateway_online: true,
+          axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, { ...(point.axes?.[axis] || {}), ts: d.ts }])),
+        }),
+      }))
       return
     }
     if (d.type === 'capture' && d.axes_iso) {

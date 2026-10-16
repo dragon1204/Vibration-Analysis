@@ -41,5 +41,8 @@ machines:
         iso_axes: [x, z]
         idle_sr: 4
         profiles:
-          - {name: orders, sr: 4, frames: 1, every_s: 30}
+          # 4 kS/s keeps the full ISO 10–1000 Hz band inside the validated
+          # anti-alias range (fs/2.56 = 1562.5 Hz). At 2 kS/s it was truncated
+          # to 781.25 Hz and captures carried the iso_band_truncated flag.
+          - {name: orders, sr: 3, frames: 1, every_s: 30}
 local_alarm: {enabled: false}
