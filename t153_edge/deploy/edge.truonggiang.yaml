@@ -37,8 +37,8 @@ machines:
         name: "Cảm biến 1"
         location: de
         sensor: {driver: wtvb05, bus: busA, addr: 0x02, velocity_scale: 0.01}
-        axes_map: {x: radial_h, y: axial, z: radial_v}
-        iso_axes: [x, z]
+        axes_map: {x: axial, y: radial_h, z: radial_v}
+        iso_axes: [y, z]
         # Keep the sensor at 4 kS/s so the 1 s RMS loop does not switch SR or
         # discard FIFO frames. One frame represents 256 ms of vibration.
         idle_sr: 3

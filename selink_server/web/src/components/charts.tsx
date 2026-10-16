@@ -210,12 +210,14 @@ export function MultiSpectrumChart({ spectra, markers = [], fmax = 500, height =
 }
 
 const AXIS_COLOR: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
-const AXIS_LABEL: Record<string, string> = { x: 'X ngang', y: 'Y dọc trục', z: 'Z đứng' }
+const ROLE_LABEL: Record<string, string> = { radial_h: 'ngang', axial: 'dọc trục', radial_v: 'đứng' }
+const DEFAULT_ROLES: Record<string, string> = { x: 'radial_h', y: 'axial', z: 'radial_v' }
+const axisLabel = (a: string, roles?: Record<string, string>) => `${a.toUpperCase()} ${ROLE_LABEL[roles?.[a] || DEFAULT_ROLES[a]] || ''}`.trim()
 
 /** Acceleration waveform. One axis at a time by default (three overlaid 2 kS/s traces read as a solid band),
  * opened on the first ~100 ms so individual cycles are visible; the slider pans/zooms over the whole frame. */
-export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis = 'x', windowS = 0.1 }: {
-  axes: Record<string, number[]>; dt: number; unit?: string; height?: number; defaultAxis?: string; windowS?: number
+export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis = 'x', windowS = 0.1, roles }: {
+  roles?: Record<string, string>; axes: Record<string, number[]>; dt: number; unit?: string; height?: number; defaultAxis?: string; windowS?: number
 }) {
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
@@ -295,7 +297,7 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
         const isShown = isAll || sel === a
         return {
           id: `waveform-${a}`,
-          name: AXIS_LABEL[a] || a.toUpperCase(),
+          name: axisLabel(a, roles),
           type: 'line',
           showSymbol: false,
           color: AXIS_COLOR[a],
@@ -322,7 +324,7 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
               label: (
                 <span>
                   <span className="series-dot" style={{ background: AXIS_COLOR[a], marginRight: 5 }} />
-                  {AXIS_LABEL[a] || a.toUpperCase()}
+                  {axisLabel(a, roles)}
                 </span>
               ),
             })),

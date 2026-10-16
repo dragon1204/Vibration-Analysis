@@ -12,7 +12,10 @@ import { ago, num } from '../utils/format'
 type IsoSeries = Record<string, [string, number][]>
 type Sensor = { point: any; axis: string; data: any; series: [string, number][] }
 
-const axisName: Record<string, string> = { x: 'ngang (H)', y: 'dọc trục (A)', z: 'đứng (V)' }
+const roleName: Record<string, string> = { radial_h: 'ngang (H)', axial: 'dọc trục (A)', radial_v: 'đứng (V)' }
+const defaultRoles: Record<string, string> = { x: 'radial_h', y: 'axial', z: 'radial_v' }
+/** Axis label follows the point's axes_map (physical mounting), not the sensor's axis letter. */
+const axisName = (point: any, axis: string) => roleName[point?.axes_map?.[axis] || defaultRoles[axis]] || axis.toUpperCase()
 const axisColor: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
 const zoneClass: Record<string, string> = { A: 'zone-a', B: 'zone-b', C: 'zone-c', D: 'zone-d' }
 const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận được', C: 'Cảnh báo', D: 'Nguy hiểm' }
@@ -167,7 +170,7 @@ function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: an
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
-        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span title={`Vận tốc RMS · cập nhật mỗi 1 giây · ${source}`}>Vận tốc RMS · cập nhật mỗi 1 giây · {source}</span></div>
+        <div><b>{sensor.point.name} · {axisName(sensor.point, sensor.axis)}</b><span title={`Vận tốc RMS · cập nhật mỗi 1 giây · ${source}`}>Vận tốc RMS · cập nhật mỗi 1 giây · {source}</span></div>
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
@@ -310,7 +313,7 @@ export default function Live() {
   // One card per (point, axis), no duplicates: a single-point machine shows X, Z, Y of that point;
   // with two or more points, the radial axes of the first points come first.
   const sensorDefs: [any, string][] = points.length === 1
-    ? [[points[0], 'x'], [points[0], 'z'], [points[0], 'y']]
+    ? ['radial_h', 'radial_v', 'axial'].flatMap((role) => Object.entries(points[0].axes_map || defaultRoles).filter(([, r]) => r === role).map(([a]) => [points[0], a] as [any, string]))
     : points.flatMap((point: any) => [[point, 'x'], [point, 'z']] as [any, string][]).slice(0, 4)
   const cutoff = Date.now() - 3_600_000
   const sensors: Sensor[] = sensorDefs.map(([point, axis]) => ({
@@ -330,7 +333,7 @@ export default function Live() {
   const wavePointObj = machine.points.find((point: any) => point.id === wavePoint)
   const trendPoint = wavePoint || points[0]?.id
   const trendSeries = (['x', 'z', 'y'] as const).map((axis) => ({
-    name: `${axisName[axis]}`, data: isoSeries[trendPoint]?.[axis] || [], color: axisColor[axis],
+    name: axisName(machine.points.find((q: any) => q.id === trendPoint), axis), data: isoSeries[trendPoint]?.[axis] || [], color: axisColor[axis],
   })).filter((s) => s.data.length)
 
   const power = status.power
@@ -392,7 +395,8 @@ export default function Live() {
                     <Spin size="small" /> <span>Đang cập nhật...</span>
                   </div>
                 )}
-                {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} height={250} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
+                {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} height={250} roles={wavePointObj?.axes_map}
+                  defaultAxis={Object.entries(wavePointObj?.axes_map || defaultRoles).find(([, r]) => r === 'radial_h')?.[0] || 'x'} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
               </div>
             </Card>
           </Col>
