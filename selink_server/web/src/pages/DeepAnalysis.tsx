@@ -347,7 +347,8 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     {analysis.isFetching && <div className="fft-loading"><Spin /><span>Đang đọc và tổng hợp phổ của các capture…</span></div>}
     {result && !analysis.isFetching && <>
       <Alert showIcon type={result.sampling?.metric?.median_ms <= 84 ? 'success' : result.sampling?.metric?.median_ms < 1000 ? 'info' : 'warning'}
-        message={result.sampling?.metric?.median_ms <= 84 ? 'Cadence metric đã đạt mục tiêu 68–72 ms'
+        message={result.sampling?.metric?.median_ms < 60 ? 'Cadence metric nhanh hơn mục tiêu 68–72 ms'
+          : result.sampling?.metric?.median_ms <= 84 ? 'Cadence metric đã đạt mục tiêu 68–72 ms'
           : result.sampling?.metric?.median_ms < 1000 ? 'Cadence metric đã dưới 1 giây; chưa đạt mục tiêu 70 ms'
             : 'Cadence nguồn hiện chưa đạt dưới 1 giây'}
         description={<>Metric thực tế: <b>{num(result.sampling?.metric?.median_ms, 1)} ms/dòng</b> (P95 {num(result.sampling?.metric?.p95_ms, 1)} ms); capture FFT: <b>{num(result.sampling?.capture?.median_ms, 1)} ms/capture</b>. Hệ thống không nội suy hoặc lặp giá trị để giả lập 70 ms. “Số capture đạt ngưỡng” bên dưới là tần suất xuất hiện đỉnh trong các phổ, không phải chu kỳ lấy mẫu.</>}
