@@ -32,6 +32,7 @@ class VibMetrics(_M):
     msg_id: Optional[str] = None
     ts: datetime
     window_s: int = 10
+    window_ms: Optional[int] = None
     point_id: str
     sensor: SensorInfo = Field(default_factory=SensorInfo)
     vel_mm_s: XYZ = Field(default_factory=XYZ)

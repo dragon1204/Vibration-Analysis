@@ -256,13 +256,15 @@ type Log struct {
 
 // Intervals of periodic tasks (spec 5.4.1).
 type Intervals struct {
-	B1S     int `yaml:"b1_s" json:"b1_s"`
-	B2S     int `yaml:"b2_s" json:"b2_s"`
-	B3S     int `yaml:"b3_s" json:"b3_s"`
-	WindowS int `yaml:"window_s" json:"window_s"`
-	TempS   int `yaml:"temp_s" json:"temp_s"`
-	PowerS  int `yaml:"power_s" json:"power_s"`
-	HealthS int `yaml:"health_s" json:"health_s"`
+	B1S         int `yaml:"b1_s" json:"b1_s"`
+	B1MS        int `yaml:"b1_ms,omitempty" json:"b1_ms,omitempty"`
+	B2S         int `yaml:"b2_s" json:"b2_s"`
+	B3S         int `yaml:"b3_s" json:"b3_s"`
+	WindowS     int `yaml:"window_s" json:"window_s"`
+	VibWindowMS int `yaml:"vib_window_ms,omitempty" json:"vib_window_ms,omitempty"`
+	TempS       int `yaml:"temp_s" json:"temp_s"`
+	PowerS      int `yaml:"power_s" json:"power_s"`
+	HealthS     int `yaml:"health_s" json:"health_s"`
 }
 
 // Load reads a YAML file and applies defaults and validation.
@@ -415,7 +417,9 @@ func (c *Config) applyDefaults() {
 			*v = d
 		}
 	}
-	setI(&iv.B1S, 2)
+	if iv.B1S == 0 && iv.B1MS == 0 {
+		iv.B1S = 2
+	}
 	setI(&iv.B2S, 10)
 	setI(&iv.B3S, 60)
 	setI(&iv.WindowS, 10)
@@ -429,6 +433,18 @@ func (c *Config) Validate() error {
 	var errs []string
 	if c.Gateway.ID == "" || c.Gateway.Tenant == "" || c.Gateway.Site == "" {
 		errs = append(errs, "gateway.id, tenant and site are required")
+	}
+	if c.Intervals.B1MS != 0 && (c.Intervals.B1MS < 50 || c.Intervals.B1MS >= 1000) {
+		errs = append(errs, "intervals.b1_ms must be 50..999 ms when set")
+	}
+	if c.Intervals.B1MS > 0 && c.Intervals.B1S > 0 {
+		errs = append(errs, "use only one of intervals.b1_ms or intervals.b1_s")
+	}
+	if c.Intervals.VibWindowMS != 0 && (c.Intervals.VibWindowMS < 50 || c.Intervals.VibWindowMS >= 1000) {
+		errs = append(errs, "intervals.vib_window_ms must be 50..999 ms when set")
+	}
+	if c.Intervals.B1MS > 0 && c.Intervals.VibWindowMS > 0 && c.Intervals.VibWindowMS < c.Intervals.B1MS {
+		errs = append(errs, "intervals.vib_window_ms must be >= intervals.b1_ms")
 	}
 	buses := map[string]bool{}
 	for _, b := range c.Buses {

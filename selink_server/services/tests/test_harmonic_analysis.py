@@ -39,6 +39,29 @@ def test_order_tracking_follows_speed_change():
     assert tracked[0]["detected"] and tracked[0]["peak_hz"] == 48
 
 
+def test_relative_threshold_rejects_tiny_prominent_line_without_hiding_detail():
+    peaks = [
+        {"order": 1, "amplitude": 5.0, "detected": True},
+        {"order": 2, "amplitude": 1.0, "detected": True},
+        {"order": 3, "amplitude": 0.2, "detected": True},
+    ]
+    result = dsp.apply_relative_harmonic_threshold(peaks, 5)
+    assert result[1]["detected"] and result[1]["relative_to_1x_pct"] == 20
+    assert not result[2]["detected"]
+    assert result[2]["below_relative_threshold"]
+    assert result[2]["relative_to_1x_pct"] == 4
+
+
+def test_relative_threshold_is_not_applied_without_a_detected_1x_reference():
+    peaks = [
+        {"order": 1, "amplitude": 0.1, "detected": False},
+        {"order": 2, "amplitude": 1.0, "detected": True},
+    ]
+    result = dsp.apply_relative_harmonic_threshold(peaks, 10)
+    assert result[1]["detected"]
+    assert result[1]["relative_to_1x_pct"] is None
+
+
 def test_harmonic_temporal_detects_robust_growth_and_streak():
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     amplitudes = [1.0, 1.1, 1.0, 8.0, 2.0, 2.2, 2.1]

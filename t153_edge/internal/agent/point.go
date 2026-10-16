@@ -144,10 +144,23 @@ func (p *pointRT) runIndicators(ctx context.Context) {
 	} else {
 		p.log.Warn("sensor info failed", "err", err)
 	}
-	tick := time.NewTicker(time.Second)
+	b1Interval := time.Duration(iv.B1S) * time.Second
+	if iv.B1MS > 0 {
+		b1Interval = time.Duration(iv.B1MS) * time.Millisecond
+	}
+	window := time.Duration(iv.WindowS) * time.Second
+	if iv.VibWindowMS > 0 {
+		window = time.Duration(iv.VibWindowMS) * time.Millisecond
+	}
+	// Check often enough for sub-second B1 polling without spinning. Sensor reads
+	// remain serialized by the priority bus, so waveform capture stays safe.
+	tickInterval := 50 * time.Millisecond
+	if quarter := b1Interval / 4; quarter > 0 && quarter < tickInterval {
+		tickInterval = quarter
+	}
+	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 	var lastB1, lastB2, lastB3 time.Time
-	window := time.Duration(iv.WindowS) * time.Second
 	lastWindow := time.Now().Truncate(window)
 	for {
 		select {
@@ -158,7 +171,7 @@ func (p *pointRT) runIndicators(ctx context.Context) {
 			if !p.online(now) {
 				continue
 			}
-			if now.Sub(lastB1) >= time.Duration(iv.B1S)*time.Second {
+			if now.Sub(lastB1) >= b1Interval {
 				lastB1 = now
 				ind, err := p.sensor.ReadIndicators(ctx)
 				p.recordResult(err)
@@ -228,7 +241,15 @@ func (p *pointRT) flushWindow(end time.Time) {
 	unsynced := end.UTC().Year() < 2026
 	if len(win) > 0 {
 		var flags []string
-		msg := vibMetrics{MsgID: ulid.New(), TS: ts, WindowS: p.a.cfg.Intervals.WindowS, PointID: p.cfg.ID,
+		windowMS := int((time.Duration(p.a.cfg.Intervals.WindowS) * time.Second) / time.Millisecond)
+		if p.a.cfg.Intervals.VibWindowMS > 0 {
+			windowMS = p.a.cfg.Intervals.VibWindowMS
+		}
+		windowS := 0
+		if windowMS%1000 == 0 {
+			windowS = windowMS / 1000
+		}
+		msg := vibMetrics{MsgID: ulid.New(), TS: ts, WindowS: windowS, WindowMS: windowMS, PointID: p.cfg.ID,
 			Sensor:  sensorInfo{Model: "WTVB05", Addr: p.cfg.Sensor.Addr, SrCode: info.SrCode, Mode: info.Mode, FW: info.Firmware},
 			Samples: len(win), TimeUnsync: unsynced}
 		col := func(f func(drivers.VibrationIndicators) float64) []float64 {

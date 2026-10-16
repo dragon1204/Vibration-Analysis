@@ -12,7 +12,7 @@ func deployFile(name string) string {
 }
 
 func TestSampleConfigs(t *testing.T) {
-	for _, n := range []string{"edge.yaml", "edge.beerhn.yaml", "edge.dev.yaml"} {
+	for _, n := range []string{"edge.yaml", "edge.beerhn.yaml", "edge.dev.yaml", "edge.truonggiang.yaml"} {
 		c, err := Load(deployFile(n))
 		if err != nil {
 			t.Fatalf("%s: %v", n, err)
@@ -31,6 +31,26 @@ func TestSampleConfigs(t *testing.T) {
 	b, _ := Load(deployFile("edge.beerhn.yaml"))
 	if b.Machines[0].ISOGroup != 1 || !b.Machines[0].Isolation.Enabled {
 		t.Fatal("beer hn isolation config")
+	}
+}
+
+func TestSubsecondVibrationIntervals(t *testing.T) {
+	c, err := Load(deployFile("edge.truonggiang.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Intervals.B1MS != 250 || c.Intervals.VibWindowMS != 500 || c.Intervals.B1S != 0 {
+		t.Fatalf("unexpected subsecond intervals: %+v", c.Intervals)
+	}
+
+	bad := `
+gateway: {id: g, tenant: t, site: s}
+intervals: {b1_ms: 40, vib_window_ms: 20}
+buses: [{id: a, device: /dev/x}]
+machines: [{id: m, points: [{id: p1, sensor: {bus: a, addr: 0x11}}]}]
+`
+	if _, err := Parse([]byte(bad)); err == nil {
+		t.Fatal("expected unsafe millisecond intervals to be rejected")
 	}
 }
 

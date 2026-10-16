@@ -390,7 +390,9 @@ async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", t
 async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_range), axis: str = "x", type: str = "vel",
                             base_hz: Optional[float] = Query(None, gt=0), tolerance_pct: float = Query(15, ge=1, le=30),
                             max_order: int = Query(10, ge=1, le=30), prominence_ratio: float = Query(3, ge=1.2, le=10),
+                            min_relative_to_1x_pct: float = Query(5, ge=0, le=100),
                             tracking: str = Query("capture", pattern="^(fixed|capture)$"),
+                            profile: Optional[str] = Query(None, max_length=64),
                             limit: int = Query(300, ge=1, le=500), user: User = Depends(require("engineer"))):
     """Aggregate significant 1X…nX peaks with fixed-speed or per-capture order tracking."""
     await check_point(request.app.state.pool, user, point_id)
@@ -403,11 +405,49 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         point = dict(await c.fetchrow("SELECT * FROM measurement_points WHERE id=$1", point_id))
         machine = dict(await c.fetchrow("SELECT * FROM machines WHERE id=$1", point["machine_id"]))
         available = await c.fetchval("""SELECT count(*) FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
-                                         AND spectrum_key IS NOT NULL""", point_id, frm, to)
-        caps = await c.fetch("""SELECT capture_id, ts, speed_hz, speed_confidence, fs_hz, spectrum_key
-                                FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
-                                  AND spectrum_key IS NOT NULL
-                                ORDER BY ts DESC LIMIT $4""", point_id, frm, to, limit)
+                                         AND spectrum_key IS NOT NULL AND ($4::text IS NULL OR profile=$4)""",
+                                     point_id, frm, to, profile)
+        # Use an evenly-spaced deterministic sample instead of only the newest captures.
+        # This keeps a long selected interval representative while bounding object-storage IO.
+        caps = await c.fetch("""WITH eligible AS (
+                                  SELECT capture_id, ts, profile, speed_hz, speed_confidence, fs_hz, spectrum_key
+                                  FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                    AND spectrum_key IS NOT NULL AND ($4::text IS NULL OR profile=$4)
+                                ), numbered AS (
+                                  SELECT *, row_number() OVER (ORDER BY ts) AS rn, count(*) OVER () AS total_count
+                                  FROM eligible
+                                )
+                                SELECT capture_id, ts, profile, speed_hz, speed_confidence, fs_hz, spectrum_key
+                                FROM numbered
+                                WHERE total_count <= $5 OR rn = 1 OR
+                                  floor((rn - 1)::numeric * $5 / total_count) >
+                                  floor((rn - 2)::numeric * $5 / total_count)
+                                ORDER BY ts DESC LIMIT $5""", point_id, frm, to, profile, limit)
+        profile_rows = await c.fetch("""SELECT coalesce(profile, '(không tên)') AS profile, count(*) AS captures
+                                        FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                          AND spectrum_key IS NOT NULL AND ($4::text IS NULL OR profile=$4)
+                                        GROUP BY profile ORDER BY count(*) DESC""", point_id, frm, to, profile)
+        capture_cadence = await c.fetchrow("""WITH recent AS (
+                                      SELECT ts FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                        AND spectrum_key IS NOT NULL AND ($4::text IS NULL OR profile=$4)
+                                      ORDER BY ts DESC LIMIT 1000
+                                    ), diffs AS (
+                                      SELECT extract(epoch FROM (ts-lag(ts) OVER (ORDER BY ts)))*1000 AS ms FROM recent
+                                    )
+                                    SELECT count(ms) AS intervals, min(ms) AS min_ms,
+                                      percentile_cont(0.5) WITHIN GROUP (ORDER BY ms) AS median_ms,
+                                      percentile_cont(0.95) WITHIN GROUP (ORDER BY ms) AS p95_ms,
+                                      max(ms) AS max_ms FROM diffs WHERE ms > 0""", point_id, frm, to, profile)
+        metric_cadence = await c.fetchrow("""WITH recent AS (
+                                      SELECT DISTINCT ts FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                      ORDER BY ts DESC LIMIT 5000
+                                    ), diffs AS (
+                                      SELECT extract(epoch FROM (ts-lag(ts) OVER (ORDER BY ts)))*1000 AS ms FROM recent
+                                    )
+                                    SELECT count(ms) AS intervals, min(ms) AS min_ms,
+                                      percentile_cont(0.5) WITHIN GROUP (ORDER BY ms) AS median_ms,
+                                      percentile_cont(0.95) WITHIN GROUP (ORDER BY ms) AS p95_ms,
+                                      max(ms) AS max_ms FROM diffs WHERE ms > 0""", point_id, frm, to)
     nominal_hz = float(machine.get("rated_speed_rpm") or 0) / 60
     f1x = float(base_hz or nominal_hz or machine.get("line_freq_hz") or 50)
     tolerance = tolerance_pct / 100
@@ -463,7 +503,11 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         bases_hz.append(used_f1x)
         if reliable_speed:
             capture_speeds_hz.append(reliable_speed)
-        for peak in dsp.harmonic_peaks(values, df, used_f1x, max_order, tolerance, prominence_ratio):
+        peaks = dsp.apply_relative_harmonic_threshold(
+            dsp.harmonic_peaks(values, df, used_f1x, max_order, tolerance, prominence_ratio),
+            min_relative_to_1x_pct,
+        )
+        for peak in peaks:
             clean_peak = {k: (round(v, 6) if math.isfinite(v) else None) if isinstance(v, float) else v
                           for k, v in peak.items()}
             details.append({
@@ -488,6 +532,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
             "order": order, "label": f"{order}X", "target_hz": round(order * summary_f1x, 4),
             "band_hz": [round(order * summary_f1x * (1 - tolerance), 4), round(order * summary_f1x * (1 + tolerance), 4)],
             "detections": len(found), "captures": analyzed, "occurrence_pct": round(occurrence, 1),
+            "rejected_below_relative_1x": sum(bool(x.get("below_relative_threshold")) for x in rows),
             "peak_max": round(max(amps), 6) if amps else None,
             "peak_mean": round(float(np.mean(amps)), 6) if amps else None,
             "peak_p95": round(float(np.percentile(amps, 95)), 6) if amps else None,
@@ -527,7 +572,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
     if tracking == "capture" and speed_coverage < 90:
         quality_issues.append(f"Chỉ {speed_coverage:.0f}% capture có tốc độ quay độ tin cậy cao; capture còn lại dùng 1X cố định.")
     if int(available or 0) > len(caps):
-        quality_issues.append(f"Khoảng chọn có {available} capture; kết quả dùng {len(caps)} capture mới nhất theo giới hạn truy vấn.")
+        quality_issues.append(f"Khoảng chọn có {available} capture; kết quả dùng {len(caps)} capture phân bố đều trong toàn khoảng để giới hạn tải.")
     findings = _harmonic_findings(harmonics)
     for finding in findings:
         finding["confidence"] = round(finding["confidence"] * confidence_score / 100)
@@ -548,9 +593,18 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         "from": frm.isoformat(), "to": to.isoformat(),
         "settings": {"base_hz": round(f1x, 6), "representative_base_hz": round(summary_f1x, 6),
                      "tracking": tracking, "tolerance_pct": tolerance_pct, "max_order": max_order,
-                     "prominence_ratio": prominence_ratio},
+                     "prominence_ratio": prominence_ratio, "min_relative_to_1x_pct": min_relative_to_1x_pct,
+                     "profile": profile, "sampling_strategy": "evenly_spaced"},
         "total_captures": int(available or 0), "selected_captures": len(caps), "analyzed_captures": analyzed,
         "skipped_captures": skipped, "truncated": int(available or 0) > len(caps),
+        "profiles": [{"profile": row["profile"], "captures": row["captures"]} for row in profile_rows],
+        "sampling": {
+            "metric": {key: (round(float(metric_cadence[key]), 3) if metric_cadence[key] is not None else None)
+                       for key in ("intervals", "min_ms", "median_ms", "p95_ms", "max_ms")},
+            "capture": {key: (round(float(capture_cadence[key]), 3) if capture_cadence[key] is not None else None)
+                        for key in ("intervals", "min_ms", "median_ms", "p95_ms", "max_ms")},
+            "vendor_target_ms": 70,
+        },
         "max_available_hz": round(min_fmax, 3) if max_available_hz else None,
         "quality": {"score": confidence_score, "grade": "high" if confidence_score >= 80 else "medium" if confidence_score >= 60 else "low",
                     "resolution_hz": round(median_df, 6), "resolution_pct_1x": round(resolution_pct, 2),

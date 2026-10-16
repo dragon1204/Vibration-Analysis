@@ -132,6 +132,9 @@ type AnalysisRequest = {
   baseHz: number
   tolerancePct: number
   maxOrder: number
+  prominenceRatio: number
+  minRelativeTo1xPct: number
+  analysisLimit: number
   runId: number
 }
 
@@ -197,6 +200,9 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   const [baseHz, setBaseHz] = useState(50)
   const [tolerancePct, setTolerancePct] = useState(15)
   const [maxOrder, setMaxOrder] = useState(10)
+  const [prominenceRatio, setProminenceRatio] = useState(3)
+  const [minRelativeTo1xPct, setMinRelativeTo1xPct] = useState(5)
+  const [analysisLimit, setAnalysisLimit] = useState(300)
   const [deviceName, setDeviceName] = useState('')
   const [request, setRequest] = useState<AnalysisRequest>()
   const [compareToleranceMs, setCompareToleranceMs] = useState(1000)
@@ -220,7 +226,8 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     queryKey: ['harmonic-analysis', request],
     queryFn: () => api(`/points/${request!.pointId}/harmonic-analysis`, { params: {
       from: request!.from, to: request!.to, axis: request!.axis, type: request!.metric, tracking: request!.tracking, base_hz: request!.baseHz,
-      tolerance_pct: request!.tolerancePct, max_order: request!.maxOrder, prominence_ratio: 3,
+      tolerance_pct: request!.tolerancePct, max_order: request!.maxOrder, prominence_ratio: request!.prominenceRatio,
+      min_relative_to_1x_pct: request!.minRelativeTo1xPct, limit: request!.analysisLimit,
     } }),
     enabled: !!request,
   })
@@ -282,7 +289,8 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     if (!pointId || !baseHz) return
     const p = rangeParams(range)
     setComparison(undefined); setVendorFileName('')
-    setRequest({ pointId, ...p, axis, metric, tracking, baseHz, tolerancePct, maxOrder, runId: Date.now() })
+    setRequest({ pointId, ...p, axis, metric, tracking, baseHz, tolerancePct, maxOrder, prominenceRatio,
+      minRelativeTo1xPct, analysisLimit, runId: Date.now() })
   }
 
   const compareVendorFile = async (file: File) => {
@@ -325,6 +333,9 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <label><span>{tracking === 'capture' ? '1X dự phòng khi thiếu tốc độ' : 'Tần số 1X cố định'}</span><InputNumber value={baseHz} onChange={(value) => value && setBaseHz(value)} min={0.1} max={1000} step={0.1} addonAfter="Hz" /></label>
       <label><span>Vùng bắt quanh mỗi hài</span><InputNumber value={tolerancePct} onChange={(value) => value && setTolerancePct(value)} min={1} max={30} addonBefore="±" addonAfter="%" /></label>
       <label><span>Phân tích đến</span><InputNumber value={maxOrder} onChange={(value) => value && setMaxOrder(value)} min={1} max={30} addonAfter="X" /></label>
+      <label><span>Ngưỡng đỉnh / nền</span><InputNumber value={prominenceRatio} onChange={(value) => value != null && setProminenceRatio(value)} min={1.2} max={10} step={0.2} addonAfter="×" /></label>
+      <label><span>Biên độ tối thiểu so với 1X</span><InputNumber value={minRelativeTo1xPct} onChange={(value) => value != null && setMinRelativeTo1xPct(value)} min={0} max={100} step={1} addonAfter="%" /></label>
+      <label><span>Số capture lấy mẫu</span><Select value={analysisLimit} onChange={setAnalysisLimit} options={[100, 300, 500].map((value) => ({ value, label: `${value} capture` }))} /></label>
       <Button type="primary" size="large" icon={<SearchOutlined />} disabled={!pointId} loading={analysis.isFetching} onClick={run}>Phân tích</Button>
     </div>
     <Alert className="fft-sampling-note" type="warning" showIcon
@@ -335,8 +346,17 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     {analysis.isError && <Alert type="error" showIcon message="Không phân tích được" description={(analysis.error as Error).message} style={{ marginTop: 12 }} />}
     {analysis.isFetching && <div className="fft-loading"><Spin /><span>Đang đọc và tổng hợp phổ của các capture…</span></div>}
     {result && !analysis.isFetching && <>
+      <Alert showIcon type={result.sampling?.metric?.median_ms <= 84 ? 'success' : result.sampling?.metric?.median_ms < 1000 ? 'info' : 'warning'}
+        message={result.sampling?.metric?.median_ms <= 84 ? 'Cadence metric đã đạt mục tiêu 68–72 ms'
+          : result.sampling?.metric?.median_ms < 1000 ? 'Cadence metric đã dưới 1 giây; chưa đạt mục tiêu 70 ms'
+            : 'Cadence nguồn hiện chưa đạt dưới 1 giây'}
+        description={<>Metric thực tế: <b>{num(result.sampling?.metric?.median_ms, 1)} ms/dòng</b> (P95 {num(result.sampling?.metric?.p95_ms, 1)} ms); capture FFT: <b>{num(result.sampling?.capture?.median_ms, 1)} ms/capture</b>. Hệ thống không nội suy hoặc lặp giá trị để giả lập 70 ms. “Số capture đạt ngưỡng” bên dưới là tần suất xuất hiện đỉnh trong các phổ, không phải chu kỳ lấy mẫu.</>}
+        style={{ marginBottom: 10 }} />
+      <Alert showIcon type="info" message="Cách lấy mẫu phân tích"
+        description={<>Khoảng chọn có <b>{result.total_captures}</b> capture; hệ thống chọn <b>{result.selected_captures}</b> capture phân bố đều trong toàn khoảng. Profile: {result.profiles?.map((item: any) => `${item.profile} (${item.captures})`).join(', ') || '—'}. Một bậc chỉ được tính khi đỉnh đạt ≥{num(result.settings.prominence_ratio, 1)}× nền và bậc 2X trở lên đạt ≥{num(result.settings.min_relative_to_1x_pct, 1)}% của 1X trong cùng capture.</>}
+        style={{ marginBottom: 10 }} />
       <Row gutter={[12, 12]} className="fft-kpis">
-        <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="Capture đã phân tích" value={result.analyzed_captures} suffix={`/ ${result.total_captures}`} /></Card></Col>
+        <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="Capture mẫu đã phân tích" value={result.analyzed_captures} suffix={`/ ${result.total_captures}`} /></Card></Col>
         <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="1X đại diện" value={result.settings.representative_base_hz} precision={2} suffix="Hz" /></Card></Col>
         <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="Điểm chất lượng" value={result.quality.score} suffix="/ 100" valueStyle={{ color: result.quality.score >= 80 ? '#17895d' : result.quality.score >= 60 ? '#ad7100' : '#c4383e' }} /></Card></Col>
         <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="Độ phân giải FFT" value={result.quality.resolution_hz} precision={3} suffix="Hz" /></Card></Col>
@@ -353,10 +373,11 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       </div>}
       {result.harmonics.length ? <Row gutter={[14, 14]} style={{ marginTop: 6 }}>
         <Col xs={24} xl={10}><Card size="small" title={`Biên độ đỉnh theo bậc hài · ${result.unit}`}><ReactECharts option={chartOption} style={{ height: 350 }} /></Card></Col>
-        <Col xs={24} xl={14}><Card size="small" title="Bảng đếm và đánh giá 1X–nX"><Table rowKey="order" size="small" pagination={false} scroll={{ x: 1370 }} dataSource={result.harmonics} columns={[
+        <Col xs={24} xl={14}><Card size="small" title="Bảng tần suất xuất hiện 1X–nX"><Table rowKey="order" size="small" pagination={false} scroll={{ x: 1370 }} dataSource={result.harmonics} columns={[
           { title: 'Bậc', dataIndex: 'label', fixed: 'left', width: 62, render: (value, row: any) => <Tag color={row.level === 'warning' ? 'red' : row.level === 'watch' ? 'gold' : row.level === 'info' ? 'blue' : 'default'}>{value}</Tag> },
           { title: 'Dải bắt (Hz)', width: 145, render: (_, row: any) => `${num(row.band_hz[0], 1)}–${num(row.band_hz[1], 1)}` },
-          { title: 'Số lần bắt', width: 140, render: (_, row: any) => <Progress percent={row.occurrence_pct} size="small" format={() => `${row.detections}/${row.captures}`} /> },
+          { title: 'Capture đạt ngưỡng', width: 175, render: (_, row: any) => <span><Progress percent={row.occurrence_pct} size="small" format={() => `${row.detections}/${row.captures}`} />
+            {row.rejected_below_relative_1x > 0 && <small className="muted">Loại {row.rejected_below_relative_1x} capture dưới ngưỡng so với 1X</small>}</span> },
           { title: `Đỉnh max (${result.unit})`, dataIndex: 'peak_max', width: 125, align: 'right', render: (value) => value == null ? '—' : num(value, 4) },
           { title: 'Tại Hz', dataIndex: 'peak_freq_hz', width: 85, align: 'right', render: (value) => value == null ? '—' : num(value, 2) },
           { title: `TB đỉnh (${result.unit})`, dataIndex: 'peak_mean', width: 125, align: 'right', render: (value) => value == null ? '—' : num(value, 4) },

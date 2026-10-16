@@ -172,6 +172,29 @@ def harmonic_peaks(values: np.ndarray, df: float, f1x: float, max_order: int = 1
     return out
 
 
+def apply_relative_harmonic_threshold(peaks: list[dict], min_relative_to_1x_pct: float) -> list[dict]:
+    """Qualify prominent higher orders against 1X within the same capture.
+
+    Peak-to-floor prominence alone can classify a tiny line as meaningful when
+    the spectrum has a very quiet floor. This second, explicit threshold keeps
+    that line visible in the details while excluding it from occurrence counts.
+    The input list is enriched in place and returned for convenient chaining.
+    """
+    threshold = max(0.0, min(float(min_relative_to_1x_pct), 100.0))
+    one_x = next((peak for peak in peaks if peak.get("order") == 1 and peak.get("detected")), None)
+    one_x_amplitude = float(one_x["amplitude"]) if one_x and float(one_x.get("amplitude") or 0) > 0 else None
+    for peak in peaks:
+        amplitude = float(peak.get("amplitude") or 0)
+        relative_pct = amplitude / one_x_amplitude * 100 if one_x_amplitude else None
+        below_relative = bool(peak.get("order", 0) > 1 and peak.get("detected") and relative_pct is not None
+                              and relative_pct < threshold)
+        if below_relative:
+            peak["detected"] = False
+        peak["relative_to_1x_pct"] = relative_pct
+        peak["below_relative_threshold"] = below_relative
+    return peaks
+
+
 def _okey(k: float) -> str:
     return str(int(k)) if float(k).is_integer() else repr(float(k))
 

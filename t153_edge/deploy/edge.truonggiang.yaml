@@ -14,8 +14,9 @@ log: {level: info, file: /data/edge/logs/edge-agent.log}
 buses:
   # Sensor set to 115200 bps (BAUD code 0x06, saved): one RAWFIFO frame ≈ 0.55 s on the wire.
   - {id: busA, device: /dev/ttyS6, baud: 115200, timeout_ms: 150, raw_timeout_ms: 3000}
-# Near-real-time: indicators every 2 s, capture (ISO RMS from raw waveform) every 5 s.
-intervals: {b1_s: 2, window_s: 2}
+# Near-real-time vendor-table metrics: poll B1 every 250 ms and publish one real
+# aggregate every 500 ms. Raw FFT capture remains every 5 s (one frame takes ~0.55 s).
+intervals: {b1_ms: 250, vib_window_ms: 500, window_s: 2}
 machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"

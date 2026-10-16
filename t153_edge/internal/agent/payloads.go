@@ -20,6 +20,7 @@ type vibMetrics struct {
 	MsgID      string     `json:"msg_id"`
 	TS         string     `json:"ts"`
 	WindowS    int        `json:"window_s"`
+	WindowMS   int        `json:"window_ms,omitempty"`
 	PointID    string     `json:"point_id"`
 	Sensor     sensorInfo `json:"sensor"`
 	VelMMs     xyz        `json:"vel_mm_s"`
