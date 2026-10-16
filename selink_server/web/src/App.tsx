@@ -36,11 +36,15 @@ export default function App() {
   const loc = useLocation()
   const screens = Grid.useBreakpoint()
   const [open, setOpen] = useState(false)
+  const routePoint = loc.pathname.match(/^\/points\/([^/]+)\/spectrum/)?.[1]
   const { data: overview } = useQuery<any>({
     queryKey: ['shell-overview'], queryFn: () => api('/overview'), enabled: loggedIn, refetchInterval: 30_000,
   })
   const { data: gateways = [] } = useQuery<any[]>({
     queryKey: ['shell-gateways'], queryFn: () => api('/gateways'), enabled: loggedIn, refetchInterval: 30_000,
+  })
+  const { data: activePoint } = useQuery<any>({
+    queryKey: ['point', routePoint], queryFn: () => api(`/points/${routePoint}`), enabled: loggedIn && !!routePoint,
   })
 
   // Gateway online/offline is pushed on rt:gateways; refresh the header instead of waiting for the 30 s poll.
@@ -52,7 +56,7 @@ export default function App() {
 
   const routeMachine = loc.pathname.match(/^\/machines\/([^/]+)/)?.[1]
   const machines = overview?.machines || []
-  const activeMachine = routeMachine || machines[0]?.id || 'ga55-01'
+  const activeMachine = routeMachine || activePoint?.machine_id || machines[0]?.id || 'ga55-01'
   const online = gateways.filter((gateway: any) => gateway.online).length
   const eventCount = overview?.events?.length || 0
   const livePath = `/machines/${activeMachine}/live`
@@ -63,7 +67,7 @@ export default function App() {
     { key: '/', icon: <DashboardOutlined />, label: 'Tổng quan' },
     { key: '/machines', icon: <UnorderedListOutlined />, label: 'Danh sách động cơ' },
     { key: livePath, icon: <FundProjectionScreenOutlined />, label: 'Giám sát thời gian thực' },
-    { key: `${livePath}?focus=spectrum`, icon: <LineChartOutlined />, label: 'Phân tích phổ FFT' },
+    { key: 'spectrum', icon: <LineChartOutlined />, label: 'Phân tích phổ FFT' },
     { key: '/events', icon: <AlertOutlined />, label: <span>Cảnh báo & sự kiện {eventCount > 0 && <Badge count={eventCount} size="small" />}</span> },
     { type: 'group', label: 'PHÂN TÍCH NÂNG CAO', children: [
       { key: diagnosisPath, icon: <RobotOutlined />, label: 'AI chẩn đoán' },
@@ -80,9 +84,14 @@ export default function App() {
   const selected = loc.pathname === '/' ? '/' : loc.pathname.startsWith('/events') ? '/events'
     : loc.pathname.startsWith('/reports') ? '/reports' : loc.pathname.startsWith('/knowledge') ? '/knowledge' : loc.pathname.startsWith('/devices') ? '/devices'
       : loc.pathname.startsWith('/settings') ? '/settings' : loc.pathname.includes('/deep-analysis') ? deepPath : loc.pathname.includes('/rul') ? rulPath : loc.pathname.includes('/diagnosis') ? diagnosisPath
-        : loc.pathname.includes('/live') ? livePath : '/machines'
+        : loc.pathname.startsWith('/points/') && loc.pathname.endsWith('/spectrum') ? 'spectrum'
+          : loc.pathname.includes('/live') ? livePath : '/machines'
   const menu = <Menu className="app-menu" mode="inline" selectedKeys={[selected]} items={menuItems}
-    onClick={(e) => { nav(e.key); setOpen(false) }} />
+    onClick={(e) => {
+      if (e.key === 'spectrum') nav(routePoint ? `/points/${routePoint}/spectrum` : `${livePath}?focus=spectrum`)
+      else nav(e.key)
+      setOpen(false)
+    }} />
 
   return (
     <Layout className="app-shell">
