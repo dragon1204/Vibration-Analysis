@@ -20,7 +20,10 @@ buses:
 # windows are skipped when the serial transaction crosses a window boundary.
 # Raw FFT capture runs every 30 s (one frame takes ~0.55 s)
 # so it does not repeatedly interrupt the sub-second indicator stream.
-intervals: {b1_ms: 50, vib_window_ms: 50, window_s: 2}
+# B2 exposes the sensor-computed velocity RMS. Poll it once per second so the
+# live dashboard follows the handheld meter without turning every update into
+# a RAWFIFO/FFT capture. The 30 s capture below remains the ISO/FFT reference.
+intervals: {b1_ms: 50, b2_s: 1, vib_window_ms: 50, window_s: 2}
 machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"

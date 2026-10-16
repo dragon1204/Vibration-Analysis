@@ -16,7 +16,7 @@ const axisName: Record<string, string> = { x: 'ngang (H)', y: 'dọc trục (A)'
 const axisColor: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
 const zoneClass: Record<string, string> = { A: 'zone-a', B: 'zone-b', C: 'zone-c', D: 'zone-d' }
 const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận được', C: 'Cảnh báo', D: 'Nguy hiểm' }
-/** Data older than this is not "live": the gateway sends indicators every 10 s. */
+/** Fall back to the ISO capture if the fast sensor RMS stream stops. */
 const LIVE_MAX_AGE_MS = 60_000
 
 function getZone(value: number | null | undefined, limits: any): string | null {
@@ -27,17 +27,29 @@ function getZone(value: number | null | undefined, limits: any): string | null {
   return 'D'
 }
 
-// ISO velocity RMS of one axis: the latest capture (computed from the raw waveform) first, then the
-// sensor's own VRMS register when it reports one. The VX register is NOT an RMS value and is not used.
-function isoValue(sensor: Sensor): { value: number | null; acc: number | null; peak: number | null; source: string } {
+// The primary display follows the sensor's dedicated VRMS statistic register. This is not the
+// instantaneous VX register. A raw-waveform ISO capture remains visible as the traceable reference.
+function isoValue(sensor: Sensor): { value: number | null; acc: number | null; source: string; reference: number | null; referenceSource: string } {
   const cap = sensor.point.last_capture
   const iso = cap?.axes_iso?.[sensor.axis]
+  const rmsTs = sensor.data?.rms_ts
+  const sensorRms = sensor.data?.vel_rms_mm_s
+  const rmsAge = rmsTs ? Date.now() - Date.parse(rmsTs) : Number.POSITIVE_INFINITY
+  if (sensorRms != null && Number.isFinite(rmsAge) && rmsAge <= LIVE_MAX_AGE_MS) {
+    return {
+      value: sensorRms,
+      acc: sensor.data?.acc_rms_g ?? null,
+      source: `RMS nhanh · ${ago(rmsTs)}`,
+      reference: iso?.iso_vrms_mm_s ?? null,
+      referenceSource: cap?.ts ? ago(cap.ts) : '',
+    }
+  }
   if (iso?.iso_vrms_mm_s != null) {
-    return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, peak: iso.acc_peak_g ?? null, source: `capture ${ago(cap.ts)}` }
+    return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, source: `ISO capture ${ago(cap.ts)}`, reference: null, referenceSource: '' }
   }
   const vrms = sensor.data?.vel_rms_mm_s
-  if (vrms) return { value: vrms, acc: sensor.data?.acc_rms_g || null, peak: null, source: 'cảm biến' }
-  return { value: null, acc: null, peak: null, source: 'chờ capture đầu tiên' }
+  if (vrms != null) return { value: vrms, acc: sensor.data?.acc_rms_g ?? null, source: 'RMS cảm biến (dữ liệu cũ)', reference: null, referenceSource: '' }
+  return { value: null, acc: null, source: 'chờ dữ liệu RMS', reference: null, referenceSource: '' }
 }
 
 export function AnimatedNumber({ value, decimals = 2, fallback = '—' }: { value: number | null | undefined; decimals?: number; fallback?: string }) {
@@ -121,18 +133,19 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
 }
 
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
-  const { value, acc, source } = isoValue(sensor)
+  const { value, acc, source, reference, referenceSource } = isoValue(sensor)
   const zone = getZone(value, limits)
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
-        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS ISO · {source}</span></div>
+        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS · cập nhật mỗi 1 giây · {source}</span></div>
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
       <div className="sensor-primary"><strong><AnimatedNumber value={value} decimals={2} /></strong><span>mm/s RMS</span></div>
-      <div className="sensor-secondary sensor-secondary-single">
-        <div><span>Gia tốc RMS từ capture</span><b><AnimatedNumber value={acc} decimals={2} /> <small>g</small></b></div>
+      <div className="sensor-secondary">
+        <div><span>Gia tốc RMS</span><b><AnimatedNumber value={acc} decimals={2} /> <small>g</small></b></div>
+        <div><span>ISO capture {referenceSource && `· ${referenceSource}`}</span><b><AnimatedNumber value={reference} decimals={2} /> <small>mm/s</small></b></div>
       </div>
       <div className="sensor-spark" title="Vận tốc RMS ISO · 60 phút gần nhất">
         <Spark series={sensor.series} color={axisColor[sensor.axis] || '#3270ed'} />
@@ -194,7 +207,7 @@ export default function Live() {
   }, [machine, nav, searchParams])
 
   // Push updates are applied to the cached data directly (no refetch round-trip):
-  // a capture updates the per-axis ISO cards, sparklines, trend and waveform; indicators update freshness.
+  // a capture updates the ISO reference, while vibstat updates the fast RMS cards once per second.
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
     if (d.type === 'vib') {
@@ -204,6 +217,20 @@ export default function Live() {
           ...point,
           gateway_online: true,
           axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, { ...(point.axes?.[axis] || {}), ts: d.ts }])),
+        }),
+      }))
+      return
+    }
+    if (d.type === 'vibstat' && d.axes) {
+      qc.setQueryData(['status', id], (old: any) => old && ({
+        ...old,
+        points: old.points.map((point: any) => point.id !== d.point_id ? point : {
+          ...point,
+          gateway_online: true,
+          axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => {
+            const fast = d.axes?.[axis]
+            return [axis, fast ? { ...(point.axes?.[axis] || {}), ...fast, rms_ts: d.ts } : (point.axes?.[axis] || {})]
+          })),
         }),
       }))
       return
