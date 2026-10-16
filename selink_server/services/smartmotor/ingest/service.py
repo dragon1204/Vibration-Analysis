@@ -224,6 +224,16 @@ class Ingest:
     async def on_metrics_vibstat(self, t: Topic, d) -> None:
         if not self._point_ok(d.point_id):
             return
+        # WTVB05 firmware 193.24 exposes B2 but returns an all-zero statistics
+        # block in MODE=1. It is not a real zero-vibration observation and must
+        # not dilute trends/baselines. Fast RMS computed from RAWFIFO uses the
+        # explicit edge_raw_iso source and remains eligible below.
+        if d.source == "sensor_b2" and not any(
+            (s.vel_rms_mm_s or 0) != 0 or (s.acc_rms_g or 0) != 0
+            for s in d.axes.values()
+        ):
+            self.stats["ignored_empty_vibstat"] += 1
+            return
         rows = []
         for a, s in d.axes.items():
             if a not in AXES:

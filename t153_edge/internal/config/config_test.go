@@ -39,7 +39,7 @@ func TestSubsecondVibrationIntervals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Intervals.B1MS != 500 || c.Intervals.FastRMSMS != 1000 || c.Intervals.VibWindowMS != 500 || c.Intervals.B1S != 0 {
+	if c.Intervals.B1MS != 500 || c.Intervals.B2S != 3600 || c.Intervals.FastRMSMS != 1000 || c.Intervals.VibWindowMS != 500 || c.Intervals.B1S != 0 {
 		t.Fatalf("unexpected subsecond intervals: %+v", c.Intervals)
 	}
 
