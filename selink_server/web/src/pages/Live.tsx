@@ -19,6 +19,13 @@ const zoneText: Record<string, string> = { A: 'Tốt', B: 'Chấp nhận đượ
 /** Data older than this is not "live": the gateway sends indicators every 10 s. */
 const LIVE_MAX_AGE_MS = 60_000
 
+function median(values: number[]): number | undefined {
+  const finite = values.filter(Number.isFinite).sort((a, b) => a - b)
+  if (!finite.length) return undefined
+  const middle = Math.floor(finite.length / 2)
+  return finite.length % 2 ? finite[middle] : (finite[middle - 1] + finite[middle]) / 2
+}
+
 function getZone(value: number | null | undefined, limits: any): string | null {
   if (value == null || !limits) return null
   if (value <= limits.ab) return 'A'
@@ -135,7 +142,7 @@ function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: an
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
-      <div className="sensor-live-label">Vận tốc realtime · cập nhật 1 giây</div>
+      <div className="sensor-live-label">Vận tốc realtime · trung vị cửa sổ 1 giây</div>
       <div className="sensor-primary"><strong><AnimatedNumber value={liveVelocity ?? value} decimals={2} /></strong><span>mm/s</span></div>
       <div className="sensor-secondary">
         <div><span>{liveAcceleration != null ? 'Gia tốc realtime' : 'Gia tốc RMS'}</span><b><AnimatedNumber value={liveAcceleration ?? acc} decimals={2} /> <small>g</small></b></div>
@@ -187,8 +194,11 @@ export default function Live() {
               axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => [axis, {
                 ...(point.axes?.[axis] || {}),
                 ...(stat.axes?.[axis] || {}),
+                vel_mm_s: median(stat.samples?.[axis]?.vel || []) ?? stat.axes?.[axis]?.vel_mm_s,
+                acc_g: median(stat.samples?.[axis]?.acc || []) ?? stat.axes?.[axis]?.acc_g,
                 ts: stat.ts,
                 received_at_ms: stat.receivedAtMs,
+                live_sample_count: stat.samples?.[axis]?.vel?.length || 0,
               }])),
             }
           }),
@@ -234,8 +244,9 @@ export default function Live() {
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
     if (d.type === 'vibstat' || d.type === 'vib') {
-      const pending = pendingStats.current.get(d.point_id) || { point_id: d.point_id, axes: {} }
+      const pending = pendingStats.current.get(d.point_id) || { point_id: d.point_id, axes: {}, samples: {} }
       const axes = { ...pending.axes }
+      const samples = { ...pending.samples }
       for (const axis of ['x', 'y', 'z']) {
         axes[axis] = {
           ...(axes[axis] || {}),
@@ -246,8 +257,15 @@ export default function Live() {
             freq_hz: d.freq_hz?.[axis],
           }),
         }
+        if (d.type === 'vib') {
+          const previous = samples[axis] || { vel: [], acc: [] }
+          samples[axis] = {
+            vel: d.vel_mm_s?.[axis] == null ? previous.vel : [...previous.vel, d.vel_mm_s[axis]],
+            acc: d.acc_g?.[axis] == null ? previous.acc : [...previous.acc, d.acc_g[axis]],
+          }
+        }
       }
-      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, receivedAtMs: Date.now(), axes })
+      pendingStats.current.set(d.point_id, { ...pending, ts: d.ts, receivedAtMs: Date.now(), axes, samples })
       return
     }
     if (d.type === 'capture' && d.axes_iso) {
