@@ -27,6 +27,27 @@ function getZone(value: number | null | undefined, limits: any): string | null {
   return 'D'
 }
 
+const ZONE_ORDER = ['A', 'B', 'C', 'D']
+const ZONE_HYSTERESIS = 0.05
+
+/** Zone with 5 % hysteresis: a value hovering on a boundary must cross it clearly before the zone flips. */
+function useStableZone(value: number | null | undefined, limits: any): string | null {
+  const prev = useRef<string | null>(null)
+  const raw = getZone(value, limits)
+  if (!raw || !limits || value == null) { prev.current = raw; return raw }
+  const last = prev.current
+  if (last && last !== raw) {
+    const edges = [limits.ab, limits.bc, limits.cd]
+    const li = ZONE_ORDER.indexOf(last), ri = ZONE_ORDER.indexOf(raw)
+    // boundary between `last` and the neighbouring zone in the direction of travel
+    const edge = edges[ri > li ? li : li - 1]
+    const crossed = ri > li ? value > edge * (1 + ZONE_HYSTERESIS) : value < edge * (1 - ZONE_HYSTERESIS)
+    if (!crossed) return last
+  }
+  prev.current = raw
+  return raw
+}
+
 // The primary display follows the sensor's dedicated VRMS statistic register. This is not the
 // instantaneous VX register. A raw-waveform ISO capture remains visible as the traceable reference.
 function isoValue(sensor: Sensor): { value: number | null; acc: number | null; source: string; reference: number | null; referenceSource: string } {
@@ -131,9 +152,18 @@ function Spark({ series, color }: { series: [string, number][]; color: string })
   )
 }
 
+function OverallZoneTag({ value, limits }: { value: number | null; limits: any }) {
+  const zone = useStableZone(value, limits)
+  return (
+    <Tag className={`state-tag ${zone ? zoneClass[zone] : ''}`}>
+      {zone ? `Vùng ${zone} · ${zoneText[zone]}` : 'Chưa phân vùng ISO'}
+    </Tag>
+  )
+}
+
 function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: any; onSpectrum: () => void }) {
   const { value, acc, source, reference, referenceSource } = isoValue(sensor)
-  const zone = getZone(value, limits)
+  const zone = useStableZone(value, limits)
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
@@ -286,7 +316,6 @@ export default function Live() {
   }))
   const cardSpan = Math.max(6, Math.floor(24 / Math.max(sensors.length, 1)))
   const maxValue = Math.max(...sensors.map((sensor) => isoValue(sensor).value ?? 0))
-  const overallZone = getZone(maxValue || null, machine.iso_limits)
 
   // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
   const lastTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
@@ -329,9 +358,7 @@ export default function Live() {
         <div className="live-titlebar">
           <div><h1>{machine.id.toUpperCase()} · {machine.name}</h1><p>{subtitle}</p></div>
           <div className="live-actions">
-            <Tag className={`state-tag ${overallZone ? zoneClass[overallZone] : ''}`}>
-              {overallZone ? `Vùng ${overallZone} · ${zoneText[overallZone]}` : 'Chưa phân vùng ISO'}
-            </Tag>
+            <OverallZoneTag value={maxValue || null} limits={machine.iso_limits} />
             {isLive
               ? <Tag className="live-tag"><WifiOutlined /> Trực tiếp · cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
               : <Tag className="offline-tag"><DisconnectOutlined /> {lastTs ? `Mất kết nối · dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'Gateway chưa gửi dữ liệu'}</Tag>}

@@ -67,6 +67,8 @@ body { background: #f4f6fb; color: #17213a; }
 .live-titlebar p { margin: 4px 0 0; color: #69758a; font-size: 13px; }
 .live-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .live-actions .ant-tag { margin: 0; padding: 5px 10px; border-radius: 16px; font-weight: 600; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+.live-actions .state-tag { min-width: 178px; text-align: center; white-space: nowrap; }
+.live-actions .live-tag, .live-actions .offline-tag { white-space: nowrap; }
 .live-tag { color: #2563eb !important; background: #eef4ff !important; border-color: #dbe7ff !important; }
 .offline-tag { color: #667085 !important; background: #f2f4f7 !important; border-color: #e4e7ec !important; }
 .state-tag.zone-a { color: #17895d; background: #e9f8f2; border-color: #c9eadc; }
