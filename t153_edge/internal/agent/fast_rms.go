@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"selink.vn/smartmotor/edge/internal/bus"
@@ -20,13 +21,14 @@ func (p *pointRT) runFastRMS(ctx context.Context) {
 	interval := time.Duration(p.a.cfg.Intervals.FastRMSMS) * time.Millisecond
 	timer := time.NewTimer(0)
 	defer timer.Stop()
+	var window []drivers.RawFrame
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
 			started := time.Now()
-			if err := p.publishFastRMS(ctx); err != nil {
+			if err := p.publishFastRMS(ctx, &window); err != nil {
 				p.log.Warn("fast RMS failed", "err", err)
 			}
 			wait := interval - time.Since(started)
@@ -38,7 +40,27 @@ func (p *pointRT) runFastRMS(ctx context.Context) {
 	}
 }
 
-func (p *pointRT) publishFastRMS(ctx context.Context) error {
+// fastRMSFrameCount returns enough 1024-sample frames for at least one second
+// of analysed signal. Frames are retained as a rolling Welch window, so the
+// live result can still be refreshed once per second without changing the
+// sensor sample rate or writing its flash configuration.
+func fastRMSFrameCount(fs float64) int {
+	n := int(math.Ceil(fs / 1024.0))
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+func appendFastRMSFrame(window []drivers.RawFrame, frame drivers.RawFrame, maxFrames int) []drivers.RawFrame {
+	window = append(window, frame)
+	if len(window) > maxFrames {
+		window = window[len(window)-maxFrames:]
+	}
+	return window
+}
+
+func (p *pointRT) publishFastRMS(ctx context.Context, window *[]drivers.RawFrame) error {
 	if len(p.cfg.Profiles) == 0 {
 		return fmt.Errorf("fast RMS requires a capture profile")
 	}
@@ -65,15 +87,19 @@ func (p *pointRT) publishFastRMS(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	*window = appendFastRMSFrame(*window, frame, fastRMSFrameCount(fs))
+	frames := append([]drivers.RawFrame(nil), (*window)...)
+	windowMS := int(math.Round(float64(len(frames)*1024) / fs * 1000))
 
 	res := features.Compute(features.Capture{
 		CaptureID: "r_" + ulid.New(), PointID: p.cfg.ID, Profile: "fast-rms",
-		TS: frame.StartTS, FsHz: fs, SrCode: sr, Frames: []drivers.RawFrame{frame},
+		TS: frame.StartTS, FsHz: fs, SrCode: sr, Frames: frames,
 	}, p.featureContext())
 	msg := vibStat{
 		MsgID: ulid.New(), TS: res.Features.TS, PointID: p.cfg.ID, SrCode: sr,
-		Mode: p.info.Mode, Source: "edge_raw_iso", Axes: map[string]vibStatAxis{},
-		Flags: append([]string{"edge_raw_iso"}, res.Features.QualityFlags...),
+		Mode: p.info.Mode, Source: "edge_raw_iso", WindowMS: windowMS, Frames: len(frames),
+		Axes:  map[string]vibStatAxis{},
+		Flags: append([]string{"edge_raw_iso", fmt.Sprintf("rolling_%dms", windowMS)}, res.Features.QualityFlags...),
 	}
 	for _, axis := range drivers.AxisNames {
 		a := res.Features.Axes[axis]

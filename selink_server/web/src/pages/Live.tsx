@@ -36,10 +36,11 @@ function isoValue(sensor: Sensor): { value: number | null; acc: number | null; s
   const sensorRms = sensor.data?.vel_rms_mm_s
   const rmsAge = rmsTs ? Date.now() - Date.parse(rmsTs) : Number.POSITIVE_INFINITY
   if (sensorRms != null && Number.isFinite(rmsAge) && rmsAge <= LIVE_MAX_AGE_MS) {
+    const windowLabel = sensor.data?.rms_window_ms ? ` ${num(sensor.data.rms_window_ms / 1000, 3)} s` : ''
     return {
       value: sensorRms,
       acc: sensor.data?.acc_rms_g ?? null,
-      source: `RMS nhanh · ${ago(rmsTs)}`,
+      source: `RMS trượt${windowLabel} · ${ago(rmsTs)}`,
       reference: iso?.iso_vrms_mm_s ?? null,
       referenceSource: cap?.ts ? ago(cap.ts) : '',
     }
@@ -227,7 +228,7 @@ export default function Live() {
           gateway_online: true,
           axes: Object.fromEntries(['x', 'y', 'z'].map((axis) => {
             const fast = d.axes?.[axis]
-            return [axis, fast ? { ...(point.axes?.[axis] || {}), ...fast, rms_ts: d.ts } : (point.axes?.[axis] || {})]
+            return [axis, fast ? { ...(point.axes?.[axis] || {}), ...fast, rms_ts: d.ts, rms_window_ms: d.window_ms } : (point.axes?.[axis] || {})]
           })),
         }),
       }))

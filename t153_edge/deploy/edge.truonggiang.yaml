@@ -16,7 +16,8 @@ buses:
   # Sensor set to 115200 bps (BAUD code 0x06, saved): one RAWFIFO frame ≈ 0.55 s on the wire.
   - {id: busA, device: /dev/ttyS6, baud: 115200, timeout_ms: 150, raw_timeout_ms: 3000}
 # The firmware's B2/VRMS registers are zero in MODE=1 and are not usable.
-# Compute the fast RMS from a real 1024-sample RAWFIFO frame every second.
+# Compute the fast RMS every second from a rolling four-frame Welch window.
+# At 4 kS/s this represents 4 x 256 ms = 1.024 s of analysed vibration.
 # B1 is retained at 500 ms for running/frequency hints without starving RAWFIFO.
 # Full FFT captures remain separate and run every 30 seconds.
 intervals: {b1_ms: 500, b2_s: 3600, fast_rms_ms: 1000, vib_window_ms: 500, window_s: 2}

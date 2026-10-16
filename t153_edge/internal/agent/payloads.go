@@ -51,14 +51,16 @@ type vibStatAxis struct {
 }
 
 type vibStat struct {
-	MsgID   string                 `json:"msg_id"`
-	TS      string                 `json:"ts"`
-	PointID string                 `json:"point_id"`
-	SrCode  uint8                  `json:"sr_code"`
-	Mode    uint8                  `json:"mode"`
-	Source  string                 `json:"source,omitempty"`
-	Axes    map[string]vibStatAxis `json:"axes"`
-	Flags   []string               `json:"flags"`
+	MsgID    string                 `json:"msg_id"`
+	TS       string                 `json:"ts"`
+	PointID  string                 `json:"point_id"`
+	SrCode   uint8                  `json:"sr_code"`
+	Mode     uint8                  `json:"mode"`
+	Source   string                 `json:"source,omitempty"`
+	WindowMS int                    `json:"window_ms,omitempty"`
+	Frames   int                    `json:"frames,omitempty"`
+	Axes     map[string]vibStatAxis `json:"axes"`
+	Flags    []string               `json:"flags"`
 }
 
 type energyAxis struct {
