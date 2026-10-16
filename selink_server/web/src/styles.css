@@ -103,7 +103,9 @@ body { background: #f4f6fb; color: #17213a; }
 .sensor-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .sensor-card-head > div { display: flex; flex-direction: column; min-width: 0; }
 .sensor-card-head b { color: #17213a; font-size: 14px; }
-.sensor-card-head span { color: #778398; font-size: 11px; margin-top: 5px; }
+.sensor-card-head { min-height: 46px; }
+.sensor-card-head b, .sensor-card-head span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sensor-card-head span { color: #778398; font-size: 11px; line-height: 16px; height: 16px; margin-top: 5px; }
 .zone-pill {
   width: 28px; height: 28px; border: 0; border-radius: 7px; color: #fff; font-weight: 800; cursor: pointer;
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);

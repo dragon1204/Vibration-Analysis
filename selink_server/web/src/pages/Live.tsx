@@ -167,7 +167,7 @@ function SensorCard({ sensor, limits, onSpectrum }: { sensor: Sensor; limits: an
   return (
     <Card className="sensor-card" size="small">
       <div className="sensor-card-head">
-        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span>Vận tốc RMS · cập nhật mỗi 1 giây · {source}</span></div>
+        <div><b>{sensor.point.name} · {axisName[sensor.axis] || sensor.axis.toUpperCase()}</b><span title={`Vận tốc RMS · cập nhật mỗi 1 giây · ${source}`}>Vận tốc RMS · cập nhật mỗi 1 giây · {source}</span></div>
         <button className={`zone-pill ${zone ? zoneClass[zone] : 'zone-empty'}`} onClick={onSpectrum}
           title={zone ? `Vùng ${zone} · ${zoneText[zone]} · bấm để xem phổ` : 'Chưa phân vùng'}>{zone || '—'}</button>
       </div>
