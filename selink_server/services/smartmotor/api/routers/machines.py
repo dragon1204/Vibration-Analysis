@@ -120,6 +120,8 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
         brg2 = next((p for p in points if p.get("role") == "bearing" and p["id"] != brg1["id"]), None)
         base = next((p for p in points if p.get("role") == "base" and p["id"] != brg1["id"]), None)
 
+        truncated = [False]
+
         async def metric_rows(pid: str | None) -> list[dict]:
             if not pid:
                 return []
@@ -136,8 +138,12 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
                        max(freq_hz) FILTER (WHERE axis='z') AS freq_z,
                        max(temp_c) AS temp_c
                      FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
-                     GROUP BY ts ORDER BY ts LIMIT $4""", pid, frm, to, limit)
-            return [dict(row) for row in rows]
+                       AND (acc_g IS NOT NULL OR vel_mm_s IS NOT NULL OR disp_um IS NOT NULL
+                            OR freq_hz IS NOT NULL OR temp_c IS NOT NULL)
+                     GROUP BY ts ORDER BY ts DESC LIMIT $4""", pid, frm, to, limit + 1)
+            # Newest rows win when the range exceeds the limit; flag it and restore time order.
+            truncated[0] = truncated[0] or len(rows) > limit
+            return [dict(row) for row in reversed(rows[:limit])]
 
         brg1_rows = await metric_rows(brg1["id"])
         brg2_rows = await metric_rows(brg2["id"] if brg2 else None)
@@ -175,6 +181,7 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
     data = ("\ufeff" + output.getvalue()).encode("utf-8")
     return Response(data, media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+        "X-Rows-Truncated": "1" if truncated[0] else "0", "Access-Control-Expose-Headers": "X-Rows-Truncated",
     })
 
 
