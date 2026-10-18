@@ -97,7 +97,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
           onChange={(v) => {
             if (!v || !v[0] || !v[1]) return
             // antd may re-emit the unchanged value on blur; that must not flip a quick chip to "custom".
-            if (Math.abs(v[0].diff(value[0])) < 1000 && Math.abs(v[1].diff(value[1])) < 1000) return
+            if (!open || (Math.abs(v[0].diff(value[0])) < 1000 && Math.abs(v[1].diff(value[1])) < 1000)) return
             setForceCustom(true); onChange([v[0], v[1]])
           }} />
         <Button size="small" icon={<RightOutlined />} onClick={() => shift(1)} title="Tiến một khoảng bằng độ dài hiện tại" />
