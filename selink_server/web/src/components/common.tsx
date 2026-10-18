@@ -32,21 +32,22 @@ export function EstimateTag() {
 
 export type Range = [Dayjs, Dayjs]
 
-type Preset = { key: string; label: string; get: () => Range }
+type Preset = { key: string; label: string; get: () => Range; spanMs?: number }
 const rolling = (n: number, unit: 'minute' | 'hour' | 'day'): (() => Range) => () => [dayjs().subtract(n, unit), dayjs()]
+const spanOf = (n: number, unit: 'minute' | 'hour' | 'day') => dayjs().diff(dayjs().subtract(n, unit))
 
 /** Quick ranges: "rolling" ones end at the moment of the click, the calendar ones are fixed days. */
 export const RANGE_PRESET_LIST: Preset[] = [
-  { key: '5m', label: '5 phút', get: rolling(5, 'minute') },
-  { key: '15m', label: '15 phút', get: rolling(15, 'minute') },
-  { key: '1h', label: '1 giờ', get: rolling(1, 'hour') },
-  { key: '6h', label: '6 giờ', get: rolling(6, 'hour') },
-  { key: '24h', label: '24 giờ', get: rolling(24, 'hour') },
+  { key: '5m', spanMs: spanOf(5, 'minute'), label: '5 phút', get: rolling(5, 'minute') },
+  { key: '15m', spanMs: spanOf(15, 'minute'), label: '15 phút', get: rolling(15, 'minute') },
+  { key: '1h', spanMs: spanOf(1, 'hour'), label: '1 giờ', get: rolling(1, 'hour') },
+  { key: '6h', spanMs: spanOf(6, 'hour'), label: '6 giờ', get: rolling(6, 'hour') },
+  { key: '24h', spanMs: spanOf(24, 'hour'), label: '24 giờ', get: rolling(24, 'hour') },
   { key: 'today', label: 'Hôm nay', get: () => [dayjs().startOf('day'), dayjs()] },
   { key: 'yesterday', label: 'Hôm qua', get: () => [dayjs().subtract(1, 'day').startOf('day'), dayjs().startOf('day')] },
-  { key: '7d', label: '7 ngày', get: rolling(7, 'day') },
-  { key: '30d', label: '30 ngày', get: rolling(30, 'day') },
-  { key: '90d', label: '90 ngày', get: rolling(90, 'day') },
+  { key: '7d', spanMs: spanOf(7, 'day'), label: '7 ngày', get: rolling(7, 'day') },
+  { key: '30d', spanMs: spanOf(30, 'day'), label: '30 ngày', get: rolling(30, 'day') },
+  { key: '90d', spanMs: spanOf(90, 'day'), label: '90 ngày', get: rolling(90, 'day') },
 ]
 export const RANGE_PRESETS = RANGE_PRESET_LIST.map((p) => ({ label: p.label, value: p.get }))
 
@@ -60,16 +61,26 @@ function humanSpan(r: Range): string {
 
 /** Time-range chooser: one click on a chip for common spans, or "Tùy chọn" for an exact start/end (to the second). */
 export function RangePicker({ value, onChange }: { value: Range; onChange: (r: Range) => void }) {
-  const [active, setActive] = useState<string>('custom')
   const [open, setOpen] = useState(false)
+  const [forceCustom, setForceCustom] = useState(false)
+  // The active chip is derived from the value, so it survives parent re-renders and remounts.
+  const spanMs = value[1].diff(value[0])
+  const derived = (() => {
+    const todayStart = dayjs().startOf('day')
+    if (value[0].isSame(todayStart, 'minute') && Math.abs(value[1].diff(dayjs())) < 3_600_000) return 'today'
+    if (value[0].isSame(todayStart.subtract(1, 'day'), 'minute') && value[1].isSame(todayStart, 'minute')) return 'yesterday'
+    return RANGE_PRESET_LIST.find((p) => p.spanMs != null && Math.abs(p.spanMs - spanMs) < 1500
+      && Math.abs(value[1].diff(dayjs())) < 6 * 3_600_000)?.key ?? 'custom'
+  })()
+  const active = forceCustom ? 'custom' : derived
   const pick = (key: string) => {
-    if (key === 'custom') { setActive('custom'); setOpen(true); return }
+    if (key === 'custom') { setForceCustom(true); setOpen(true); return }
     const preset = RANGE_PRESET_LIST.find((p) => p.key === key)
-    if (preset) { setActive(key); setOpen(false); onChange(preset.get()) }
+    if (preset) { setForceCustom(false); setOpen(false); onChange(preset.get()) }
   }
   const shift = (dir: -1 | 1) => {
     const len = value[1].diff(value[0])
-    setActive('custom')
+    setForceCustom(true)
     onChange([value[0].add(dir * len, 'millisecond'), value[1].add(dir * len, 'millisecond')])
   }
   return (
@@ -87,7 +98,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
             if (!v || !v[0] || !v[1]) return
             // antd may re-emit the unchanged value on blur; that must not flip a quick chip to "custom".
             if (Math.abs(v[0].diff(value[0])) < 1000 && Math.abs(v[1].diff(value[1])) < 1000) return
-            setActive('custom'); onChange([v[0], v[1]])
+            setForceCustom(true); onChange([v[0], v[1]])
           }} />
         <Button size="small" icon={<RightOutlined />} onClick={() => shift(1)} title="Tiến một khoảng bằng độ dài hiện tại" />
         <span className="range-span">Dài {humanSpan(value)}</span>
