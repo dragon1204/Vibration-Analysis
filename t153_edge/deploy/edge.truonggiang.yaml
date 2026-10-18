@@ -20,7 +20,7 @@ buses:
 # At 4 kS/s this represents 4 x 256 ms = 1.024 s of analysed vibration.
 # B1 is retained at 500 ms for running/frequency hints without starving RAWFIFO.
 # Full FFT captures remain separate and run every 30 seconds.
-intervals: {b1_ms: 500, b2_s: 3600, fast_rms_ms: 1000, vib_window_ms: 500, window_s: 2}
+intervals: {b1_ms: 100, b2_s: 3600, fast_rms_ms: 1000, vib_window_ms: 100, window_s: 2}
 machines:
   - id: pump-tg-01
     name: "Máy bơm test Trường Giang"

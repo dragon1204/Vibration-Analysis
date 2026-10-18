@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Card, Col, Empty, List, Progress, Row, Segmented, Space, Spin, Statistic, Tag, Tooltip, Typography } from 'antd'
+import { Badge, Button, Card, Col, Empty, Progress, Row, Segmented, Space, Spin, Statistic, Tag, Tooltip } from 'antd'
 import { ThunderboltOutlined, PauseCircleOutlined, FireOutlined, ArrowRightOutlined, RadarChartOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { api } from '../api/client'
 import { useRealtime } from '../api/realtime'
@@ -45,11 +45,11 @@ export default function Overview() {
           </Row>
           <div className="section-label"><h2><RadarChartOutlined style={{ color: '#22d3ee', marginRight: 8 }} />Đội máy đang giám sát</h2><span className="muted">Tự động cập nhật mỗi 30 giây</span></div>
           <Row gutter={[12, 12]}>
-            <Col xs={24} xl={18}>
+            <Col xs={24}>
               <Row gutter={[12, 12]}>
                 {data.machines.length === 0 && <Col span={24}><Empty description="Chưa có động cơ" /></Col>}
                 {data.machines.map((m: any) => (
-                  <Col xs={24} md={12} xxl={8} key={m.id}>
+                  <Col xs={24} md={12} xl={8} xxl={6} key={m.id}>
                     <Card className="machine-card glass-card" hoverable onClick={() => nav(`/machines/${m.id}/live`)}
                       title={<div className="machine-card-title"><Badge color={STATUS[m.status]?.color} /><span title={m.name}>{m.name}</span></div>}
                       extra={<StatusTag status={m.status} />}>
@@ -91,15 +91,22 @@ export default function Overview() {
                 ))}
               </Row>
             </Col>
-            <Col xs={24} xl={6}>
-              <Card className="glass-card" size="small" title={<span><SafetyCertificateOutlined style={{ color: '#fbbf24', marginRight: 8 }} />Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
-                <List size="small" dataSource={data.events} locale={{ emptyText: 'Không có cảnh báo' }}
-                  renderItem={(e: any) => (
-                    <List.Item style={{ cursor: 'pointer' }} onClick={() => nav(`/events?event=${e.event_id}`)}>
-                      <List.Item.Meta title={<Space><StatusTag status={e.severity} /><Typography.Text>{e.machine_name || e.gateway_id}</Typography.Text></Space>}
-                        description={<><div>{e.message}</div><span className="muted">{ago(e.ts)}{e.cleared_at ? ' · đã hết' : ''}</span></>} />
-                    </List.Item>
-                  )} />
+            <Col xs={24}>
+              <Card className="glass-card alert-strip" size="small" title={<span><SafetyCertificateOutlined style={{ color: '#fbbf24', marginRight: 8 }} />Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
+                {data.events.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cảnh báo" /> : (
+                  <div className="alert-rows">
+                    {data.events.map((e: any) => (
+                      <div key={e.event_id} className="alert-row" role="button" tabIndex={0}
+                        onClick={() => nav(`/events?event=${e.event_id}`)}
+                        onKeyDown={(ev) => { if (ev.key === 'Enter') nav(`/events?event=${e.event_id}`) }}>
+                        <span className="alert-sev"><StatusTag status={e.severity} /></span>
+                        <span className="alert-machine" title={e.machine_name || e.gateway_id}>{e.machine_name || e.gateway_id}</span>
+                        <span className="alert-msg" title={e.message}>{e.message}</span>
+                        <span className="alert-time">{ago(e.ts)}{e.cleared_at ? ' · đã hết' : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </Card>
             </Col>
           </Row>
