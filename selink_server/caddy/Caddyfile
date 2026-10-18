@@ -1,4 +1,12 @@
 # HTTPS (automatic Let's Encrypt when SITE_ADDRESS is a public domain), reverse proxy, static web.
+{
+	servers {
+		# The host nginx in front of this container sets X-Forwarded-For; trust it so the API sees
+		# real client addresses (rate limits, gateway enrolment "public IP").
+		trusted_proxies static private_ranges
+	}
+}
+
 {$SITE_ADDRESS::80} {
 	encode zstd gzip
 

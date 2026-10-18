@@ -1,0 +1,16 @@
+# Zero-touch enrolment: runs only on a board without /etc/edge-agent/edge.yaml. It announces the eth0
+# MAC to the server until an admin adds the gateway on the web (Thiết bị & gateway → Thêm gateway),
+# then writes the bundle and starts edge-agent. Install: /etc/systemd/system/edge-provision.service
+[Unit]
+Description=Smart Motor gateway enrolment
+ConditionPathExists=!/etc/edge-agent/edge.yaml
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/edge-provision --server http://160.191.87.104
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

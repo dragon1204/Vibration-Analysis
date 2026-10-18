@@ -2,14 +2,20 @@
 # Install: /etc/systemd/system/edge-agent.service ; systemctl daemon-reload ; systemctl enable --now edge-agent
 [Unit]
 Description=Smart Motor edge-agent
+# A board without configuration is handled by edge-provision.service (zero-touch enrolment).
+ConditionPathExists=/etc/edge-agent/edge.yaml
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 ExecStartPre=/bin/mkdir -p /data/edge/logs
+# RTC may lose time on power loss: wait up to 60 s for NTP, otherwise take the clock from the
+# server's HTTP Date header (NTP is often blocked on plant networks). Never blocks indefinitely.
+ExecStartPre=-/usr/local/bin/edge-provision timesync --server http://160.191.87.104 --wait 60s
 ExecStart=/usr/local/bin/edge-agent --config /etc/edge-agent/edge.yaml
 Restart=always
 RestartSec=3
+TimeoutStartSec=150
 MemoryMax=150M
 
 [Install]

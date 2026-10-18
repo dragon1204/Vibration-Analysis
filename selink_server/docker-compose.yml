@@ -119,6 +119,8 @@ services:
       s3: {condition: service_healthy}
     ports:
       - "127.0.0.1:8000:8000"     # direct API access for development
+    volumes:
+      - ./emqx/certs/ca.pem:/app/certs/ca.pem:ro   # handed to gateways at zero-touch enrolment
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
       interval: 10s

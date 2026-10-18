@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     mqtt_ingest_user: str = "svc-ingest"
     mqtt_ingest_pass: str = "change-me"
     mqtt_topic_root: str = "sm/v1"
+    # Address gateways use to reach the broker, and the CA they must trust (zero-touch enrolment).
+    mqtt_host: str = "localhost"
+    mqtt_tls_port: int = 8883
+    provision_ca_file: str = "/app/certs/ca.pem"
 
     minio_endpoint: str = "minio:9000"
     minio_access_key: str = "smartmotor"

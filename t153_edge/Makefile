@@ -14,6 +14,7 @@ arm:
 	$(ARM) go build -trimpath -ldflags "$(LDFLAGS)" -o bin/edge-agent ./cmd/edge-agent
 	$(ARM) go build -trimpath -ldflags "$(LDFLAGS)" -o bin/wtvb-config ./cmd/wtvb-config
 	$(ARM) go build -trimpath -ldflags "$(LDFLAGS)" -o bin/sensor-sim ./cmd/sensor-sim
+	$(ARM) go build -trimpath -ldflags "$(LDFLAGS)" -o bin/edge-provision ./cmd/edge-provision
 
 test:
 	go test ./...

@@ -5,6 +5,7 @@ import { api, post } from '../api/client'
 import { useRealtime } from '../api/realtime'
 import { useAuth } from '../auth'
 import { ago, dt, num } from '../utils/format'
+import AddGateway from '../components/AddGateway'
 
 export default function Devices() {
   const qc = useQueryClient()
@@ -35,6 +36,7 @@ export default function Devices() {
   const machinesOfGw = [...new Set((gw?.points || []).map((p: any) => p.machine_id))] as string[]
   return (
     <div className="page">
+      {can('admin') && <AddGateway />}
       <Card size="small" title="Gateway (T153)">
         <Table size="small" rowKey="id" loading={isLoading} dataSource={data}
           onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: 'pointer' } })}
