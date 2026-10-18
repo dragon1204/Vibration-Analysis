@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Tag, Tooltip, DatePicker, Segmented } from 'antd'
+import { Button, Tag, Tooltip, DatePicker } from 'antd'
 import {
   CheckCircleFilled, EyeFilled, WarningFilled, CloseCircleFilled, DisconnectOutlined, InfoCircleFilled, LeftOutlined, RightOutlined,
 } from '@ant-design/icons'
@@ -74,8 +74,11 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
   }
   return (
     <div className="range-picker">
-      <Segmented size="small" value={active} onChange={(v) => pick(String(v))} className="range-chips"
-        options={[...RANGE_PRESET_LIST.map((p) => ({ value: p.key, label: p.label })), { value: 'custom', label: 'Tùy chọn' }]} />
+      <div className="range-chips">
+        {[...RANGE_PRESET_LIST.map((p) => ({ key: p.key, label: p.label })), { key: 'custom', label: 'Tùy chọn' }].map((c) => (
+          <Tag.CheckableTag key={c.key} checked={active === c.key} onChange={() => pick(c.key)}>{c.label}</Tag.CheckableTag>
+        ))}
+      </div>
       <div className="range-picker-row">
         <Button size="small" icon={<LeftOutlined />} onClick={() => shift(-1)} title="Lùi một khoảng bằng độ dài hiện tại" />
         <DatePicker.RangePicker showTime={{ format: 'HH:mm:ss' }} value={value} format="DD/MM/YYYY HH:mm:ss" open={open}

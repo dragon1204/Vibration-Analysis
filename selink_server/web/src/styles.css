@@ -275,7 +275,9 @@ body { background: #f4f6fb; color: #17213a; }
 }
 
 .range-picker { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.range-picker .range-chips { max-width: 100%; overflow-x: auto; }
+.range-chips { display: flex; flex-wrap: wrap; gap: 4px 0; }
+.range-chips .ant-tag { margin-inline-end: 4px; padding: 1px 10px; border-radius: 14px; font-size: 12.5px; cursor: pointer; user-select: none; }
+.fft-range { grid-column: 1 / -1; }
 .range-picker-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .range-picker-row .ant-picker { flex: 1 1 320px; min-width: 0; }
 .range-span { color: #778398; font-size: 12px; white-space: nowrap; }
