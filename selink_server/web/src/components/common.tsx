@@ -38,6 +38,7 @@ const spanOf = (n: number, unit: 'minute' | 'hour' | 'day') => dayjs().diff(dayj
 
 /** Quick ranges: "rolling" ones end at the moment of the click, the calendar ones are fixed days. */
 export const RANGE_PRESET_LIST: Preset[] = [
+  { key: '1m', spanMs: spanOf(1, 'minute'), label: '1 phút', get: rolling(1, 'minute') },
   { key: '5m', spanMs: spanOf(5, 'minute'), label: '5 phút', get: rolling(5, 'minute') },
   { key: '15m', spanMs: spanOf(15, 'minute'), label: '15 phút', get: rolling(15, 'minute') },
   { key: '1h', spanMs: spanOf(1, 'hour'), label: '1 giờ', get: rolling(1, 'hour') },

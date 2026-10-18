@@ -314,12 +314,13 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   }
 
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
-    extra={result && <Space wrap>
-      <Button icon={<DownloadOutlined />} onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>
-      <Button type="primary" icon={<DownloadOutlined />} onClick={() => download(
-        `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${result.point_id}-bang-hang.csv`,
-        { from: result.from, to: result.to, point_id: result.point_id, device_name: deviceName, max_skew_ms: 1000 },
-      ).catch((error) => message.error(`Không xuất được bảng hãng: ${error.message}`))}>Xuất bảng giống hãng</Button>
+    extra={<Space wrap>
+      {result && <Button icon={<DownloadOutlined />} onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>}
+      {/* The vendor-style table only needs a point and a time range: no analysis run is required. */}
+      <Button type="primary" icon={<DownloadOutlined />} disabled={!pointId} onClick={() => download(
+        `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`,
+        { ...rangeParams(range), point_id: pointId, device_name: deviceName, max_skew_ms: 1000 },
+      ).catch((error) => message.error(`Không xuất được bảng hãng: ${error.message}`))}>Xuất bảng giống hãng (khoảng đang chọn)</Button>
     </Space>}>
     <div className="fft-filter-grid">
       <label><span>Điểm đo</span><Select value={pointId} onChange={setPointId} options={points.map((p: any) => ({ value: p.id, label: `${p.name} (${p.id})` }))} /></label>
