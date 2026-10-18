@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, Col, Empty, Row, Select, Spin, Table, Tag } from 'antd'
+import { Button, Card, Col, Empty, Row, Select, Spin, Tag } from 'antd'
 import { DisconnectOutlined, LineChartOutlined, WifiOutlined } from '@ant-design/icons'
 import { api } from '../api/client'
 import { useRealtime } from '../api/realtime'
@@ -420,21 +420,11 @@ export default function Live() {
             </div>
           </Col>
 
-          <Col xs={24} xl={15}>
+          <Col xs={24}>
             <Card className="dashboard-card" title="Xu hướng vận tốc RMS ISO · 6 giờ"
               extra={trendPoint && <Button size="small" icon={<LineChartOutlined />} onClick={() => nav(`/points/${trendPoint}/spectrum`)}>Xem phổ</Button>}>
               {trendSeries.length ? <TrendChart height={270} limits={machine.iso_limits} yName="mm/s" series={trendSeries} />
                 : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có capture trong 6 giờ qua" />}
-            </Card>
-          </Col>
-          <Col xs={24} xl={9}>
-            <Card className="accuracy-card" size="small" title="Độ chính xác đo" extra={<span className="accuracy-requirement">Yêu cầu sai lệch &lt; 5%</span>}>
-              {(status.accuracy || []).length ? <Table size="small" pagination={false} rowKey="quantity" dataSource={status.accuracy} columns={[
-                { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Số mẫu', dataIndex: 'n' },
-                { title: 'Sai lệch TB', dataIndex: 'mean_pct', render: (value) => `${num(value, 1)} %` },
-                { title: 'P95', dataIndex: 'p95_pct', render: (value) => `${num(value, 1)} %` },
-                { title: 'Kết quả', render: (_value, row: any) => row.mean_pct <= 5 ? <Tag color="success">Đạt</Tag> : <Tag color="error">Không đạt</Tag> },
-              ]} /> : <div className="card-empty-line">Chưa có biên bản đối chứng. <a onClick={() => nav('/accuracy')}>Nhập kết quả đo bằng đồng hồ →</a></div>}
             </Card>
           </Col>
         </Row>
