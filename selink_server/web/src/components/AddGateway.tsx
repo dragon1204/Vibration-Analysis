@@ -39,10 +39,6 @@ export default function AddGateway() {
 
   return (
     <Card size="small" title="Thêm gateway bằng MAC" style={{ marginBottom: 12 }}>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 10 }}>
-        Cắm gateway mới vào mạng LAN có Internet (DHCP), bật nguồn, đợi khoảng 1 phút rồi nhập MAC cổng LAN 1 (eth0) in trên thiết bị.
-        Gateway tự nhận cấu hình và kết nối, không cần biết IP.
-      </Typography.Paragraph>
       <Space wrap>
         <Input placeholder="MAC, ví dụ 02:00:10:85:97:67" value={mac} onChange={(e) => setMac(e.target.value)} onPressEnter={() => valid && claim()}
           status={mac && !valid ? 'error' : undefined} style={{ width: 280 }} allowClear />
