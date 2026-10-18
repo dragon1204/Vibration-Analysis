@@ -323,7 +323,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     </Space>}>
     <div className="fft-filter-grid">
       <label><span>Điểm đo</span><Select value={pointId} onChange={setPointId} options={points.map((p: any) => ({ value: p.id, label: `${p.name} (${p.id})` }))} /></label>
-      <label className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></label>
+      <div className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></div>
       <label><span>Metric FFT</span><Select value={metric} onChange={setMetric} options={METRICS} /></label>
       <label><span>Trục đo</span><Segmented block value={axis} onChange={(value) => setAxis(String(value))} options={['x', 'y', 'z'].map((value) => ({ value, label: value.toUpperCase() }))} /></label>
       <label><span>Order tracking</span><Select value={tracking} onChange={setTracking} options={[
