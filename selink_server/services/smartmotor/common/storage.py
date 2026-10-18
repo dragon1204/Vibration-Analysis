@@ -43,6 +43,9 @@ class Storage:
                 raise
         return await asyncio.to_thread(_do)
 
+    async def delete(self, key: str) -> None:
+        await asyncio.to_thread(self.client.remove_object, self.bucket, key)
+
     async def presigned(self, key: str, hours: int = 1) -> str:
         return await asyncio.to_thread(self.client.presigned_get_object, self.bucket, key, timedelta(hours=hours))
 

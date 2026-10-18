@@ -295,3 +295,5 @@ body { background: #f4f6fb; color: #17213a; }
   .alert-msg { grid-column: 1 / -1; white-space: normal; }
   .alert-time { grid-column: 1 / -1; text-align: left; }
 }
+
+.report-summary { margin: 0; padding-left: 18px; color: #3b4659; line-height: 1.6; }

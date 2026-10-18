@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from ..common import bus, dsp, gwconfig, reports, wavefile
+from ..common import bus, dsp, gwconfig, report_analysis, reports, wavefile
 from ..common.assets import AssetCache
 from ..common.db import create_pool, migrate, migrations_dir
 from ..common.iso import SEVERITY_ORDER, iso_limits
@@ -102,7 +102,7 @@ class Analytics:
         """Manual triggers from the API: {"job": "baseline_learn" | "anomaly_train" | ..., "machine_id"?}."""
         job = getattr(self, "job_" + d.get("job", ""), None)
         if job:
-            if d.get("job") == "monthly_report":
+            if d.get("job") in ("monthly_report", "report_build"):
                 await job(d)
             else:
                 await job()
@@ -542,51 +542,85 @@ class Analytics:
                        VALUES (now(), $1,$2,$3,$4,$5,$6)""", machine_id, point_id, *values, _jsonable(detail))
 
     async def job_monthly_report(self, options: dict | None = None) -> None:
-        """Generate a selected month or quarter; scheduled execution defaults to the previous month."""
+        """Scheduler / legacy trigger: queue and build one report per machine for a month or quarter.
+
+        Without options this is the cron run on day 1 and reports the previous month (Vietnam calendar)."""
         options = options or {}
-        now = datetime.now(timezone.utc)
+        now = datetime.now(report_analysis.VN)
         if options.get("period_type") == "quarter":
-            year = int(options.get("year") or now.year)
-            quarter = int(options.get("quarter") or ((now.month - 1) // 3 or 4))
-            if not 1 <= quarter <= 4:
-                raise ValueError("quarter must be from 1 to 4")
-            if not options.get("year") and (now.month - 1) // 3 == 0:
-                year -= 1
-            start = datetime(year, 3 * (quarter - 1) + 1, 1, tzinfo=timezone.utc)
-            first = datetime(year + (1 if quarter == 4 else 0), 1 if quarter == 4 else 3 * quarter + 1, 1, tzinfo=timezone.utc)
-            period = f"{year}-Q{quarter}"
-        elif options.get("period"):
-            start = datetime.strptime(str(options["period"]), "%Y-%m").replace(tzinfo=timezone.utc)
-            first = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
-            period = f"{start:%Y-%m}"
+            q = int(options.get("quarter") or ((now.month - 1) // 3 or 4))
+            y = int(options.get("year") or (now.year - 1 if (now.month - 1) // 3 == 0 and not options.get("quarter") else now.year))
+            ptype, period = "quarter", f"{y}-Q{q}"
         else:
-            first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            start = (first - timedelta(days=1)).replace(day=1)
-            period = f"{start:%Y-%m}"
+            prev = (now.replace(day=1) - timedelta(days=1))
+            ptype, period = "month", str(options.get("period") or f"{prev:%Y-%m}")
+        start, end, label = report_analysis.period_bounds(ptype, period)
         await self.assets.refresh(force=True)
-        for mid, m in self.assets.machines.items():
-            async with self.pool.acquire() as c:
-                zrows = await c.fetch(
-                    """SELECT point_id, avg(iso_vrms_max_mm_s) a, max(iso_vrms_max_mm_s) mx, max(iso_zone) z, count(*) n
-                       FROM captures c JOIN measurement_points p ON p.id=c.point_id
-                       WHERE p.machine_id=$1 AND c.ts >= $2 AND c.ts < $3 GROUP BY point_id ORDER BY point_id""", mid, start, first)
-                evs = await c.fetch("""SELECT ts, severity, point_id, message, state, diagnosis FROM events WHERE machine_id=$1
-                                       AND ts >= $2 AND ts < $3 ORDER BY ts""", mid, start, first)
-                tenant = await c.fetchval("SELECT tenant_id FROM sites WHERE id=$1", m["site_id"])
-            if not zrows and not evs:
+        machine_ids = [options["machine_id"]] if options.get("machine_id") else list(self.assets.machines)
+        for mid in machine_ids:
+            m = self.assets.machines.get(mid)
+            if not m:
                 continue
-            recs = sorted({(e["diagnosis"] or {}).get("recommendation") for e in evs if e["diagnosis"]} - {None})
-            pdf = reports.monthly_report(
-                m, period,
-                [[r["point_id"], f"{r['a'] or 0:.2f}", f"{r['mx'] or 0:.2f}", r["z"] or "–", r["n"]] for r in zrows],
-                [[f"{e['ts']:%d/%m %H:%M}", e["severity"], e["point_id"] or "", (e["message"] or "")[:80], e["state"]] for e in evs],
-                recs)
-            key = f"reports/{tenant}/{period}/{mid}.pdf"
-            await self.storage.put(key, pdf, "application/pdf")
             async with self.pool.acquire() as c:
-                await c.execute("INSERT INTO reports (tenant_id, machine_id, period, object_key) VALUES ($1,$2,$3,$4)",
-                                tenant, mid, period, key)
-            await bus.publish(self.redis, "notify", {"report": key, "machine_id": mid, "period": period})
+                tenant = await c.fetchval("SELECT tenant_id FROM sites WHERE id=$1", m["site_id"])
+                rid = await c.fetchval(
+                    """INSERT INTO reports (tenant_id, machine_id, period, period_type, period_start, period_end, status,
+                         requested_by, format_version) VALUES ($1,$2,$3,$4,$5,$6,'queued',$7,2) RETURNING id""",
+                    tenant, mid, label, ptype, start, end, options.get("requested_by") or "scheduler")
+            await self.build_report(rid)
+
+    async def job_report_build(self, options: dict | None = None) -> None:
+        await self.build_report(int((options or {})["report_id"]))
+
+    async def build_report(self, report_id: int) -> None:
+        """Build one queued report row: analysis → PDF → object storage; status running → done | failed."""
+        async with self.pool.acquire() as c:
+            row = await c.fetchrow("""UPDATE reports SET status='running', started_at=now(), error=NULL
+                                      WHERE id=$1 AND status IN ('queued','failed') RETURNING *""", report_id)
+        if not row:
+            return
+        r = dict(row)
+        try:
+            await self.assets.refresh(force=True)
+            m = self.assets.machines.get(r["machine_id"])
+            if not m:
+                raise ValueError(f"Không tìm thấy máy {r['machine_id']}")
+            start, end = r["period_start"], r["period_end"]
+            async with self.pool.acquire() as c:
+                points = [dict(p) for p in await c.fetch(
+                    "SELECT id, name, role, axes_map, iso_axes FROM measurement_points WHERE machine_id=$1 ORDER BY id", m["id"])]
+                caps = [dict(x) for x in await c.fetch(
+                    """SELECT c.point_id, c.ts, c.speed_hz, c.df_hz, c.running, c.features->'axes' AS axes, c.quality_flags AS flags
+                       FROM captures c JOIN measurement_points p ON p.id=c.point_id
+                       WHERE p.machine_id=$1 AND c.ts >= $2 AND c.ts < $3 AND c.features IS NOT NULL ORDER BY c.ts""",
+                    m["id"], start, end)]
+                evs = [dict(x) for x in await c.fetch(
+                    """SELECT ts, severity, point_id, type, rule, metric, value, threshold, message, state, cleared_at, diagnosis
+                       FROM events WHERE machine_id=$1 AND ts >= $2 AND ts < $3 ORDER BY ts""", m["id"], start, end)]
+                h = await c.fetchrow("""SELECT ts, rul_days, rul_lo_days, rul_hi_days FROM machine_health
+                                        WHERE machine_id=$1 AND ts < $2 ORDER BY ts DESC LIMIT 1""", m["id"], end)
+            lim = iso_limits(m.get("iso_group"), m.get("foundation"))
+            analysis = await asyncio.to_thread(report_analysis.analyze, m, points, caps, evs, lim, start, end,
+                                               dict(h) if h else None)
+            pdf = await asyncio.to_thread(reports.monthly_report, m, r["period"], start, end, lim, analysis)
+            key = f"reports/{r['tenant_id']}/{r['period']}/{m['id']}-{report_id}.pdf"
+            await self.storage.put(key, pdf, "application/pdf")
+            summary = {"zone": analysis.get("zone_overall"), "lines": analysis.get("summary"),
+                       "events_total": analysis["events"]["total"], "events_active": analysis["events"]["active"],
+                       "points": [{"id": p["id"], "mean": p["stats"]["mean"], "p95": p["stats"]["p95"], "max": p["stats"]["max"],
+                                   "zone_p95": p["stats"]["zone_p95"], "n": p["stats"]["n"]} for p in analysis["points"]],
+                       "period_complete": analysis.get("period_complete")}
+            async with self.pool.acquire() as c:
+                await c.execute("""UPDATE reports SET status='done', finished_at=now(), object_key=$2, size_bytes=$3,
+                                     summary=$4, analysis=$5 WHERE id=$1""", report_id, key, len(pdf),
+                                report_analysis.jsonable(summary), report_analysis.jsonable(analysis))
+            await bus.publish(self.redis, "notify", {"report": key, "report_id": report_id, "machine_id": m["id"],
+                                                     "period": r["period"]})
+        except Exception as e:  # keep the row so the API can show why it failed
+            log.exception("report %s failed", report_id)
+            async with self.pool.acquire() as c:
+                await c.execute("UPDATE reports SET status='failed', finished_at=now(), error=$2 WHERE id=$1",
+                                report_id, str(e)[:500])
 
     async def job_gateway_watch(self) -> None:
         """Gateway without health for > 3 min → offline event (cleared when it returns)."""

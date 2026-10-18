@@ -1,4 +1,4 @@
-"""Accuracy verification < 5 % (spec 9, screen 9) and PDF reports (screen 10)."""
+"""Accuracy verification < 5 % (spec 9, screen 9). Periodic reports live in routers/reports.py."""
 from datetime import datetime
 from typing import Optional
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ...common import reports
 from ..deps import User, audit, check_point, current_user, require
 
-router = APIRouter(tags=["accuracy", "reports"])
+router = APIRouter(tags=["accuracy"])
 
 
 class AccuracyIn(BaseModel):
@@ -114,26 +114,3 @@ async def accuracy_report(point_id: str, request: Request, format: str = "json",
                         headers={"Content-Disposition": f'attachment; filename="bien-ban-sai-so-{point_id}.pdf"'})
     return {"point_id": point_id, "summary": summary, "n_tests": len(tests),
             "pass": bool(summary) and all(s["pass"] for s in summary)}
-
-
-@router.get("/reports")
-async def list_reports(request: Request, machine_id: Optional[str] = None, month: Optional[str] = None,
-                       user: User = Depends(current_user)):
-    async with request.app.state.pool.acquire() as c:
-        rows = await c.fetch("""SELECT r.*, m.name AS machine_name FROM reports r JOIN machines m ON m.id=r.machine_id
-                                WHERE m.site_id = ANY($1) AND ($2::text IS NULL OR r.machine_id=$2) AND ($3::text IS NULL OR r.period=$3)
-                                ORDER BY r.period DESC, r.machine_id""", user.sites(), machine_id, month)
-    return [dict(r) for r in rows]
-
-
-@router.get("/reports/{report_id}/download")
-async def download_report(report_id: int, request: Request, user: User = Depends(current_user)):
-    async with request.app.state.pool.acquire() as c:
-        r = await c.fetchrow("SELECT r.*, m.site_id FROM reports r JOIN machines m ON m.id=r.machine_id WHERE r.id=$1", report_id)
-    if not r or r["site_id"] not in user.sites():
-        raise HTTPException(404, "Không tìm thấy báo cáo")
-    data = await request.app.state.storage.get(r["object_key"])
-    if not data:
-        raise HTTPException(404, "File báo cáo không còn")
-    return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{r["machine_id"]}-{r["period"]}.pdf"'})
