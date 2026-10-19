@@ -104,3 +104,39 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Every push to main that passes the tests and builds the images is rolled out to the VPS.
+  # deploy.sh verifies health and rolls back to the previous tag on failure.
+  # Secrets: VPS_SSH_KEY (private key whose public half is the forced-command entry for
+  # scripts/ci-deploy.sh on the VPS) and VPS_KNOWN_HOSTS (output of ssh-keyscan for the VPS).
+  deploy:
+    needs: [build]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      VPS_HOST: 160.191.87.104
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH key
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Ship host files and deploy ${{ github.sha }}
+        working-directory: selink_server
+        run: |
+          TAG="${GITHUB_SHA::7}"
+          tar czf - docker-compose.yml .env.example scripts/*.sh emqx/emqx.conf emqx/acl.conf \
+            | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes "root@${VPS_HOST}" "deploy ${TAG}"
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "http://${VPS_HOST}/api/v1/health" >/dev/null; then echo "API healthy"; exit 0; fi
+            sleep 5
+          done
+          echo "API health check failed" >&2; exit 1
