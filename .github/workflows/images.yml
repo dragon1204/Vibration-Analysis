@@ -107,7 +107,7 @@ jobs:
 
   # Every push to main that passes the tests and builds the images is rolled out to the VPS.
   # deploy.sh verifies health and rolls back to the previous tag on failure.
-  # Secret: VPS_SSH_KEY (private key whose public half is the forced-command entry for
+  # Secret: SELINK_VPS_KEY (private key, PEM or one base64 line, whose public half is the forced-command entry for
   # scripts/ci-deploy.sh on the VPS). The VPS host key is public and pinned below.
   deploy:
     needs: [build]
@@ -125,12 +125,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: SSH key
         env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KEY: ${{ secrets.SELINK_VPS_KEY }}
         run: |
           install -d -m 700 ~/.ssh
           # Diagnostics without revealing the key: only its length and shape are reported.
           if [ -z "$VPS_SSH_KEY" ]; then
-            echo "::error::Secret VPS_SSH_KEY is empty or not visible to this workflow. Add it under Settings → Secrets and variables → Actions → Repository secrets (not Variables, Environment, Dependabot or Codespaces)."
+            echo "::error::Secret SELINK_VPS_KEY is empty or not visible to this workflow. Add it under Settings → Secrets and variables → Actions → Repository secrets (not Variables, Environment, Dependabot or Codespaces)."
             exit 1
           fi
           echo "::notice::VPS_SSH_KEY length ${#VPS_SSH_KEY}, PEM=$(printf '%s' "$VPS_SSH_KEY" | grep -c 'BEGIN OPENSSH PRIVATE KEY'), lines=$(printf '%s\n' "$VPS_SSH_KEY" | wc -l)"
