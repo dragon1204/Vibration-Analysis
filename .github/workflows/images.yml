@@ -107,8 +107,8 @@ jobs:
 
   # Every push to main that passes the tests and builds the images is rolled out to the VPS.
   # deploy.sh verifies health and rolls back to the previous tag on failure.
-  # Secrets: VPS_SSH_KEY (private key whose public half is the forced-command entry for
-  # scripts/ci-deploy.sh on the VPS) and VPS_KNOWN_HOSTS (output of ssh-keyscan for the VPS).
+  # Secret: VPS_SSH_KEY (private key whose public half is the forced-command entry for
+  # scripts/ci-deploy.sh on the VPS). The VPS host key is public and pinned below.
   deploy:
     needs: [build]
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch')
@@ -119,14 +119,18 @@ jobs:
       cancel-in-progress: false
     env:
       VPS_HOST: 160.191.87.104
+      # /etc/ssh/ssh_host_rsa_key.pub of the VPS (fingerprint SHA256:HDY1mf2N43lEEzHEtHfwy7fBqpV3nkPxIpBjIq9MzLs)
+      VPS_HOST_KEY: "160.191.87.104 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDaekzdkcqrUnoUsUmcV+AsF7SEgByr4uvBxSBDx+5TnoqTynkQsB9ZsizyJZh0ZvsNDsgBENjr9IY2Mffvq+OzebhcSAr/nqeXFQML4ZCpWRtksLXI4y2+cMT8Dl6Aaq5L5RfQ4Jnru1eVpRe+v9oQL8FuuYBcCeXNVSfw2lYL76c4RoPqGis/PJ5RaUGmw1hEqzvqqBN1GWortAGg0pbc9r4e1xQrheqCedf4epncFdLcgDX+m35D2kN6CsUBelY+vZizg2qHazF8rX4PvAzko+N5sJ+joPaKuI/CuZqdE6N/BoC/CE/zkuXn/dlrer1VZUZPlU0+bKkdP6Ko7iA3lKy0uXNu9cqbRfQWnGnoPpx2DysG8OTNwxqO5SBzRF9aJRetRvcEcbA4rYVheXI7anHCDg4if1F1OixzLLGrwLxYtI54vLA70SJFXdQHcwfZNJMhcAMM7G2cI63JW17jPuKMPuZkuUxXr7Ff6aUKtEoVux7D11HN5l+DP9zytE8="
     steps:
       - uses: actions/checkout@v4
       - name: SSH key
         run: |
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
+          # Strip CR (key pasted from Windows) so OpenSSH accepts it; fail with a clear message.
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null || { echo "::error::VPS_SSH_KEY is not a valid OpenSSH private key"; exit 1; }
+          printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
       - name: Ship host files and deploy ${{ github.sha }}
         working-directory: selink_server
         run: |
