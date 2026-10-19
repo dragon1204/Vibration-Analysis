@@ -124,10 +124,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: SSH key
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           install -d -m 700 ~/.ssh
-          # Strip CR (key pasted from Windows) so OpenSSH accepts it; fail with a clear message.
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/deploy_key
+          # Accept the key as PEM text or as one base64 line (easier to copy from a terminal).
+          # CR from Windows clipboards is stripped either way.
+          if printf '%s' "$VPS_SSH_KEY" | grep -q 'BEGIN OPENSSH PRIVATE KEY'; then
+            printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          else
+            printf '%s' "$VPS_SSH_KEY" | tr -d '\r\n ' | base64 -d > ~/.ssh/deploy_key || true
+          fi
           chmod 600 ~/.ssh/deploy_key
           ssh-keygen -y -f ~/.ssh/deploy_key > /dev/null || { echo "::error::VPS_SSH_KEY is not a valid OpenSSH private key"; exit 1; }
           printf '%s\n' "$VPS_HOST_KEY" > ~/.ssh/known_hosts
