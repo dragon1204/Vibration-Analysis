@@ -543,7 +543,23 @@ class Panel(QWidget):
             return None
         return ((fast.get("axes") or {}).get(axis) or {}).get("vrms_mm_s")
 
-    def point_value(self, pinfo, now):
+    def corrected_axis_value(self, machine, pinfo, axis, now, raw):
+        """Bearing-corrected RMS = sqrt(DE² - (alpha * BASE)²), matched by physical axis role."""
+        if pinfo.get("role", "bearing") != "bearing" or raw is None:
+            return raw
+        role_map = dict(DEFAULT_ROLES)
+        role_map.update(pinfo.get("axes_map") or {})
+        role = role_map.get(axis)
+        base = next((p for p in machine.get("points") or [] if p.get("role") == "base"), None)
+        if base is None or role is None:
+            return raw
+        base_value = self.role_value(base, role, now)
+        if base_value is None:
+            return raw
+        alpha = float((self.state or {}).get("base_alpha") or 0.8)
+        return math.sqrt(max(0.0, raw * raw - (alpha * base_value) ** 2))
+
+    def point_value(self, machine, pinfo, now):
         """Live overall RMS (max over ISO axes) of one point, or None when stale/offline."""
         ps = ((self.state or {}).get("points") or {}).get(pinfo["id"]) or {}
         fast = ps.get("fast") or {}
@@ -553,6 +569,7 @@ class Panel(QWidget):
         best = None
         for a in (pinfo.get("iso_axes") or ["x", "y", "z"]):
             v = ((fast.get("axes") or {}).get(a) or {}).get("vrms_mm_s")
+            v = self.corrected_axis_value(machine, pinfo, a, now, v)
             if v is not None and (best is None or v > best):
                 best = v
         return best
@@ -606,7 +623,7 @@ class Panel(QWidget):
         if self.btns:
             zones = []
             for mm, pi in pts:
-                v = self.point_value(pi, now0)
+                v = self.point_value(mm, pi, now0)
                 if pi.get("role", "bearing") != "bearing":
                     zones.append(None)
                 else:
@@ -655,7 +672,8 @@ class Panel(QWidget):
         vals = {}
         for a in ("x", "y", "z"):
             # A stale number is not shown as if it were live.
-            vals[a] = (fast_axes.get(a) or {}).get("vrms_mm_s") if fresh else None
+            raw = (fast_axes.get(a) or {}).get("vrms_mm_s") if fresh else None
+            vals[a] = self.corrected_axis_value(m, pinfo, a, now, raw)
         # The ISO verdict always follows the worst RMS across every configured ISO axis.
         main = main_axis(pinfo)
         overall = None
@@ -926,7 +944,7 @@ class NetPage(QWidget):
 class ComparePage(QWidget):
     """Same-direction RMS of every sensor side by side; base / bearing ratio when both exist."""
 
-    ROLES = (("radial_h", "Ngang"), ("radial_v", "Đứng"), ("axial", "Dọc trục"))
+    ROLES = (("radial_h", "Horizontal (H)"), ("radial_v", "Vertical (V)"), ("axial", "Axial (A)"))
 
     def __init__(self, panel, back):
         super().__init__()
@@ -938,7 +956,7 @@ class ComparePage(QWidget):
         root.setContentsMargins(14, 10, 14, 8)
         root.setSpacing(8)
         head = QHBoxLayout()
-        title = label("SO SÁNH CẢM BIẾN  |  VẬN TỐC RMS, MM/S", 15, C["text"], True)
+        title = label("SENSOR COMPARISON  |  RMS VELOCITY, MM/S", 15, C["text"], True)
         title.setMinimumHeight(34)
         head.addWidget(title, 1)
         self.clock = label("", 14, C["text"], True, Qt.AlignRight | Qt.AlignVCenter)
@@ -972,14 +990,14 @@ class ComparePage(QWidget):
                 w.deleteLater()
         self.cells = {}
         has_ratio = any(p.get("role") == "base" for _, p in pts) and any(p.get("role", "bearing") == "bearing" for _, p in pts)
-        cols = ["HƯỚNG ĐO"] + [pos_label(i, p) for i, (_, p) in enumerate(pts)] + (["BASE / Ổ ĐỠ", "RIÊNG Ổ ĐỠ"] if has_ratio else [])
+        cols = ["MEASUREMENT\nAXIS"] + [pos_label(i, p) for i, (_, p) in enumerate(pts)] + (["BASE /\nBEARING RATIO", "BEARING-\nCORRECTED RMS"] if has_ratio else [])
         for c, text in enumerate(cols):
             lb = label(text, 10, C["muted"], True, Qt.AlignLeft | Qt.AlignVCenter if c == 0 else Qt.AlignRight | Qt.AlignVCenter)
-            lb.setMinimumHeight(30)
+            lb.setMinimumHeight(42)
             self.grid.addWidget(lb, 0, c)
             if 0 < c <= len(pts):
                 p = pts[c - 1][1]
-                sub = label("BASE" if p.get("role") == "base" else "Ổ đỡ", 9, C["muted"], False, Qt.AlignRight | Qt.AlignVCenter)
+                sub = label("BASE" if p.get("role") == "base" else "BEARING", 9, C["muted"], False, Qt.AlignRight | Qt.AlignVCenter)
                 self.grid.addWidget(sub, 1, c)
         for r, (_, name) in enumerate(self.ROLES):
             self.grid.addWidget(label(name.upper(), 15, C["text"], True), r + 2, 0)
@@ -1013,13 +1031,12 @@ class ComparePage(QWidget):
                 lb = self.cells[(r, len(pts) + 1)]
                 lb.setText("%s %%" % fmt(ratio, 0) if ratio is not None else "--")
                 lb.setStyleSheet("color:%s;background:transparent;border:none;" % (C["C"] if ratio and ratio > 50 else C["text"]))
-                # Bearing's own vibration with the base's share removed (display only, not used for zones).
+                # Bearing-corrected vibration after removing the BASE contribution.
                 alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
                 own = None if b is None or d is None else math.sqrt(max(0.0, b * b - (alpha * d) ** 2))
                 self.cells[(r, len(pts) + 2)].setText(fmt(own))
         alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
-        self.note.setText("RIÊNG Ổ ĐỠ = căn(DE² - (α x BASE)²), α = %s (tạm), chỉ để tham khảo, vùng ISO và cảnh báo dùng giá trị DE đo thật. "
-                          "BASE / Ổ ĐỠ trên 50 %%: nên kiểm tra bu lông chân đế và bệ." % fmt(alpha, 1)
+        self.note.setText("BEARING-CORRECTED RMS = √(DE² - (α × BASE)²)  ·  α = %s" % fmt(alpha, 1)
                           if self.has_ratio else "")
 
 

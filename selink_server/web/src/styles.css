@@ -652,4 +652,5 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .app-menu .ant-menu-item-selected .anticon { color: #5fd0b7 !important; }
 .app-menu .ant-menu-item-group-title { color: #7f90a8 !important; }
 .app-menu .ant-menu-item::after { display: none; }
-.app-sidebar::after { content: "SELINK SMART MOTOR"; position: absolute; right: 0; bottom: 0; left: 0; padding: 16px; color: #70819a; border-top: 1px solid #1d2942; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+/* The former pseudo-footer overlapped the last menu item when the navigation scrolled. */
+.app-sidebar::after { display: none; }

@@ -280,7 +280,9 @@ func (p *pointRT) evaluateCapture(res *features.Result) {
 	}
 	lim := p.a.isoLimits(p.m.cfg)
 	// Isolation targets are evaluated in the group capture with isolated values.
-	if !math.IsNaN(v) && (fs.Isolation != nil || !p.m.inIsolationTargets(p.cfg.ID)) {
+	// A machine with BASE correction evaluates ISO in evaluateStats using the
+	// paired bearing/base RMS. Do not emit a second, raw-DE capture alarm.
+	if !math.IsNaN(v) && !p.m.hasBasePoint() && (fs.Isolation != nil || !p.m.inIsolationTargets(p.cfg.ID)) {
 		src := "capture"
 		if fs.Isolation != nil {
 			src = "isolated"

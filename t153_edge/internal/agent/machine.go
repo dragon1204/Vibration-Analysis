@@ -95,6 +95,66 @@ func (m *machineRT) hasTempRole(role string) bool {
 
 func (m *machineRT) isolationEnabled() bool { return m.cfg.Isolation != nil && m.cfg.Isolation.Enabled }
 
+func (m *machineRT) hasBasePoint() bool {
+	for _, p := range m.points {
+		if p.cfg.Role == "base" {
+			return true
+		}
+	}
+	return false
+}
+
+// correctedStats removes the matched BASE contribution from each bearing axis.
+// The bearing and base axes are paired by their physical axes_map role, not by x/y/z index.
+func (m *machineRT) correctedStats(p *pointRT, in drivers.VibrationIndicators) drivers.VibrationIndicators {
+	if p.cfg.Role != "bearing" {
+		return in
+	}
+	var base *pointRT
+	for _, candidate := range m.points {
+		if candidate.cfg.Role == "base" {
+			base = candidate
+			break
+		}
+	}
+	if base == nil {
+		return in
+	}
+	base.mu.Lock()
+	baseStats := base.lastStats
+	base.mu.Unlock()
+	if baseStats == nil {
+		return in
+	}
+	alpha := m.a.cfg.LocalUI.BaseAlpha
+	if alpha <= 0 {
+		alpha = 0.8
+	}
+	out := in
+	defaults := [3]string{"radial_h", "axial", "radial_v"}
+	for i, axis := range drivers.AxisNames {
+		role := p.cfg.AxesMap[axis]
+		if role == "" {
+			role = defaults[i]
+		}
+		baseIdx := -1
+		for j, baseAxis := range drivers.AxisNames {
+			baseRole := base.cfg.AxesMap[baseAxis]
+			if baseRole == "" {
+				baseRole = defaults[j]
+			}
+			if baseRole == role {
+				baseIdx = j
+				break
+			}
+		}
+		if baseIdx >= 0 && !math.IsNaN(in.VelRmsMMs[i]) && !math.IsNaN(baseStats.VelRmsMMs[baseIdx]) {
+			out.VelRmsMMs[i] = math.Sqrt(math.Max(0, in.VelRmsMMs[i]*in.VelRmsMMs[i]-(alpha*baseStats.VelRmsMMs[baseIdx])*(alpha*baseStats.VelRmsMMs[baseIdx])))
+		}
+	}
+	return out
+}
+
 func (m *machineRT) inIsolation(id string) bool {
 	if !m.isolationEnabled() {
 		return false

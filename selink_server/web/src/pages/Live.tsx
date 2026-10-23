@@ -26,7 +26,7 @@ const pointRole = (point: any): string => point?.role || 'bearing'
 const posLabel = (point: any, _index: number): string => sensorCode(point)
 /** Temporary BASE→bearing transmission coefficient (measured overall ratio is 0.2 to 0.9 depending on direction). */
 const BASE_ALPHA = 0.8
-/** Bearing's own vibration with the base's share removed; display only, never used for zones or alarms. */
+/** Bearing vibration after removing the foundation contribution. */
 const ownRms = (bearing: number | null, base: number | null): number | null =>
   bearing == null || base == null ? null : Math.sqrt(Math.max(0, bearing * bearing - (BASE_ALPHA * base) ** 2))
 const POS_ORDER = POSITIONS
@@ -96,15 +96,27 @@ function isoValue(sensor: Sensor): { value: number | null; acc: number | null; s
   return { value: null, acc: null, source: 'chờ dữ liệu RMS', reference: null, referenceSource: '' }
 }
 
+/** Correct a bearing axis with the BASE value from the same physical measurement direction. */
+function bearingIsoValue(point: any, axis: string, basePoint?: any): ReturnType<typeof isoValue> {
+  const raw = isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] })
+  if (pointRole(point) !== 'bearing' || !basePoint) return raw
+  const role = point?.axes_map?.[axis] || defaultRoles[axis]
+  const baseAxis = axisOfRole(basePoint, role)
+  if (!baseAxis) return raw
+  const foundation = isoValue({ point: basePoint, axis: baseAxis, data: basePoint?.axes?.[baseAxis] || {}, series: [] })
+  const corrected = ownRms(raw.value, foundation.value)
+  return corrected == null ? raw : { ...raw, value: corrected, source: `Bearing-corrected RMS | ${raw.source}` }
+}
+
 /** ISO state is the worst valid value across all configured ISO axes, never one preferred axis. */
-function worstIsoReading(point: any): { axis: string; reading: ReturnType<typeof isoValue> } {
+function worstIsoReading(point: any, basePoint?: any): { axis: string; reading: ReturnType<typeof isoValue> } {
   const axes = (point?.iso_axes?.length ? point.iso_axes : ['x', 'y', 'z']) as string[]
-  const readings = axes.map((axis) => ({ axis, reading: isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] }) }))
+  const readings = axes.map((axis) => ({ axis, reading: bearingIsoValue(point, axis, basePoint) }))
   const best = readings.reduce<typeof readings[number] | null>((worst, item) => {
     if (item.reading.value == null) return worst
     return !worst || worst.reading.value == null || item.reading.value > worst.reading.value ? item : worst
   }, null)
-  return best || readings[0] || { axis: 'z', reading: isoValue({ point, axis: 'z', data: point?.axes?.z || {}, series: [] }) }
+  return best || readings[0] || { axis: 'z', reading: bearingIsoValue(point, 'z', basePoint) }
 }
 
 export function AnimatedNumber({ value, decimals = 2, fallback = '—' }: { value: number | null | undefined; decimals?: number; fallback?: string }) {
@@ -174,8 +186,8 @@ function OverallZoneTag({ value, limits }: { value: number | null; limits: any }
 }
 
 /** One square tile represents one physical sensor, with all of its X/Y/Z readings inside. */
-function SensorOverview({ index, point, limits, active, onClick }: { index: number; point: any; limits: any; active: boolean; onClick: () => void }) {
-  const { axis: mainAxis, reading: main } = worstIsoReading(point)
+function SensorOverview({ index, point, basePoint, limits, active, onClick }: { index: number; point: any; basePoint?: any; limits: any; active: boolean; onClick: () => void }) {
+  const { axis: mainAxis, reading: main } = worstIsoReading(point, basePoint)
   const applicable = pointRole(point) === 'bearing'
   const stable = useStableZone(main.value, limits)
   const zone = applicable ? stable : null
@@ -194,7 +206,7 @@ function SensorOverview({ index, point, limits, active, onClick }: { index: numb
       </div>
       <div className="sensor-overview-axes">
         {axes.map((axis) => {
-          const reading = isoValue({ point, axis, data: point.axes?.[axis] || {}, series: [] })
+          const reading = bearingIsoValue(point, axis, basePoint)
           return <div key={axis}>
             <span>{axisName(point, axis)} ({axis.toUpperCase()})</span>
             <b><AnimatedNumber value={reading.value} decimals={2} fallback="--" /> <small>mm/s</small></b>
@@ -374,13 +386,14 @@ export default function Live() {
   if (isInitialLoading) return <div className="page page-loading"><Spin size="large" /></div>
 
   const points = byPosition(status.points || [])
+  const basePoint = points.find((point: any) => pointRole(point) === 'base')
   const installation = templateById(machine.meta?.installation_template)
   const selPoint = points.find((point: any) => point.id === wavePoint) || points[0]
   const selMeta = machine.points.find((point: any) => point.id === selPoint?.id) || selPoint
   const selApplicable = pointRole(selPoint) === 'bearing'
   // Overall ISO state: worst valid RMS value across every configured ISO axis of every bearing.
   const maxValue = Math.max(0, ...points.filter((point: any) => pointRole(point) === 'bearing')
-    .map((point: any) => worstIsoReading(point).reading.value ?? 0))
+    .map((point: any) => worstIsoReading(point, basePoint).reading.value ?? 0))
 
   // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
   const dataTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
@@ -441,7 +454,7 @@ export default function Live() {
 
         <Row gutter={[14, 14]}>
           {points.map((point: any, i: number) => <Col xs={24} md={12} key={point.id}>
-            <SensorOverview index={i} point={point} limits={machine.iso_limits} active={point.id === selPoint?.id}
+            <SensorOverview index={i} point={point} basePoint={basePoint} limits={machine.iso_limits} active={point.id === selPoint?.id}
               onClick={() => setWavePoint(point.id)} />
           </Col>)}
           {!points.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}

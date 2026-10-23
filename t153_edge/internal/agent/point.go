@@ -419,6 +419,9 @@ func (p *pointRT) isoAxesIdx() []int {
 // evaluateStats applies quick rules between captures using sensor-computed VRMS
 // (registers 0x50/0x5C/0x68) and kurtosis.
 func (p *pointRT) evaluateStats(st drivers.VibrationIndicators) {
+	// ISO monitoring for a bearing uses the bearing-corrected RMS when a BASE
+	// point is configured on the same machine.
+	st = p.m.correctedStats(p, st)
 	now := time.Now()
 	v := math.NaN()
 	k := math.NaN()
