@@ -21,7 +21,7 @@ export default function Overview() {
   useRealtime(['events'], () => qc.invalidateQueries({ queryKey: ['overview'] }))
 
   return (
-    <div className="page">
+    <div className="page overview-page">
       <div className="page-hero">
         <div>
           <div className="page-kicker">Live condition intelligence</div>
@@ -43,9 +43,9 @@ export default function Overview() {
             ))}
           </Row>
           <div className="section-label"><h2>Đội máy đang giám sát</h2><span className="muted">Tự động cập nhật mỗi 30 giây</span></div>
-          <Row gutter={[12, 12]}>
+          <Row className="overview-workspace" gutter={[12, 12]}>
             <Col xs={24} xl={8}>
-              <Row gutter={[12, 12]}>
+              <Row className="overview-machine-list" gutter={[12, 12]}>
                 {data.machines.length === 0 && <Col span={24}><Empty description="Chưa có động cơ" /></Col>}
                 {data.machines.map((m: any) => (
                   <Col span={24} key={m.id}>
@@ -91,7 +91,7 @@ export default function Overview() {
               </Row>
             </Col>
             <Col xs={24} xl={16}>
-              <Card className="glass-card alert-strip" size="small" title={<span>Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
+              <Card className="glass-card alert-strip overview-alert-card" size="small" title={<span>Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
                 {data.events.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cảnh báo" /> : (
                   <div className="alert-rows">
                     {data.events.map((e: any) => (
