@@ -32,6 +32,14 @@ machines:
     iso_group: 1                # khớp với server: nhóm 1 (> 300 kW), nền mềm → A/B 3.5, B/C 7.1, C/D 11 mm/s
     foundation: flexible
     iso_band_hz: [10, 1000]
+    # RUN is derived from all selected vibration axes, not only Z.  The server
+    # may override this block from machine meta and push it to the gateway.
+    run_detection:
+      on_delay_s: 10
+      off_delay_s: 10
+      sources:
+        - {point_id: pump-tg-01-p1, axes: [x, y, z], threshold_mm_s: 0.5}
+        - {point_id: pump-tg-01-p2, axes: [x, y, z], threshold_mm_s: 0.5}
     points:
       - id: pump-tg-01-p1
         name: "Cảm biến 1"

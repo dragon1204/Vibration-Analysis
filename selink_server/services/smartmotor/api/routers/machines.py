@@ -13,6 +13,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from ...common import bus
+from ...common import gwconfig
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -210,8 +211,13 @@ async def update_machine(machine_id: str, body: MachineIn, request: Request, use
     sets = ", ".join(f"{k}=${i + 2}" for i, k in enumerate(data))
     async with pool.acquire() as c:
         await c.execute(f"UPDATE machines SET {sets} WHERE id=$1", machine_id, *data.values())
+        gateways = [r["gateway_id"] for r in await c.fetch(
+            "SELECT DISTINCT gateway_id FROM measurement_points WHERE machine_id=$1 AND gateway_id IS NOT NULL", machine_id)]
     await audit(pool, user, "machine.update", machine_id, data)
-    return {"ok": True}
+    versions = {}
+    for gateway_id in gateways:
+        versions[gateway_id] = await gwconfig.push_managed(pool, request.app.state.settings, gateway_id, user.email)
+    return {"ok": True, "config_versions": versions}
 
 
 @router.get("/machines/{machine_id}/status")
@@ -420,6 +426,34 @@ async def machine_health(machine_id: str, request: Request, rng=Depends(time_ran
         rows = await c.fetch("""SELECT ts, point_id, health_index, anomaly_score, rul_days, rul_lo_days, rul_hi_days, detail
                                 FROM machine_health WHERE machine_id=$1 AND ts BETWEEN $2 AND $3 ORDER BY ts""", machine_id, frm, to)
     return [dict(r) for r in rows]
+
+
+@router.get("/machines/{machine_id}/runtime")
+async def machine_runtime(machine_id: str, request: Request, rng=Depends(time_range), user: User = Depends(current_user)):
+    """Observed RUN duration and utilization rate from the gateway RUN flag.
+
+    Capture gaps are capped at 90 seconds so an offline gateway never inflates
+    operating hours.  Rate is RUN seconds over the requested calendar range.
+    """
+    await check_machine(request.app.state.pool, user, machine_id)
+    frm, to = rng
+    async with request.app.state.pool.acquire() as c:
+        point = await c.fetchrow("""SELECT id FROM measurement_points WHERE machine_id=$1
+                                    ORDER BY CASE WHEN upper(location)='DE' THEN 0 ELSE 1 END, id LIMIT 1""", machine_id)
+        if not point:
+            raise HTTPException(404, "Máy chưa có điểm đo")
+        rows = await c.fetch("""SELECT ts, running FROM captures WHERE point_id=$1 AND ts >= $2 AND ts <= $3
+                                ORDER BY ts""", point["id"], frm, to)
+    run_s = 0.0
+    for i, row in enumerate(rows):
+        if not row["running"]:
+            continue
+        nxt = rows[i + 1]["ts"] if i + 1 < len(rows) else min(to, row["ts"] + (to - frm))
+        run_s += max(0.0, min(90.0, (nxt - row["ts"]).total_seconds()))
+    total_s = max(1.0, (to - frm).total_seconds())
+    return {"machine_id": machine_id, "point_id": point["id"], "from": frm, "to": to,
+            "run_seconds": round(run_s), "total_seconds": round(total_s), "rate_pct": round(run_s / total_s * 100, 2),
+            "samples": len(rows)}
 
 
 class AnalyticsCmd(BaseModel):

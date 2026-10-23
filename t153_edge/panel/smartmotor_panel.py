@@ -972,7 +972,7 @@ class ComparePage(QWidget):
                 w.deleteLater()
         self.cells = {}
         has_ratio = any(p.get("role") == "base" for _, p in pts) and any(p.get("role", "bearing") == "bearing" for _, p in pts)
-        cols = ["HƯỚNG ĐO"] + [pos_label(i, p) for i, (_, p) in enumerate(pts)] + (["BASE / Ổ ĐỠ"] if has_ratio else [])
+        cols = ["HƯỚNG ĐO"] + [pos_label(i, p) for i, (_, p) in enumerate(pts)] + (["BASE / Ổ ĐỠ", "RIÊNG Ổ ĐỠ"] if has_ratio else [])
         for c, text in enumerate(cols):
             lb = label(text, 10, C["muted"], True, Qt.AlignLeft | Qt.AlignVCenter if c == 0 else Qt.AlignRight | Qt.AlignVCenter)
             lb.setMinimumHeight(30)
@@ -1013,7 +1013,13 @@ class ComparePage(QWidget):
                 lb = self.cells[(r, len(pts) + 1)]
                 lb.setText("%s %%" % fmt(ratio, 0) if ratio is not None else "--")
                 lb.setStyleSheet("color:%s;background:transparent;border:none;" % (C["C"] if ratio and ratio > 50 else C["text"]))
-        self.note.setText("Tỷ lệ đế / ổ đỡ trên 50 %: rung truyền xuống nền nhiều, nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền."
+                # Bearing's own vibration with the base's share removed (display only, not used for zones).
+                alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
+                own = None if b is None or d is None else math.sqrt(max(0.0, b * b - (alpha * d) ** 2))
+                self.cells[(r, len(pts) + 2)].setText(fmt(own))
+        alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
+        self.note.setText("RIÊNG Ổ ĐỠ = căn(DE² - (α x BASE)²), α = %s (tạm), chỉ để tham khảo, vùng ISO và cảnh báo dùng giá trị DE đo thật. "
+                          "BASE / Ổ ĐỠ trên 50 %%: nên kiểm tra bu lông chân đế và bệ." % fmt(alpha, 1)
                           if self.has_ratio else "")
 
 

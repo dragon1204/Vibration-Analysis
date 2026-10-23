@@ -29,7 +29,9 @@ type machineRT struct {
 	meter  drivers.PowerMeter
 	f1xNom float64
 
-	runState scheduler.RunState
+	runState          scheduler.RunState
+	runCandidate      bool
+	runCandidateSince time.Time
 
 	mu           sync.Mutex
 	powerWin     []drivers.PowerReading
@@ -143,30 +145,82 @@ func (m *machineRT) observeVibration(p *pointRT, ind drivers.VibrationIndicators
 	if m.meter != nil {
 		return
 	}
-	v := 0.0
-	for _, x := range ind.VelMMs {
-		if !math.IsNaN(x) {
-			v = math.Max(v, x)
-		}
-	}
+	_ = p
+	_ = ind
+	now := time.Now()
 	m.mu.Lock()
-	thr := m.cfg.RunningVrms
+	detection, legacyThreshold := m.cfg.RunDetection, m.cfg.RunningVrms
 	m.mu.Unlock()
-	// Any point above the threshold means running.
-	running := v > thr
-	if !running {
+
+	matched := false
+	if len(detection.Sources) == 0 { // legacy: any axis of every point
 		for _, op := range m.points {
-			if op != p {
-				op.mu.Lock()
-				q := op.quickVrms
-				op.mu.Unlock()
-				if q > thr {
-					running = true
+			op.mu.Lock()
+			last := op.lastInd
+			op.mu.Unlock()
+			if last == nil {
+				continue
+			}
+			for _, v := range last.VelMMs {
+				if !math.IsNaN(v) && v > legacyThreshold {
+					matched = true
+					break
 				}
+			}
+			if matched {
+				break
+			}
+		}
+	} else {
+		for _, source := range detection.Sources {
+			op := m.pointByID(source.PointID)
+			if op == nil {
+				continue
+			}
+			op.mu.Lock()
+			last := op.lastInd
+			op.mu.Unlock()
+			if last == nil {
+				continue
+			}
+			for axis, name := range drivers.AxisNames {
+				selected := len(source.Axes) == 0
+				for _, a := range source.Axes {
+					if a == name {
+						selected = true
+						break
+					}
+				}
+				if selected && !math.IsNaN(last.VelMMs[axis]) && last.VelMMs[axis] > source.ThresholdMMs {
+					matched = true
+					break
+				}
+			}
+			if matched {
+				break
 			}
 		}
 	}
-	m.runState.Update(time.Now(), running, math.NaN())
+
+	current := m.runState.Running()
+	if matched == current {
+		m.runCandidateSince = time.Time{}
+		m.runState.Update(now, current, math.NaN())
+		return
+	}
+	if m.runCandidateSince.IsZero() || m.runCandidate != matched {
+		m.runCandidate, m.runCandidateSince = matched, now
+	}
+	delay := time.Duration(detection.OnDelayS) * time.Second
+	if !matched {
+		delay = time.Duration(detection.OffDelayS) * time.Second
+	}
+	if now.Sub(m.runCandidateSince) >= delay {
+		m.runState.Update(now, matched, math.NaN())
+		m.runCandidateSince = time.Time{}
+	} else {
+		m.runState.Update(now, current, math.NaN())
+	}
 }
 
 func (m *machineRT) setBearingTemp(point string, t float64) {

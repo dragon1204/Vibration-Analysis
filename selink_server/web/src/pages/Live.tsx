@@ -23,6 +23,11 @@ const ROLE_ORDER = ['radial_h', 'radial_v', 'axial']
 const pointRole = (point: any): string => point?.role || 'bearing'
 /** Short sensor name by mounting position (shared with every other page). */
 const posLabel = (point: any, _index: number): string => sensorCode(point)
+/** Temporary BASE→bearing transmission coefficient (measured overall ratio is 0.2 to 0.9 depending on direction). */
+const BASE_ALPHA = 0.8
+/** Bearing's own vibration with the base's share removed; display only, never used for zones or alarms. */
+const ownRms = (bearing: number | null, base: number | null): number | null =>
+  bearing == null || base == null ? null : Math.sqrt(Math.max(0, bearing * bearing - (BASE_ALPHA * base) ** 2))
 const POS_ORDER = POSITIONS
 /** Sensors in a fixed order: DE, NDE, BASE, COMP, then anything else. */
 const byPosition = (points: any[]): any[] => [...points].sort((a, b) => {
@@ -215,7 +220,8 @@ function CompareCard({ points, status }: { points: any[]; status: any[] }) {
       <table className="compare-table">
         <thead>
           <tr><th>Hướng đo</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
-            {bearing && base && <th>BASE / ổ đỡ</th>}</tr>
+            {bearing && base && <th>BASE / ổ đỡ</th>}
+            {bearing && base && <th>Riêng ổ đỡ<small>{`α = ${num(BASE_ALPHA, 1)} (tạm)`}</small></th>}</tr>
         </thead>
         <tbody>
           {ROLE_ORDER.map((role) => {
@@ -227,12 +233,13 @@ function CompareCard({ points, status }: { points: any[]; status: any[] }) {
                 <td>{roleName[role]}</td>
                 {points.map((p) => <td key={p.id}>{num(cell(p, role), 2)}</td>)}
                 {bearing && base && <td className={ratio != null && ratio > 50 ? 'ratio-high' : ''}>{ratio != null ? `${num(ratio, 0)} %` : '--'}</td>}
+                {bearing && base && <td>{num(ownRms(b, d), 2)}</td>}
               </tr>
             )
           })}
         </tbody>
       </table>
-      {bearing && base && <div className="compare-note">Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
+      {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)} (tạm thời), chỉ để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
     </Card>
   )
 }

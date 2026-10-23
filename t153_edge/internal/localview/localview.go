@@ -145,6 +145,7 @@ type Hub struct {
 	recent   []Event
 	started  time.Time
 	gateway  func() Gateway
+	alpha    float64
 }
 
 // New creates a hub for the given machines. gateway is called for every state request.
@@ -167,6 +168,13 @@ func (h *Hub) point(id string) *pointState {
 		h.points[id] = ps
 	}
 	return ps
+}
+
+// SetBaseAlpha sets the coefficient reported to the panel.
+func (h *Hub) SetBaseAlpha(a float64) {
+	h.mu.Lock()
+	h.alpha = a
+	h.mu.Unlock()
 }
 
 // SetFast records a fast RMS result and appends it to the history.
@@ -245,6 +253,8 @@ type State struct {
 	Points   map[string]*pointState `json:"points"`
 	Active   []Event                `json:"active_events"`
 	Recent   []Event                `json:"recent_events"`
+	// BaseAlpha is the display-only BASE→bearing transmission coefficient (see config.LocalUI).
+	BaseAlpha float64 `json:"base_alpha"`
 }
 
 // Snapshot returns a deep-enough copy of the state; history is included only when asked.
@@ -256,7 +266,7 @@ func (h *Hub) Snapshot(withHistory bool) State {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	st := State{Now: time.Now(), UptimeS: int64(time.Since(h.started).Seconds()), Gateway: gw,
-		Machines: h.machines, Points: map[string]*pointState{}, Active: []Event{}, Recent: []Event{}}
+		Machines: h.machines, Points: map[string]*pointState{}, Active: []Event{}, Recent: []Event{}, BaseAlpha: h.alpha}
 	for id, ps := range h.points {
 		cp := *ps
 		if withHistory {

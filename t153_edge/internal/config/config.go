@@ -91,6 +91,7 @@ type Machine struct {
 	Foundation    string            `yaml:"foundation" json:"foundation"`
 	ISOBandHz     []float64         `yaml:"iso_band_hz" json:"iso_band_hz"`
 	RunningVrms   float64           `yaml:"running_vrms_mm_s" json:"running_vrms_mm_s"`
+	RunDetection  RunDetection      `yaml:"run_detection" json:"run_detection"`
 	Thermal       thermal.Params    `yaml:"thermal" json:"thermal"`
 	PowerMeter    *PowerMeter       `yaml:"power_meter" json:"power_meter"`
 	Temps         []TempRef         `yaml:"temps" json:"temps"`
@@ -99,6 +100,22 @@ type Machine struct {
 	BandLimits    []rules.BandLimit `yaml:"band_limits" json:"band_limits"`
 	// MaleLobes of a screw compressor driven by this motor (f_mesh = lobes × 1X).
 	MaleLobes int `yaml:"male_lobes" json:"male_lobes"`
+}
+
+// RunDetection derives the motor RUN signal from selected vibration axes when
+// no electrical meter is present. A selected source above its threshold makes
+// the machine RUN after OnDelayS; all sources below their thresholds stops it
+// after OffDelayS. Empty Sources preserves the legacy "any axis / any point" rule.
+type RunDetection struct {
+	Sources   []RunSignal `yaml:"sources" json:"sources"`
+	OnDelayS  int         `yaml:"on_delay_s" json:"on_delay_s"`
+	OffDelayS int         `yaml:"off_delay_s" json:"off_delay_s"`
+}
+
+type RunSignal struct {
+	PointID      string   `yaml:"point_id" json:"point_id"`
+	Axes         []string `yaml:"axes" json:"axes"`
+	ThresholdMMs float64  `yaml:"threshold_mm_s" json:"threshold_mm_s"`
 }
 
 type PowerMeter struct {
@@ -253,6 +270,9 @@ type Health struct {
 // LocalUI is the loopback JSON endpoint read by the gateway's LCD panel.
 type LocalUI struct {
 	Listen string `yaml:"listen" json:"listen"` // default 127.0.0.1:8091, "off" disables
+	// BaseAlpha is the transmission coefficient used on the LCD to show the bearing's own vibration
+	// sqrt(DE² − (α·BASE)²). Display only: ISO zones and alarms use the measured DE value. Default 0.8.
+	BaseAlpha float64 `yaml:"base_alpha" json:"base_alpha"`
 }
 
 type Log struct {
@@ -309,6 +329,9 @@ func (c *Config) applyDefaults() {
 	if c.LocalUI.Listen == "" {
 		c.LocalUI.Listen = "127.0.0.1:8091"
 	}
+	if c.LocalUI.BaseAlpha == 0 {
+		c.LocalUI.BaseAlpha = 0.8
+	}
 	if c.Storage.MaxBytes == 0 {
 		c.Storage.MaxBytes = 8 << 30
 	}
@@ -347,6 +370,18 @@ func (c *Config) applyDefaults() {
 		}
 		if m.RunningVrms == 0 {
 			m.RunningVrms = 0.3
+		}
+		if m.RunDetection.OnDelayS == 0 {
+			m.RunDetection.OnDelayS = 10
+		}
+		if m.RunDetection.OffDelayS == 0 {
+			m.RunDetection.OffDelayS = 10
+		}
+		for j := range m.RunDetection.Sources {
+			s := &m.RunDetection.Sources[j]
+			if s.ThresholdMMs == 0 {
+				s.ThresholdMMs = m.RunningVrms
+			}
 		}
 		if m.Isolation != nil {
 			iso := m.Isolation

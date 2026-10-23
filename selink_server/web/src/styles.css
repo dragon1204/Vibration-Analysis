@@ -274,6 +274,32 @@ body { background: #f4f6fb; color: #17213a; }
   .login-shell { grid-template-columns: 1fr; }.login-visual { min-height: 300px; padding: 32px 24px; }.login-copy h1 { font-size: 40px; }.login-copy p { font-size: 14px; }.login-signal { gap: 14px; }.login-panel { padding: 34px 22px; }
 }
 
+/* Navigation follows the Selink reference: dark navy rail with a restrained teal active state. */
+.app-sidebar { background: #10192f !important; border-right: 1px solid #1c2944 !important; }
+.app-menu { background: transparent !important; }
+.app-menu.ant-menu-light, .app-menu.ant-menu-light .ant-menu-sub { background: transparent !important; }
+.app-menu .ant-menu-item, .app-menu .ant-menu-submenu-title { color: #d6dfeb !important; }
+.app-menu .ant-menu-item .anticon, .app-menu .ant-menu-submenu-title .anticon { color: #aab9ce !important; }
+.app-menu .ant-menu-item:hover, .app-menu .ant-menu-submenu-title:hover { color: #ffffff !important; background: #17243f !important; }
+.app-menu .ant-menu-item:hover .anticon, .app-menu .ant-menu-submenu-title:hover .anticon { color: #62cbb6 !important; }
+.app-menu .ant-menu-item-selected { color: #5fd0b7 !important; background: linear-gradient(90deg, #123b43, #183343) !important; border-left-color: #32bd9c !important; font-weight: 700; }
+.app-menu .ant-menu-item-selected .anticon { color: #5fd0b7 !important; }
+.app-menu .ant-menu-item-group-title { color: #7f90a8 !important; }
+.app-menu .ant-menu-item::after { display: none; }
+.app-sidebar::after { content: "SELINK SMART MOTOR"; position: absolute; right: 0; bottom: 0; left: 0; padding: 16px; color: #70819a; border-top: 1px solid #1d2942; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
+
+/* Customer-supplied installation drawings with responsive live labels. */
+.installation-diagram { max-width: 1100px; margin: 0 auto; }
+.installation-image-wrap { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.installation-image { display: block; width: 100%; height: auto; }
+.installation-marker { position: absolute; transform: translate(-50%, -50%); display: grid; grid-template-columns: auto auto; gap: 0 5px; align-items: center; min-width: 84px; padding: 5px 8px; border: 1px solid; border-radius: 7px; background: rgba(255,255,255,.95); box-shadow: 0 3px 12px rgba(15,23,42,.16); font-size: 12px; line-height: 1.05; }
+.installation-marker strong { font-size: 13px; letter-spacing: .04em; }
+.installation-marker small { grid-column: 2; color: #64748b; white-space: nowrap; }
+.installation-marker.is-installed { border-color: #16a34a; color: #166534; }
+.installation-marker.is-empty { border-color: #94a3b8; color: #475569; }
+.installation-legend { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; }
+@media (max-width: 640px) { .installation-marker { min-width: 54px; padding: 3px 5px; font-size: 9px; } .installation-marker strong { font-size: 10px; } .installation-marker small { display: none; } }
+
 .range-picker { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .range-chips { display: flex; flex-wrap: wrap; gap: 4px 0; }
 .range-chips .ant-tag { margin-inline-end: 4px; padding: 1px 10px; border-radius: 14px; font-size: 12.5px; cursor: pointer; user-select: none; }
@@ -521,7 +547,9 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .top-brand-mark { height: 28px; padding: 0 10px; border-radius: 5px; font-size: 12px; letter-spacing: .08em; }
 .top-brand b { font-size: 15px; letter-spacing: .09em; }
 .top-brand span { margin-left: 3px; padding-left: 14px; }
-.top-brand-logo { display: block; width: 126px; height: 48px; object-fit: contain; object-position: left center; }
+.top-brand-logo { display: block; width: 112px; height: 46px; object-fit: contain; object-position: left center; }
+.top-brand-logo-hem { width: 82px; object-position: center; }
+.partner-divider { width: 1px; height: 24px; margin: 0 2px; padding: 0; border: 0; background: #47586b; }
 .header-search { border-radius: 6px !important; }
 .app-menu { padding: 10px 8px; }
 .app-menu .ant-menu-item { width: auto; margin: 2px 0; min-height: 42px; border-left: 3px solid transparent; border-radius: 6px; padding-left: 14px !important; }
@@ -576,5 +604,19 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
   .live-actions .machine-picker { width: 100%; }
   .live-actions .machine-picker .ant-select { flex: 1; }
   .sensor-overview-main strong { font-size: 34px; }
-  .top-brand-logo { width: 106px; height: 42px; }
+  .top-brand-logo { width: 92px; height: 40px; }
+  .top-brand-logo-hem { width: 66px; }
+  .partner-divider { height: 21px; margin: 0; }
 }
+
+/* Final sidebar override: retain the dark Selink navigation after global control rules. */
+.app-sidebar { background: #10192f !important; border-right: 1px solid #1c2944 !important; }
+.app-menu, .app-menu.ant-menu-light, .app-menu.ant-menu-light .ant-menu-sub { background: transparent !important; }
+.app-menu .ant-menu-item, .app-menu .ant-menu-submenu-title { color: #d6dfeb !important; }
+.app-menu .ant-menu-item .anticon, .app-menu .ant-menu-submenu-title .anticon { color: #aab9ce !important; }
+.app-menu .ant-menu-item:hover, .app-menu .ant-menu-submenu-title:hover { color: #ffffff !important; background: #17243f !important; }
+.app-menu .ant-menu-item-selected { color: #5fd0b7 !important; background: linear-gradient(90deg, #123b43, #183343) !important; border-left-color: #32bd9c !important; font-weight: 700; }
+.app-menu .ant-menu-item-selected .anticon { color: #5fd0b7 !important; }
+.app-menu .ant-menu-item-group-title { color: #7f90a8 !important; }
+.app-menu .ant-menu-item::after { display: none; }
+.app-sidebar::after { content: "SELINK SMART MOTOR"; position: absolute; right: 0; bottom: 0; left: 0; padding: 16px; color: #70819a; border-top: 1px solid #1d2942; font-size: 9px; font-weight: 700; letter-spacing: .08em; }

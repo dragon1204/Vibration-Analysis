@@ -31,7 +31,7 @@ async def latest(conn: asyncpg.Connection, gateway_id: str) -> dict | None:
 async def merge_managed(conn: asyncpg.Connection, cfg: dict) -> dict:
     cfg = copy.deepcopy(cfg)
     for m in cfg.get("machines") or []:
-        mrow = await conn.fetchrow("SELECT isolation, band_limits, male_lobes FROM machines WHERE id=$1", m.get("id"))
+        mrow = await conn.fetchrow("SELECT isolation, band_limits, male_lobes, meta FROM machines WHERE id=$1", m.get("id"))
         if mrow:
             if mrow["isolation"] and m.get("isolation") is not None:
                 alpha = (mrow["isolation"] or {}).get("alpha")
@@ -41,6 +41,11 @@ async def merge_managed(conn: asyncpg.Connection, cfg: dict) -> dict:
                 m["band_limits"] = mrow["band_limits"]
             if mrow["male_lobes"]:
                 m["male_lobes"] = mrow["male_lobes"]
+            # Vibration-based RUN signal is edited per machine on the web.
+            # It remains part of the gateway's versioned configuration.
+            run_detection = (mrow["meta"] or {}).get("run_detection")
+            if run_detection:
+                m["run_detection"] = run_detection
         for p in m.get("points") or []:
             prow = await conn.fetchrow(
                 """SELECT p.calibration, b.model, b.n_balls, b.bd_mm, b.pd_mm, b.contact_deg, b.bpfo_x, b.bpfi_x, b.bsf_x, b.ftf_x

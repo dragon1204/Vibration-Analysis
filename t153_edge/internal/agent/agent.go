@@ -140,6 +140,7 @@ func New(cfg *config.Config, opt Options, log *slog.Logger) (*Agent, error) {
 		a.machines = append(a.machines, m)
 	}
 	a.view = localview.New(a.viewMachines(), a.viewGateway)
+	a.view.SetBaseAlpha(cfg.LocalUI.BaseAlpha)
 	return a, nil
 }
 
