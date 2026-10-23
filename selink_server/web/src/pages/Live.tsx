@@ -217,13 +217,13 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
   const bearing = points.find((p) => pointRole(p) === 'bearing')
   const base = points.find((p) => pointRole(p) === 'base')
   return (
-    <Card className="dashboard-card" size="small" title="So sánh các cảm biến | vận tốc RMS, mm/s">
+    <Card className="dashboard-card" size="small" title="Sensor comparison | RMS velocity, mm/s">
       <div className="compare-layout">
       <div className="compare-data"><table className="compare-table">
         <thead>
-          <tr><th>Hướng đo</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
-            {bearing && base && <th>BASE / ổ đỡ</th>}
-            {bearing && base && <th>Riêng ổ đỡ<small>{`α = ${num(BASE_ALPHA, 1)}`}</small></th>}</tr>
+          <tr><th>Measurement axis</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
+            {bearing && base && <th>Base / bearing ratio</th>}
+            {bearing && base && <th>Bearing-corrected RMS<small>{`α = ${num(BASE_ALPHA, 1)}`}</small></th>}</tr>
         </thead>
         <tbody>
           {ROLE_ORDER.map((role) => {
@@ -232,7 +232,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
             const ratio = b != null && d != null && b > 0.05 ? (d / b) * 100 : null
             return (
               <tr key={role}>
-                <td>{roleName[role]}</td>
+                <td>{{ radial_h: 'Horizontal (H)', radial_v: 'Vertical (V)', axial: 'Axial (A)' }[role]}</td>
                 {points.map((p) => <td key={p.id}>{num(cell(p, role), 2)}</td>)}
                 {bearing && base && <td className={ratio != null && ratio > 50 ? 'ratio-high' : ''}>{ratio != null ? `${num(ratio, 0)} %` : '--'}</td>}
                 {bearing && base && <td>{num(ownRms(b, d), 2)}</td>}
@@ -241,7 +241,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
           })}
         </tbody>
       </table>
-       {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)}, dùng để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
+       {bearing && base && <div className="compare-note">Bearing-corrected RMS = √(DE² − (α × BASE)²) &nbsp;·&nbsp; α = {num(BASE_ALPHA, 1)}</div>}
       </div>
       <div className="compare-diagram"><img src={installation.image} alt={installation.name} /></div>
       </div>
