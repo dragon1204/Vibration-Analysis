@@ -93,7 +93,6 @@ export default function App() {
         {!screens.md && <Button className="mobile-menu-btn" onClick={() => setOpen(true)}>Menu</Button>}
         <div className="top-brand">
           <img className="top-brand-logo" src="/selink-logo.png" alt="SELINK - Quản Lý Thiết Bị Thông Minh" />
-          <span className="partner-divider" aria-hidden="true" />
           <img className="top-brand-logo top-brand-logo-hem" src="/hem-logo.png" alt="HEM" />
           <span>Giám sát rung động động cơ</span>
         </div>

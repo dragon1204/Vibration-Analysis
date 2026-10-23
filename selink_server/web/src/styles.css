@@ -549,7 +549,6 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .top-brand span { margin-left: 3px; padding-left: 14px; }
 .top-brand-logo { display: block; width: 112px; height: 46px; object-fit: contain; object-position: left center; }
 .top-brand-logo-hem { width: 82px; object-position: center; }
-.partner-divider { width: 1px; height: 24px; margin: 0 2px; padding: 0; border: 0; background: #47586b; }
 .header-search { border-radius: 6px !important; }
 .app-menu { padding: 10px 8px; }
 .app-menu .ant-menu-item { width: auto; margin: 2px 0; min-height: 42px; border-left: 3px solid transparent; border-radius: 6px; padding-left: 14px !important; }
@@ -606,7 +605,6 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
   .sensor-overview-main strong { font-size: 34px; }
   .top-brand-logo { width: 92px; height: 40px; }
   .top-brand-logo-hem { width: 66px; }
-  .partner-divider { height: 21px; margin: 0; }
 }
 
 /* Final sidebar override: retain the dark Selink navigation after global control rules. */
