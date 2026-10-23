@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Checkbox, Col, DatePicker, Form, Image, Input, Row, Select, Space, Table, Upload } from 'antd'
-import { CameraOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api, post } from '../api/client'
 import { useAuth } from '../auth'
@@ -81,7 +80,7 @@ export default function Maintenance() {
                       if (photoId) setPhotos((current) => current.filter((item) => item !== photoId))
                       return true
                     }}>
-                    <Button icon={<CameraOutlined />} loading={uploading}>Chọn ảnh</Button>
+                    <Button loading={uploading}>Chọn ảnh</Button>
                   </Upload>
                 </Form.Item>
                 <Form.Item name="reset_baseline" valuePropName="checked"><Checkbox>Học lại baseline sau bảo trì</Checkbox></Form.Item>

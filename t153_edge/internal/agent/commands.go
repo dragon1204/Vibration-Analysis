@@ -110,6 +110,8 @@ func (a *Agent) handleCommand(ctx context.Context, cmd uplink.Command) {
 			}
 			a.up.Ack(cmd.CmdID, "ok", fmt.Sprintf("reg 0x%02X=%d persist=%v", prm.Reg, prm.Value, prm.Persist))
 		}()
+	case "commission_sensor":
+		go a.commissionSensor(ctx, cmd)
 	case "reload_config":
 		a.up.Ack(cmd.CmdID, "ok", "reloading")
 		a.requestReload()

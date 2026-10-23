@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Card, Grid, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import { EyeOutlined, SearchOutlined } from '@ant-design/icons'
+import { Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
 import { api } from '../api/client'
 import { num } from '../utils/format'
 import { ZoneTag } from '../components/common'
@@ -12,7 +11,6 @@ const statusColor: Record<string, string> = { normal: 'success', watch: 'gold', 
 
 export default function Machines() {
   const nav = useNavigate()
-  const screens = Grid.useBreakpoint()
   const [search, setSearch] = useState('')
   const [site, setSite] = useState<string>()
   const [status, setStatus] = useState<string>()
@@ -29,12 +27,12 @@ export default function Machines() {
     </div>
     <Card>
       <Space wrap style={{ marginBottom: 14 }}>
-        <Input allowClear prefix={<SearchOutlined />} placeholder="Mã, tên hoặc loại máy" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 280 }} />
+        <Input allowClear placeholder="Mã, tên hoặc loại máy" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 280 }} />
         <Select allowClear placeholder="Nhà máy" value={site} onChange={setSite} style={{ width: 180 }} options={sites.map((item) => ({ value: item.id, label: item.name }))} />
         <Select allowClear placeholder="Trạng thái" value={status} onChange={setStatus} style={{ width: 170 }} options={Object.entries(statusLabel).map(([value, label]) => ({ value, label }))} />
         <Tag>{rows.length} động cơ</Tag>
       </Space>
-      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} scroll={screens.lg ? undefined : { x: 'max-content' }} onRow={(record: any) => ({ onDoubleClick: () => nav(`/machines/${record.id}/live`) })} columns={[
+      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} scroll={{ x: 'max-content' }} onRow={(record: any) => ({ onDoubleClick: () => nav(`/machines/${record.id}/live`) })} columns={[
         { title: 'Mã', dataIndex: 'id', render: (value) => <b>{String(value).toUpperCase()}</b> },
         { title: 'Động cơ', key: 'machine', render: (_, row: any) => <div className="wrap-cell"><b>{row.name}</b><div className="muted">{[row.type, row.rated_power_kw ? `${num(row.rated_power_kw, 0)} kW` : null].filter(Boolean).join(' · ') || '—'}</div></div> },
         { title: 'Nhà máy', dataIndex: 'site_name', render: (value, row: any) => value || row.site_id },
@@ -44,7 +42,7 @@ export default function Machines() {
         { title: 'Nhiệt ổ bi', dataIndex: 'bearing_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },
         { title: 'Sức khỏe', dataIndex: 'health_index', render: (value) => value == null ? '—' : `${num(value, 0)}%` },
         { title: 'RUL', dataIndex: 'rul_days', render: (value) => value == null ? '—' : `${num(value, 0)} ngày` },
-        { title: '', align: 'right', render: (_, row: any) => <Button icon={<EyeOutlined />} onClick={() => nav(`/machines/${row.id}/live`)}>Giám sát</Button> },
+        { title: '', align: 'right', render: (_, row: any) => <Button onClick={() => nav(`/machines/${row.id}/live`)}>Giám sát</Button> },
       ]} />
     </Card>
   </div>

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Col, Empty, Input, List, Modal, Progress, Row, Segmented, Select, Space, Spin, Table, Tag, Typography } from 'antd'
-import { CheckOutlined, CloseOutlined, QuestionOutlined } from '@ant-design/icons'
 import { api, post } from '../api/client'
 import { useRealtime } from '../api/realtime'
 import { Gauge, SpectrumChart } from '../components/charts'
@@ -82,9 +81,9 @@ export default function Diagnosis() {
               <List dataSource={data.diagnoses} renderItem={(d: any, i: number) => (
                 <List.Item onClick={() => setSel(i)} style={{ cursor: 'pointer', background: i === sel ? '#e6f4ff' : undefined, padding: 8 }}
                   actions={can('engineer') ? [
-                    <Button key="ok" size="small" icon={<CheckOutlined />} onClick={() => { setSel(i); setFb({ verdict: 'correct' }) }}>Đúng</Button>,
-                    <Button key="no" size="small" danger icon={<CloseOutlined />} onClick={() => { setSel(i); setFb({ verdict: 'wrong' }) }}>Sai</Button>,
-                    <Button key="other" size="small" icon={<QuestionOutlined />} onClick={() => { setSel(i); setFb({ verdict: 'other' }) }}>Lỗi khác</Button>,
+                    <Button key="ok" size="small" onClick={() => { setSel(i); setFb({ verdict: 'correct' }) }}>Đúng</Button>,
+                    <Button key="no" size="small" danger onClick={() => { setSel(i); setFb({ verdict: 'wrong' }) }}>Sai</Button>,
+                    <Button key="other" size="small" onClick={() => { setSel(i); setFb({ verdict: 'other' }) }}>Lỗi khác</Button>,
                   ] : []}>
                   <List.Item.Meta
                     title={<Space wrap><b>{(d.candidates?.[0]?.label) || d.fault}</b><Tag>{d.point_id}</Tag>
@@ -132,7 +131,7 @@ export default function Diagnosis() {
         )}
         {iso && (
           <Col span={24}>
-            <Card size="small" title="Cô lập nhiễu đa cảm biến (S1 máy nén · S2 bệ · S3/S4 gối đỡ)">
+            <Card size="small" title="Cô lập nhiễu đa cảm biến (COMP nguồn rung · BASE đế · DE/NDE ổ đỡ)">
               <Row gutter={12}>
                 <Col xs={24} md={8}>
                   <p>Tham chiếu bệ: <Tag>{iso.reference_point}</Tag> Nguồn: <Tag>{iso.source_point || '–'}</Tag></p>

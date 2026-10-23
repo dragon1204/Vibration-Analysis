@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { App, Alert, Button, Card, Col, Drawer, Form, Input, InputNumber, Radio, Row, Select, Steps, Tag, Typography } from 'antd'
-import { CheckCircleFilled, DashboardOutlined, SettingOutlined, ToolOutlined } from '@ant-design/icons'
 import { patch, post } from '../api/client'
 import { num } from '../utils/format'
 
@@ -93,9 +92,9 @@ export default function MachineSetupWizard({ open, machine, sites, onClose, onSa
         {step < 2 ? <Button type="primary" onClick={next}>Tiếp tục</Button> : <Button type="primary" loading={saving} onClick={save}>Lưu & áp dụng ngưỡng</Button>}
       </div>}>
       <Steps current={step} size="small" style={{ marginBottom: 28 }} items={[
-        { title: 'Thông tin máy', icon: <DashboardOutlined /> },
-        { title: 'Cơ khí & ổ bi', icon: <ToolOutlined /> },
-        { title: 'ISO & xác nhận', icon: <SettingOutlined /> },
+        { title: 'Thông tin máy' },
+        { title: 'Cơ khí & ổ bi' },
+        { title: 'ISO & xác nhận' },
       ]} />
       <Form form={form} layout="vertical" requiredMark="optional">
         <div style={{ display: step === 0 ? 'block' : 'none' }}>
@@ -125,7 +124,7 @@ export default function MachineSetupWizard({ open, machine, sites, onClose, onSa
           <Alert type="warning" showIcon message="Đường kính ngoài không đủ để tính BPFO/BPFI" description="Để chẩn đoán vòng bi chính xác, bổ sung số bi, đường kính bi, đường kính vòng chia và góc tiếp xúc trong danh mục Vòng bi." />
         </div>
         <div style={{ display: step === 2 ? 'block' : 'none' }}>
-          <Alert type="success" showIcon icon={<CheckCircleFilled />} message="Cấu hình đo được đề xuất tự động" description={`Máy ${num(power, 0)} kW, ${num(rpm, 0)} v/ph → ISO nhóm ${isoGroup}, dải ${isoBandLo}–1000 Hz.`} style={{ marginBottom: 18 }} />
+          <Alert type="success" showIcon message="Cấu hình đo được đề xuất tự động" description={`Máy ${num(power, 0)} kW, ${num(rpm, 0)} v/ph → ISO nhóm ${isoGroup}, dải ${isoBandLo}–1000 Hz.`} style={{ marginBottom: 18 }} />
           <Row gutter={[12, 12]}>
             {[['A / B', iso[0], '#34d399', 'Tốt'], ['B / C', iso[1], '#fbbf24', 'Theo dõi'], ['C / D', iso[2], '#fb7185', 'Nguy hiểm']].map(([label, value, color, hint]) => (
               <Col span={8} key={String(label)}><Card size="small" style={{ borderTop: `3px solid ${color}` }}><div className="muted">{label} · {hint}</div><Typography.Title level={3} style={{ margin: '8px 0 0', color: String(color) }}>{num(Number(value), 1)} <small style={{ fontSize: 11 }}>mm/s RMS</small></Typography.Title></Card></Col>

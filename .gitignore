@@ -10,3 +10,7 @@ t153_edge/data-dev/
 *.toc
 selink_server/docs/*_preview_*.png
 selink_server/web/tsconfig.tsbuildinfo
+
+# Python bytecode
+__pycache__/
+*.pyc

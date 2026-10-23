@@ -1,7 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Col, Empty, Progress, Row, Statistic, Tag, Typography } from 'antd'
-import { CheckCircleFilled, ClockCircleOutlined, SyncOutlined } from '@ant-design/icons'
 import { api, post } from '../api/client'
 import { TrendChart } from '../components/charts'
 import { useAuth } from '../auth'
@@ -34,7 +33,7 @@ const STATUS_TEXT: Record<string, string> = {
 function Step({ done, title, children, percent }: { done: boolean; title: string; children: React.ReactNode; percent?: number }) {
   return (
     <div className="rul-step">
-      <div className={`rul-step-icon ${done ? 'done' : ''}`}>{done ? <CheckCircleFilled /> : <ClockCircleOutlined />}</div>
+      <div className={`rul-step-icon ${done ? 'done' : ''}`}>{done ? 'ĐẠT' : 'CHỜ'}</div>
       <div className="rul-step-body">
         <b>{title}</b>
         <div className="muted">{children}</div>
@@ -87,7 +86,7 @@ export default function Rul() {
     <div className="page-hero">
       <div><div className="page-kicker">Phân tích tiên lượng</div><Typography.Title level={2} style={{ margin: 0 }}>Dự đoán tuổi thọ còn lại (RUL)</Typography.Title>
         <p className="page-description">{machine?.name || id} · thời gian ước tính cho tới khi rung chạm <b>ngưỡng cảnh báo của baseline</b>, kèm khoảng tin cậy 95%. Đây không phải tuổi thọ hỏng hóc được chứng nhận.</p></div>
-      {can('analyst') && <Button type="primary" icon={<SyncOutlined />} onClick={async () => { await post('/analytics/run', { job: 'rul_estimate' }); message.success('Đã xếp hàng tính lại RUL'); setTimeout(() => qc.invalidateQueries({ queryKey: ['diagnosis', id] }), 2500) }}>Tính lại RUL</Button>}
+      {can('analyst') && <Button type="primary" onClick={async () => { await post('/analytics/run', { job: 'rul_estimate' }); message.success('Đã xếp hàng tính lại RUL'); setTimeout(() => qc.invalidateQueries({ queryKey: ['diagnosis', id] }), 2500) }}>Tính lại RUL</Button>}
     </div>
     <Row gutter={[14, 14]}>
       <Col xs={24} md={8}><Card><Statistic title="RUL ước lượng" value={hasValue ? current.rul_days : undefined} precision={0} suffix={hasValue ? 'ngày' : undefined} formatter={hasValue ? undefined : () => notComputed} />

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Form, Input, InputNumber, Modal, Progress, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
-import { PlusOutlined, SettingOutlined } from '@ant-design/icons'
 import { api, patch, post, put } from '../api/client'
 import MachineSetupWizard from '../components/MachineSetupWizard'
 import { useAuth } from '../auth'
@@ -37,7 +36,7 @@ function MachinesTab() {
     <>
       <div className="page-hero" style={{ marginBottom: 14 }}>
         <div><div className="page-kicker">Asset configuration</div><Typography.Title level={3} style={{ margin: 0 }}>Hồ sơ máy & ngưỡng đo</Typography.Title><div className="muted">Khai báo đúng thông số để tự động chọn ISO và cấu hình phân tích.</div></div>
-        {can('admin') && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>Thêm máy</Button>}
+        {can('admin') && <Button type="primary" onClick={() => setCreating(true)}>Thêm máy</Button>}
       </div>
       <Table size="small" rowKey="id" dataSource={data} columns={[
         { title: 'Mã', dataIndex: 'id' }, { title: 'Tên', dataIndex: 'name' }, { title: 'Site', dataIndex: 'site_id' },
@@ -45,7 +44,7 @@ function MachinesTab() {
         { title: 'ISO', key: 'iso', render: (_, r: any) => `nhóm ${r.iso_group}, ${r.foundation}` },
         { title: 'Hồ sơ', key: 'profile', render: (_, r: any) => { const fields = [r.type, r.rated_power_kw, r.rated_speed_rpm, r.mounting, r.foundation, r.meta?.bearing_type]; const pct = Math.round(fields.filter(Boolean).length / fields.length * 100); return <Progress percent={pct} size="small" style={{ width: 100 }} strokeColor={pct === 100 ? '#34d399' : '#22d3ee'} /> } },
         { title: 'Cô lập nhiễu', dataIndex: 'isolation', render: (i) => (i?.enabled ? <Tag color="cyan">bật</Tag> : '') },
-        { title: '', key: 'e', render: (_, r: any) => <Button size="small" icon={<SettingOutlined />} onClick={() => setEdit(r)}>Cấu hình</Button> },
+        { title: '', key: 'e', render: (_, r: any) => <Button size="small" onClick={() => setEdit(r)}>Cấu hình</Button> },
       ]} />
       <MachineSetupWizard open={creating} sites={sites} onClose={() => setCreating(false)} onSaved={() => qc.invalidateQueries({ queryKey: ['machines'] })} />
       <MachineSetupWizard open={!!edit} machine={edit} sites={sites} onClose={() => setEdit(undefined)} onSaved={() => qc.invalidateQueries({ queryKey: ['machines'] })} />

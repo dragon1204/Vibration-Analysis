@@ -12,7 +12,7 @@ from ..security import ROLE_RANK, hash_password, new_token
 router = APIRouter(tags=["gateways"])
 
 CMD_TYPES = {"capture_now", "group_capture", "reload_config", "set_sensor_param", "reboot", "ota_update", "ping",
-             "upload_logs", "learn_alpha"}
+             "upload_logs", "learn_alpha", "commission_sensor"}
 
 
 async def _gateway(request: Request, user: User, gw_id: str, min_role: str = "viewer") -> dict:

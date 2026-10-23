@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { Button, Segmented, Typography } from 'antd'
-import { DownloadOutlined } from '@ant-design/icons'
 import { ZONE_BG, num, saveCSV, vnMs } from '../utils/format'
 
 export type IsoLimits = { ab: number; bc: number; cd: number }
@@ -93,7 +92,7 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
     <div>
       {csvName && (
         <div className="chart-toolbar">
-          <Button size="small" icon={<DownloadOutlined />} onClick={() =>
+          <Button size="small" onClick={() =>
             saveCSV(csvName, [['series', 'ts', 'value'], ...series.flatMap((s) => s.data.map(([t, v]) => [s.name, t, v]))])}>CSV</Button>
         </div>
       )}
@@ -103,7 +102,7 @@ export function TrendChart({ series, limits, height = 320, yName = 'mm/s', y2Nam
 }
 
 export type Marker = { label: string; freq_hz: number; kind?: string }
-const MARKER_COLOR: Record<string, string> = { order: '#1677ff', bearing: '#cf1322', electrical: '#722ed1', mesh: '#d46b08' }
+const MARKER_COLOR: Record<string, string> = { order: '#2f6fa8', bearing: '#d62f3a', electrical: '#8a63b8', mesh: '#e8710a' }
 
 /** Fault-frequency marker lines. Markers closer than ~1.5 % of the visible band (e.g. 2X 98,8 Hz and 2×f_line 100 Hz)
  * share one line and one label; labels are horizontal, above the plot, staggered on two rows so they never overlap. */
@@ -172,7 +171,7 @@ export function SpectrumChart({ df, values, unit, markers = [], compare, height 
     <div>
       {csvName && (
         <div className="chart-toolbar">
-          <Button size="small" icon={<DownloadOutlined />}
+          <Button size="small"
             onClick={() => saveCSV(csvName, [['freq_hz', `value_${unit}`], ...values.map((v, i) => [i * df, v])])}>CSV</Button>
         </div>
       )}
@@ -209,7 +208,7 @@ export function MultiSpectrumChart({ spectra, markers = [], fmax = 500, height =
   return <ReactECharts option={option} style={{ height }} notMerge={false} lazyUpdate />
 }
 
-const AXIS_COLOR: Record<string, string> = { x: '#1677ff', y: '#2e9d4f', z: '#e8590c' }
+const AXIS_COLOR: Record<string, string> = { x: '#2f6fa8', y: '#8a63b8', z: '#c2562a' }
 const ROLE_LABEL: Record<string, string> = { radial_h: 'ngang', axial: 'dọc trục', radial_v: 'đứng' }
 const DEFAULT_ROLES: Record<string, string> = { x: 'radial_h', y: 'axial', z: 'radial_v' }
 const axisLabel = (a: string, roles?: Record<string, string>) => `${a.toUpperCase()} ${ROLE_LABEL[roles?.[a] || DEFAULT_ROLES[a]] || ''}`.trim()
@@ -374,7 +373,7 @@ export function Gauge({ value, title, height = 180, emptyText = 'Chưa đủ d�
   const option = {
     series: [{
       type: 'gauge', min: 0, max: 100, radius: '92%', center: ['50%', '56%'], progress: { show: has, width: 12 },
-      axisLine: { lineStyle: { width: 12, color: has ? [[0.4, '#cf1322'], [0.7, '#fa8c16'], [1, '#2e9d4f']] : [[1, '#e4e8ef']] } },
+      axisLine: { lineStyle: { width: 12, color: has ? [[0.4, '#d62f3a'], [0.7, '#e8710a'], [1, '#2fa84f']] : [[1, '#e4e8ef']] } },
       pointer: { show: false }, axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
       title: { show: false },
       detail: has ? { valueAnimation: true, fontSize: 28, fontWeight: 700, offsetCenter: [0, '6%'], formatter: '{value}' }

@@ -12,6 +12,7 @@ import (
 	"selink.vn/smartmotor/edge/internal/config"
 	"selink.vn/smartmotor/edge/internal/drivers"
 	"selink.vn/smartmotor/edge/internal/drivers/wtvb05"
+	"selink.vn/smartmotor/edge/internal/localview"
 	"selink.vn/smartmotor/edge/internal/rules"
 	"selink.vn/smartmotor/edge/internal/scheduler"
 	"selink.vn/smartmotor/edge/internal/store"
@@ -99,6 +100,7 @@ func (p *pointRT) online(now time.Time) bool {
 }
 
 func (p *pointRT) recordResult(err error) {
+	defer p.updateView()
 	p.mu.Lock()
 	now := time.Now()
 	if err == nil {
@@ -132,6 +134,28 @@ func (p *pointRT) recordResult(err error) {
 	}
 }
 
+// b1PerSensor is the B1 interval budget per sensor on a shared bus.
+const b1PerSensor = 100 * time.Millisecond
+
+// pointsOnBus counts configured points on a bus.
+func (a *Agent) pointsOnBus(busID string) int {
+	n := 0
+	for _, p := range a.points {
+		if p.cfg.Sensor.Bus == busID {
+			n++
+		}
+	}
+	return n
+}
+
+// updateView publishes the link state to the local panel.
+func (p *pointRT) updateView() {
+	p.mu.Lock()
+	online, fails, lastOK := !p.offline, p.fails, p.lastOK
+	p.mu.Unlock()
+	p.a.view.SetLink(p.cfg.ID, online, fails, lastOK)
+}
+
 // runIndicators reads B1/B2/B3 periodically and publishes aggregated windows.
 func (p *pointRT) runIndicators(ctx context.Context) {
 	iv := p.a.cfg.Intervals
@@ -147,6 +171,14 @@ func (p *pointRT) runIndicators(ctx context.Context) {
 	b1Interval := time.Duration(iv.B1S) * time.Second
 	if iv.B1MS > 0 {
 		b1Interval = time.Duration(iv.B1MS) * time.Millisecond
+	}
+	// B1 transactions of all sensors on a bus share it with RAWFIFO frames: keep the
+	// combined B1 rate at about 10 transactions per second.
+	if n := p.a.pointsOnBus(p.cfg.Sensor.Bus); n > 1 {
+		if shared := time.Duration(n) * b1PerSensor; b1Interval < shared {
+			b1Interval = shared
+			p.log.Info("B1 interval widened for shared bus", "sensors", n, "interval", b1Interval)
+		}
 	}
 	window := time.Duration(iv.WindowS) * time.Second
 	if iv.VibWindowMS > 0 {
@@ -298,6 +330,16 @@ func (p *pointRT) flushWindow(end time.Time) {
 		}
 		msg.Flags = flags
 		_ = p.a.up.Enqueue("metrics/vib/"+p.cfg.ID, 1, store.PrioMetrics, msg)
+		vi := localview.Indicators{TS: end, VelPeakMMs: map[string]float64{}, FreqHz: map[string]float64{}, TempC: msg.TempC}
+		for a, name := range drivers.AxisNames {
+			if v := *axisPtr(&msg.VelMMs, a); v != nil {
+				vi.VelPeakMMs[name] = *v
+			}
+			if v := *axisPtr(&msg.FreqHz, a); v != nil {
+				vi.FreqHz[name] = *v
+			}
+		}
+		p.a.view.SetIndicators(p.cfg.ID, vi)
 		// Bearing housing temperature from the sensor itself.
 		if p.cfg.Role == "bearing" && !math.IsNaN(tMean) {
 			p.a.handleEvents(p.a.engine.Evaluate(rules.Observation{

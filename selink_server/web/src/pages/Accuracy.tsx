@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Table, Tag, Upload } from 'antd'
-import { FilePdfOutlined, UploadOutlined } from '@ant-design/icons'
 import { api, download, post } from '../api/client'
 import { useAuth } from '../auth'
 import { dt, num } from '../utils/format'
@@ -51,7 +50,7 @@ export default function Accuracy() {
       <Space wrap style={{ marginBottom: 12 }}>
         <Select showSearch placeholder="Chọn điểm đo" style={{ width: 320 }} value={point} onChange={setPoint}
           options={points.map((p) => ({ value: p.id, label: `${p.machine_id} · ${p.name}` }))} />
-        {point && <Button icon={<FilePdfOutlined />} onClick={() => download('/accuracy-tests/report', `bien-ban-${point}.pdf`, { point_id: point, format: 'pdf' })}>Xuất biên bản PDF</Button>}
+        {point && <Button onClick={() => download('/accuracy-tests/report', `bien-ban-${point}.pdf`, { point_id: point, format: 'pdf' })}>Xuất biên bản PDF</Button>}
       </Space>
       <Alert style={{ marginBottom: 12 }} type="info" showIcon
         message="Tiêu chí (mục 9.2): e = |X_dut − X_ref| / X_ref; đạt khi mean(e) ≤ 5% và P95(e) ≤ 8%; tần số đỉnh ≤ 1 bin; nhiệt độ ≤ 2 °C." />
@@ -77,7 +76,7 @@ export default function Accuracy() {
                   <Button type="primary" htmlType="submit" block>Thêm</Button>
                 </Form>
                 <Upload accept=".csv" showUploadList={false} beforeUpload={(f) => { f.text().then((t) => add(parseCSV(t, point))); return false }}>
-                  <Button style={{ marginTop: 8 }} icon={<UploadOutlined />} block>Nhập file CSV</Button>
+                  <Button style={{ marginTop: 8 }} block>Nhập file CSV</Button>
                 </Upload>
                 <div className="muted">Cột CSV: ts,load_state,quantity,axis,freq_hz,ref_value,dut_value,capture_id,reference_device,reference_cert</div>
               </Card>

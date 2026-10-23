@@ -1,0 +1,23 @@
+[Unit]
+Description=Smart Motor local LCD panel (LVDS 7in, Qt linuxfb)
+After=edge-agent.service
+Wants=edge-agent.service
+
+[Service]
+WorkingDirectory=/opt/smartmotor-panel
+Environment=QT_QPA_PLATFORM=linuxfb:fb=/dev/fb0
+Environment=QT_QPA_EVDEV_TOUCHSCREEN_PARAMETERS=/dev/input/event2
+Environment=QT_QPA_FB_HIDECURSOR=1
+Environment=XDG_RUNTIME_DIR=/run/smartmotor-panel
+RuntimeDirectory=smartmotor-panel
+RuntimeDirectoryMode=0700
+ExecStartPre=-/bin/sh -c "echo 0 > /sys/class/graphics/fbcon/cursor_blink"
+ExecStart=/usr/bin/python3 /opt/smartmotor-panel/smartmotor_panel.py
+StandardOutput=null
+Restart=always
+RestartSec=5
+Nice=10
+MemoryMax=180M
+
+[Install]
+WantedBy=multi-user.target

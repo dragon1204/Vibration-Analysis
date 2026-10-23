@@ -10,34 +10,103 @@ import (
 	"selink.vn/smartmotor/edge/internal/drivers"
 	"selink.vn/smartmotor/edge/internal/drivers/wtvb05"
 	"selink.vn/smartmotor/edge/internal/features"
+	"selink.vn/smartmotor/edge/internal/localview"
 	"selink.vn/smartmotor/edge/internal/store"
 	"selink.vn/smartmotor/edge/internal/ulid"
 )
 
-// runFastRMS publishes a lightweight ISO-band RMS result from one RAWFIFO
-// frame. Unlike a full capture it stores no waveform/spectrum and therefore
+// defaultRawDuty is the share of bus time fast RMS may use when raw_duty_pct is unset.
+const defaultRawDuty = 0.70
+
+// runFastRMSBus publishes lightweight ISO-band RMS results from RAWFIFO frames for
+// every point of one bus. Unlike a full capture it stores no waveform/spectrum and
 // can follow a handheld meter without growing edge/server storage every second.
-func (p *pointRT) runFastRMS(ctx context.Context) {
-	interval := time.Duration(p.a.cfg.Intervals.FastRMSMS) * time.Millisecond
-	timer := time.NewTimer(0)
-	defer timer.Stop()
-	var window []drivers.RawFrame
+//
+// One RAWFIFO frame occupies the bus for ~0.55 s at 115200 bps, so several sensors
+// cannot each be read every second. Points are served round-robin, one frame per turn,
+// and after each frame the loop idles long enough to keep raw reads at the duty cap:
+// B1 polling and scheduled captures (lower priority) use the idle time and never starve.
+// With n sensors each one refreshes about every n × frame / duty (≈ 0.8 s per sensor).
+func (a *Agent) runFastRMSBus(ctx context.Context, pts []*pointRT) {
+	minPeriod := time.Duration(a.cfg.Intervals.FastRMSMS) * time.Millisecond
+	duty := defaultRawDuty
+	if a.cfg.Intervals.RawDutyPct > 0 {
+		duty = float64(a.cfg.Intervals.RawDutyPct) / 100
+	}
+	windows := make([][]drivers.RawFrame, len(pts))
+	last := make([]time.Time, len(pts))
+	next := 0
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case <-timer.C:
-			started := time.Now()
-			if err := p.publishFastRMS(ctx, &window); err != nil {
-				p.log.Warn("fast RMS failed", "err", err)
+		}
+		now := time.Now()
+		// Next point in turn that is online and whose minimum period has elapsed.
+		pick, wait := -1, 200*time.Millisecond
+		for k := 0; k < len(pts); k++ {
+			i := (next + k) % len(pts)
+			if !pts[i].online(now) {
+				continue
 			}
-			wait := interval - time.Since(started)
-			if wait < 0 {
-				wait = 0
+			if d := last[i].Add(minPeriod).Sub(now); d > 0 {
+				wait = min(wait, d)
+				continue
 			}
-			timer.Reset(wait)
+			pick = i
+			break
+		}
+		if pick < 0 {
+			if !sleepCtx(ctx, wait) {
+				return
+			}
+			continue
+		}
+		next = (pick + 1) % len(pts)
+		p := pts[pick]
+		started := time.Now()
+		prev := last[pick]
+		last[pick] = started
+		if err := p.publishFastRMS(ctx, &windows[pick], prev); err != nil && ctx.Err() == nil {
+			p.log.Warn("fast RMS failed", "err", err)
+		}
+		busy := time.Since(started)
+		if !sleepCtx(ctx, time.Duration(float64(busy)*(1/duty-1))) {
+			return
 		}
 	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+// fastRMSGroups groups points by bus so each bus gets one fast-RMS scheduler.
+func fastRMSGroups(machines []*machineRT) [][]*pointRT {
+	idx := map[string]int{}
+	var out [][]*pointRT
+	for _, m := range machines {
+		for _, p := range m.points {
+			b := p.cfg.Sensor.Bus
+			i, ok := idx[b]
+			if !ok {
+				i = len(out)
+				idx[b] = i
+				out = append(out, nil)
+			}
+			out[i] = append(out[i], p)
+		}
+	}
+	return out
 }
 
 // fastRMSFrameCount returns enough 1024-sample frames for at least one second
@@ -60,7 +129,7 @@ func appendFastRMSFrame(window []drivers.RawFrame, frame drivers.RawFrame, maxFr
 	return window
 }
 
-func (p *pointRT) publishFastRMS(ctx context.Context, window *[]drivers.RawFrame) error {
+func (p *pointRT) publishFastRMS(ctx context.Context, window *[]drivers.RawFrame, prev time.Time) error {
 	if len(p.cfg.Profiles) == 0 {
 		return fmt.Errorf("fast RMS requires a capture profile")
 	}
@@ -101,12 +170,18 @@ func (p *pointRT) publishFastRMS(ctx context.Context, window *[]drivers.RawFrame
 		Axes:  map[string]vibStatAxis{},
 		Flags: append([]string{"edge_raw_iso", fmt.Sprintf("rolling_%dms", windowMS)}, res.Features.QualityFlags...),
 	}
+	view := localview.Fast{TS: frame.StartTS, WindowMS: windowMS, Axes: map[string]localview.AxisRMS{}}
+	if !prev.IsZero() {
+		view.UpdateMS = int(time.Since(prev) / time.Millisecond)
+	}
 	for _, axis := range drivers.AxisNames {
 		a := res.Features.Axes[axis]
 		msg.Axes[axis] = vibStatAxis{
 			AccRmsG: fptr(a.AccRmsG), VelRmsMMs: fptr(a.ISOVrmsMMs), Crest: fptr(a.Crest),
 			Kurtosis: fptr(a.Kurtosis), Skew: fptr(a.Skew),
 		}
+		view.Axes[axis] = localview.AxisRMS{VrmsMMs: fptr(a.ISOVrmsMMs), AccRmsG: fptr(a.AccRmsG), Crest: fptr(a.Crest), Kurtosis: fptr(a.Kurtosis)}
 	}
+	p.a.view.SetFast(p.cfg.ID, view)
 	return p.a.up.Enqueue("metrics/vibstat/"+p.cfg.ID, 1, store.PrioMetrics, msg)
 }

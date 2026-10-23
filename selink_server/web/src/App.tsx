@@ -1,12 +1,6 @@
 import { Suspense, lazy, useState } from 'react'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Avatar, Badge, Button, Drawer, Dropdown, Grid, Input, Layout, Menu, Spin } from 'antd'
-import {
-  AlertOutlined, BellFilled, DashboardOutlined, DatabaseOutlined, FieldTimeOutlined, FileTextOutlined,
-  LineChartOutlined, LogoutOutlined, MenuOutlined, RobotOutlined, SearchOutlined, SettingOutlined,
-  FundProjectionScreenOutlined, UnorderedListOutlined,
-  ApartmentOutlined,
-} from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from './auth'
 import { useRealtime } from './api/realtime'
@@ -64,21 +58,21 @@ export default function App() {
   const deepPath = `/machines/${activeMachine}/deep-analysis`
   const rulPath = `/machines/${activeMachine}/rul`
   const menuItems: any[] = [
-    { key: '/', icon: <DashboardOutlined />, label: 'Tổng quan' },
-    { key: '/machines', icon: <UnorderedListOutlined />, label: 'Danh sách động cơ' },
-    { key: livePath, icon: <FundProjectionScreenOutlined />, label: 'Giám sát thời gian thực' },
-    { key: 'spectrum', icon: <LineChartOutlined />, label: 'Phân tích phổ FFT' },
-    { key: '/events', icon: <AlertOutlined />, label: <span>Cảnh báo & sự kiện {eventCount > 0 && <Badge count={eventCount} size="small" />}</span> },
+    { key: '/', label: 'Tổng quan' },
+    { key: '/machines', label: 'Danh sách động cơ' },
+    { key: livePath, label: 'Giám sát thời gian thực' },
+    { key: 'spectrum', label: 'Phân tích phổ FFT' },
+    { key: '/events', label: <span>Cảnh báo & sự kiện {eventCount > 0 && <Badge count={eventCount} size="small" />}</span> },
     { type: 'group', label: 'PHÂN TÍCH NÂNG CAO', children: [
-      { key: diagnosisPath, icon: <RobotOutlined />, label: 'AI chẩn đoán' },
-      { key: deepPath, icon: <ApartmentOutlined />, label: 'Phân tích sâu FFT' },
-      { key: rulPath, icon: <FieldTimeOutlined />, label: 'Dự đoán RUL' },
-      { key: '/reports', icon: <FileTextOutlined />, label: 'Lịch sử & báo cáo' },
+      { key: diagnosisPath, label: 'AI chẩn đoán' },
+      { key: deepPath, label: 'Phân tích sâu FFT' },
+      { key: rulPath, label: 'Dự đoán RUL' },
+      { key: '/reports', label: 'Lịch sử & báo cáo' },
     ] },
     { type: 'group', label: 'QUẢN TRỊ', children: [
-      { key: '/knowledge', icon: <RobotOutlined />, label: 'Mô hình AI & tri thức' },
-      { key: '/devices', icon: <DatabaseOutlined />, label: 'Thiết bị & gateway' },
-      { key: '/settings', icon: <SettingOutlined />, label: 'Cài đặt' },
+      { key: '/knowledge', label: 'Mô hình AI & tri thức' },
+      { key: '/devices', label: 'Thiết bị & gateway' },
+      { key: '/settings', label: 'Cài đặt' },
     ] },
   ]
   const selected = loc.pathname === '/' ? '/' : loc.pathname.startsWith('/events') ? '/events'
@@ -96,9 +90,9 @@ export default function App() {
   return (
     <Layout className="app-shell">
       <Layout.Header className="app-header">
-        {!screens.md && <Button className="mobile-menu-btn" icon={<MenuOutlined />} onClick={() => setOpen(true)} />}
-        <div className="top-brand"><div className="top-brand-mark">H</div><b>HEM Smart Motor</b><span>Giám sát thông minh · Vận hành bền vững</span></div>
-        <Input className="header-search hide-tablet" prefix={<SearchOutlined />} placeholder="Tìm động cơ, cảnh báo, báo cáo..."
+        {!screens.md && <Button className="mobile-menu-btn" onClick={() => setOpen(true)}>Menu</Button>}
+        <div className="top-brand"><div className="top-brand-mark">HEM</div><b>SMART MOTOR</b><span>Giám sát rung động động cơ</span></div>
+        <Input className="header-search hide-tablet" placeholder="Tìm động cơ, cảnh báo, báo cáo..."
           onPressEnter={(e) => {
             const q = e.currentTarget.value.toLowerCase().trim()
             const found = machines.find((m: any) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
@@ -106,11 +100,11 @@ export default function App() {
           }} />
         <div className="system-health hide-mobile" title="Gateway gửi health mỗi phút; quá 3 phút không có tín hiệu được coi là mất kết nối">
           <span className={`pulse-dot ${!gateways.length ? '' : online === gateways.length ? '' : online === 0 ? 'pulse-dot-bad' : 'pulse-dot-warn'}`} />
-          {!gateways.length ? 'Chưa có gateway' : online === gateways.length ? `Hệ thống hoạt động · ${online}/${gateways.length} gateway`
-            : online === 0 ? `Mất kết nối gateway · 0/${gateways.length}` : `${online}/${gateways.length} gateway trực tuyến`}
+          {!gateways.length ? 'Chưa có gateway' : online === gateways.length ? `Hệ thống hoạt động | ${online}/${gateways.length} gateway`
+            : online === 0 ? `Mất kết nối gateway | 0/${gateways.length}` : `${online}/${gateways.length} gateway trực tuyến`}
         </div>
-        <Badge count={eventCount} size="small"><Button className="header-icon" type="text" icon={<BellFilled />} onClick={() => nav('/events')} /></Badge>
-        <Dropdown menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: () => logout() }] }}>
+        <Badge count={eventCount} size="small" offset={[-4, 4]}><Button className="header-icon" type="text" onClick={() => nav('/events')}>CẢNH BÁO</Button></Badge>
+        <Dropdown menu={{ items: [{ key: 'logout', label: 'Đăng xuất', onClick: () => logout() }] }}>
           <div className="user-chip"><Avatar>{(me?.name || me?.email || 'A').slice(0, 1).toUpperCase()}</Avatar><div><b>{me?.name || me?.email}</b><span>{me?.role === 'admin' ? 'Quản trị hệ thống' : me?.role}</span></div></div>
         </Dropdown>
       </Layout.Header>

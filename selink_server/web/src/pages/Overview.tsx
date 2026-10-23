@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Card, Col, Empty, Progress, Row, Segmented, Space, Spin, Statistic, Tag, Tooltip } from 'antd'
-import { ThunderboltOutlined, PauseCircleOutlined, FireOutlined, ArrowRightOutlined, RadarChartOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { api } from '../api/client'
 import { useRealtime } from '../api/realtime'
 import { TrendChart } from '../components/charts'
@@ -43,7 +42,7 @@ export default function Overview() {
               </Col>
             ))}
           </Row>
-          <div className="section-label"><h2><RadarChartOutlined style={{ color: '#22d3ee', marginRight: 8 }} />Đội máy đang giám sát</h2><span className="muted">Tự động cập nhật mỗi 30 giây</span></div>
+          <div className="section-label"><h2>Đội máy đang giám sát</h2><span className="muted">Tự động cập nhật mỗi 30 giây</span></div>
           <Row gutter={[12, 12]}>
             <Col xs={24}>
               <Row gutter={[12, 12]}>
@@ -68,11 +67,11 @@ export default function Overview() {
                             <Space wrap>
                               <ZoneTag zone={m.iso_zone} />
                               {m.running == null ? null : m.running
-                                ? <Tag icon={<ThunderboltOutlined />} color="green">Đang chạy{m.load_pct != null ? ` ${num(m.load_pct, 0)}%` : ''}</Tag>
-                                : <Tag icon={<PauseCircleOutlined />}>Dừng</Tag>}
+                                ? <Tag color="green">Đang chạy{m.load_pct != null ? ` ${num(m.load_pct, 0)}%` : ''}</Tag>
+                                : <Tag>Dừng</Tag>}
                             </Space>
                             <div className="metric-line"><Tooltip title={m.iso_ts ? `Vận tốc RMS ISO lớn nhất (trục hướng kính) · capture ${ago(m.iso_ts)}` : 'Chưa có capture'}><span>Rung RMS ISO</span></Tooltip><strong>{num(m.vib_max_mm_s)} mm/s</strong></div>
-                            <div className="metric-line"><span><FireOutlined /> Nhiệt độ ổ</span><strong>{num(m.bearing_temp_c, 1)} °C</strong></div>
+                            <div className="metric-line"><span>Nhiệt độ ổ</span><strong>{num(m.bearing_temp_c, 1)} °C</strong></div>
                             <div className="metric-line"><span>Cuộn dây <EstimateTag /></span><strong>{num(m.winding_temp_est_c, 1)} °C</strong></div>
                             {m.rul_days != null && (
                               <div>RUL: <b>{num(m.rul_days, 0)}</b> ngày ({num(m.rul_lo_days, 0)}–{num(m.rul_hi_days, 0)}) <EstimateTag /></div>
@@ -84,7 +83,7 @@ export default function Overview() {
                         {m.trend_7d.length ? <TrendChart compact height={90} limits={m.iso_limits}
                           series={[{ name: 'Rung RMS ISO (mm/s)', data: m.trend_7d, color: '#1d4ed8' }]} />
                           : <div className="trend-empty">Chưa có dữ liệu xu hướng</div>}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span className="muted">Xu hướng rung RMS · 7 ngày</span><span className="card-link">Xem realtime <ArrowRightOutlined /></span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span className="muted">Xu hướng rung RMS · 7 ngày</span><span className="card-link">Xem realtime </span></div>
                       </div>
                     </Card>
                   </Col>
@@ -92,7 +91,7 @@ export default function Overview() {
               </Row>
             </Col>
             <Col xs={24}>
-              <Card className="glass-card alert-strip" size="small" title={<span><SafetyCertificateOutlined style={{ color: '#fbbf24', marginRight: 8 }} />Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
+              <Card className="glass-card alert-strip" size="small" title={<span>Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
                 {data.events.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cảnh báo" /> : (
                   <div className="alert-rows">
                     {data.events.map((e: any) => (

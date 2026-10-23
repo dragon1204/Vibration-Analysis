@@ -31,20 +31,20 @@ export function vnMs(iso: string | number): number {
 }
 
 export const STATUS: Record<string, { label: string; color: string; tag: string }> = {
-  normal: { label: 'Bình thường', color: '#2e9d4f', tag: 'success' },
-  watch: { label: 'Theo dõi', color: '#d4b106', tag: 'gold' },
-  warning: { label: 'Cảnh báo', color: '#fa8c16', tag: 'orange' },
-  danger: { label: 'Nguy hiểm', color: '#cf1322', tag: 'red' },
-  offline: { label: 'Mất kết nối', color: '#8c8c8c', tag: 'default' },
-  info: { label: 'Thông tin', color: '#1677ff', tag: 'blue' },
+  normal: { label: 'Bình thường', color: '#2fa84f', tag: 'success' },
+  watch: { label: 'Theo dõi', color: '#d9a406', tag: 'gold' },
+  warning: { label: 'Cảnh báo', color: '#e8710a', tag: 'orange' },
+  danger: { label: 'Nguy hiểm', color: '#d62f3a', tag: 'red' },
+  offline: { label: 'Mất kết nối', color: '#7b8794', tag: 'default' },
+  info: { label: 'Thông tin', color: '#2f6fa8', tag: 'blue' },
 }
 
 export const EVENT_STATE: Record<string, string> = {
   raised: 'Mới', acknowledged: 'Đã xem', diagnosed: 'Đã chẩn đoán', resolved: 'Đã xử lý', closed: 'Đóng',
 }
 
-export const ZONE_COLOR: Record<string, string> = { A: '#2e9d4f', B: '#d4b106', C: '#fa8c16', D: '#cf1322' }
-export const ZONE_BG = { A: 'rgba(46,157,79,0.10)', B: 'rgba(212,177,6,0.12)', C: 'rgba(250,140,22,0.14)', D: 'rgba(207,19,34,0.12)' }
+export const ZONE_COLOR: Record<string, string> = { A: '#2fa84f', B: '#d9a406', C: '#e8710a', D: '#d62f3a' }
+export const ZONE_BG = { A: 'rgba(47,168,79,0.10)', B: 'rgba(217,164,6,0.12)', C: 'rgba(232,113,10,0.12)', D: 'rgba(214,47,58,0.12)' }
 
 export function toCSV(rows: (string | number | null | undefined)[][]): string {
   return rows.map((r) => r.map((c) => (c === null || c === undefined ? '' : `"${String(c).replace(/"/g, '""')}"`)).join(',')).join('\n')
@@ -60,3 +60,16 @@ export function saveCSV(name: string, rows: (string | number | null | undefined)
 }
 
 export const ROLE_RANK: Record<string, number> = { viewer: 1, operator: 2, engineer: 3, analyst: 4, admin: 5 }
+
+/** Mounting positions in display order. */
+export const POSITIONS = ['DE', 'NDE', 'BASE', 'COMP']
+const LEGACY_POSITION: Record<string, string> = { S1: 'COMP', S2: 'BASE', S3: 'DE', S4: 'NDE' }
+
+/** Sensor name used everywhere on screen: its mounting position (DE, NDE, BASE, COMP). */
+export function sensorCode(point: { location?: string | null; role?: string | null; id?: string } | null | undefined): string {
+  const raw = String(point?.location || '').trim().toUpperCase()
+  const loc = LEGACY_POSITION[raw] || raw
+  if (POSITIONS.includes(loc)) return loc
+  if (point?.role === 'base') return 'BASE'
+  return loc ? loc.slice(0, 8) : String(point?.id || '--').split('-').pop()!.toUpperCase()
+}

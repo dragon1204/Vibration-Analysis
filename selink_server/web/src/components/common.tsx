@@ -1,20 +1,12 @@
 import { useState } from 'react'
 import { Button, Tag, Tooltip, DatePicker } from 'antd'
-import {
-  CheckCircleFilled, EyeFilled, WarningFilled, CloseCircleFilled, DisconnectOutlined, InfoCircleFilled, LeftOutlined, RightOutlined,
-} from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { STATUS, ZONE_COLOR } from '../utils/format'
 
-const ICON: Record<string, JSX.Element> = {
-  normal: <CheckCircleFilled />, watch: <EyeFilled />, warning: <WarningFilled />, danger: <CloseCircleFilled />,
-  offline: <DisconnectOutlined />, info: <InfoCircleFilled />,
-}
-
-/** Status always shown with icon + text, not colour only (spec 7.1). */
+/** Status is always text plus colour, never colour alone (spec 7.1). */
 export function StatusTag({ status }: { status?: string | null }) {
   const s = STATUS[status || 'normal'] || STATUS.normal
-  return <Tag color={s.tag} icon={ICON[status || 'normal']}>{s.label}</Tag>
+  return <Tag color={s.tag}>{s.label}</Tag>
 }
 
 export function ZoneTag({ zone }: { zone?: string | null }) {
@@ -92,7 +84,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
         ))}
       </div>
       <div className="range-picker-row">
-        <Button size="small" icon={<LeftOutlined />} onClick={() => shift(-1)} title="Lùi một khoảng bằng độ dài hiện tại" />
+        <Button size="small" onClick={() => shift(-1)} title="Lùi một khoảng bằng độ dài hiện tại">Lùi</Button>
         <DatePicker.RangePicker showTime={{ format: 'HH:mm:ss' }} value={value} format="DD/MM/YYYY HH:mm:ss" open={open}
           onOpenChange={setOpen} allowClear={false}
           onChange={(v) => {
@@ -101,7 +93,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
             if (!open || (Math.abs(v[0].diff(value[0])) < 1000 && Math.abs(v[1].diff(value[1])) < 1000)) return
             setForceCustom(true); onChange([v[0], v[1]])
           }} />
-        <Button size="small" icon={<RightOutlined />} onClick={() => shift(1)} title="Tiến một khoảng bằng độ dài hiện tại" />
+        <Button size="small" onClick={() => shift(1)} title="Tiến một khoảng bằng độ dài hiện tại">Tiến</Button>
         <span className="range-span">Dài {humanSpan(value)}</span>
       </div>
     </div>

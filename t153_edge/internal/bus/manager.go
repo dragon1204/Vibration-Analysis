@@ -56,6 +56,7 @@ type job struct {
 	seq  uint64
 	ctx  context.Context
 	dev  string
+	baud int // 0 = bus baud; otherwise the port is reopened at this rate for the job
 	fn   func(c *modbus.RTUClient) error
 	done chan error
 }
@@ -86,6 +87,7 @@ type Manager struct {
 	seq    uint64
 	closed bool
 	client *modbus.RTUClient
+	cur    int // baud the open client uses
 	stats  map[string]*Stats
 }
 
@@ -98,7 +100,13 @@ func New(id, device string, baud int, log *slog.Logger) *Manager {
 
 // Do runs fn with exclusive access to the bus. dev identifies the device for stats.
 func (m *Manager) Do(ctx context.Context, dev string, fn func(c *modbus.RTUClient) error) error {
-	j := &job{prio: PriorityFrom(ctx), ctx: ctx, dev: dev, fn: fn, done: make(chan error, 1)}
+	return m.DoAtBaud(ctx, dev, 0, fn)
+}
+
+// DoAtBaud runs fn with the port temporarily set to baud (0 = bus baud), e.g. to reach a
+// factory-new sensor at 9600 bps on a 115200 bps bus. The next ordinary job restores the rate.
+func (m *Manager) DoAtBaud(ctx context.Context, dev string, baud int, fn func(c *modbus.RTUClient) error) error {
+	j := &job{prio: PriorityFrom(ctx), ctx: ctx, dev: dev, baud: baud, fn: fn, done: make(chan error, 1)}
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -157,8 +165,16 @@ func (m *Manager) Run(ctx context.Context) {
 			j.done <- j.ctx.Err()
 			continue
 		}
+		want := m.Baud
+		if j.baud > 0 {
+			want = j.baud
+		}
+		if m.client != nil && m.cur != want {
+			_ = m.client.Port.Close()
+			m.client = nil
+		}
 		if m.client == nil {
-			p, err := transport.Open(m.Device, m.Baud)
+			p, err := transport.Open(m.Device, want)
 			if err != nil {
 				m.log.Warn("open bus failed", "device", m.Device, "err", err)
 				j.done <- err
@@ -170,8 +186,12 @@ func (m *Manager) Run(ctx context.Context) {
 				continue
 			}
 			backoff = time.Second
-			m.client = modbus.NewRTUClient(p, m.Baud)
-			m.log.Info("bus opened", "device", m.Device, "baud", m.Baud)
+			m.client, m.cur = modbus.NewRTUClient(p, want), want
+			if want == m.Baud {
+				m.log.Info("bus opened", "device", m.Device, "baud", want)
+			} else {
+				m.log.Info("bus opened at temporary baud", "device", m.Device, "baud", want)
+			}
 		}
 		err := j.fn(m.client)
 		m.account(j.dev, err)

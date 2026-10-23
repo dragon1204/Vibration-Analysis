@@ -32,6 +32,7 @@ type Config struct {
 	Health       Health       `yaml:"health" json:"health"`
 	Log          Log          `yaml:"log" json:"log"`
 	Intervals    Intervals    `yaml:"intervals" json:"intervals"`
+	LocalUI      LocalUI      `yaml:"local_ui" json:"local_ui"`
 }
 
 type Gateway struct {
@@ -249,6 +250,11 @@ type Health struct {
 	ThermalZone string `yaml:"thermal_zone" json:"thermal_zone"`
 }
 
+// LocalUI is the loopback JSON endpoint read by the gateway's LCD panel.
+type LocalUI struct {
+	Listen string `yaml:"listen" json:"listen"` // default 127.0.0.1:8091, "off" disables
+}
+
 type Log struct {
 	Level string `yaml:"level" json:"level"`
 	File  string `yaml:"file" json:"file"`
@@ -256,10 +262,13 @@ type Log struct {
 
 // Intervals of periodic tasks (spec 5.4.1).
 type Intervals struct {
-	B1S         int `yaml:"b1_s" json:"b1_s"`
-	B1MS        int `yaml:"b1_ms,omitempty" json:"b1_ms,omitempty"`
-	B2S         int `yaml:"b2_s" json:"b2_s"`
-	FastRMSMS   int `yaml:"fast_rms_ms,omitempty" json:"fast_rms_ms,omitempty"`
+	B1S       int `yaml:"b1_s" json:"b1_s"`
+	B1MS      int `yaml:"b1_ms,omitempty" json:"b1_ms,omitempty"`
+	B2S       int `yaml:"b2_s" json:"b2_s"`
+	FastRMSMS int `yaml:"fast_rms_ms,omitempty" json:"fast_rms_ms,omitempty"`
+	// RawDutyPct caps the share of bus time spent on RAWFIFO frames for fast RMS
+	// (default 70) so B1 polling and scheduled captures keep running with several sensors.
+	RawDutyPct  int `yaml:"raw_duty_pct,omitempty" json:"raw_duty_pct,omitempty"`
 	B3S         int `yaml:"b3_s" json:"b3_s"`
 	WindowS     int `yaml:"window_s" json:"window_s"`
 	VibWindowMS int `yaml:"vib_window_ms,omitempty" json:"vib_window_ms,omitempty"`
@@ -296,6 +305,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Storage.Dir == "" {
 		c.Storage.Dir = "/data/edge"
+	}
+	if c.LocalUI.Listen == "" {
+		c.LocalUI.Listen = "127.0.0.1:8091"
 	}
 	if c.Storage.MaxBytes == 0 {
 		c.Storage.MaxBytes = 8 << 30
@@ -443,6 +455,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Intervals.VibWindowMS != 0 && (c.Intervals.VibWindowMS < 50 || c.Intervals.VibWindowMS >= 1000) {
 		errs = append(errs, "intervals.vib_window_ms must be 50..999 ms when set")
+	}
+	if c.Intervals.RawDutyPct != 0 && (c.Intervals.RawDutyPct < 20 || c.Intervals.RawDutyPct > 95) {
+		errs = append(errs, "intervals.raw_duty_pct must be 20..95 when set")
 	}
 	if c.Intervals.FastRMSMS != 0 && (c.Intervals.FastRMSMS < 1000 || c.Intervals.FastRMSMS > 60000) {
 		errs = append(errs, "intervals.fast_rms_ms must be 1000..60000 ms when set")

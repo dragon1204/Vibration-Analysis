@@ -4,12 +4,11 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography, Upload,
 } from 'antd'
-import { ApiOutlined, DownloadOutlined, NodeIndexOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
 import ReactECharts from 'echarts-for-react'
 import { api, download } from '../api/client'
 import { MultiSpectrumChart } from '../components/charts'
 import { RangePicker, lastHours, rangeParams, type Range } from '../components/common'
-import { dt, num } from '../utils/format'
+import { dt, num, sensorCode } from '../utils/format'
 import MachineNav from './MachineNav'
 
 const COLORS = ['#2563eb', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f']
@@ -315,9 +314,9 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
 
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
     extra={<Space wrap>
-      {result && <Button icon={<DownloadOutlined />} onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>}
+      {result && <Button onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>}
       {/* The vendor-style table only needs a point and a time range: no analysis run is required. */}
-      <Button type="primary" icon={<DownloadOutlined />} disabled={!pointId} onClick={() => download(
+      <Button type="primary" disabled={!pointId} onClick={() => download(
         `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`,
         { ...rangeParams(range), point_id: pointId, device_name: deviceName, max_skew_ms: 1000 },
       ).catch((error) => message.error(`Không xuất được bảng hãng: ${error.message}`))}>Xuất bảng giống hãng (khoảng đang chọn)</Button>
@@ -337,7 +336,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <label><span>Ngưỡng đỉnh / nền</span><InputNumber value={prominenceRatio} onChange={(value) => value != null && setProminenceRatio(value)} min={1.2} max={10} step={0.2} addonAfter="×" /></label>
       <label><span>Biên độ tối thiểu so với 1X</span><InputNumber value={minRelativeTo1xPct} onChange={(value) => value != null && setMinRelativeTo1xPct(value)} min={0} max={100} step={1} addonAfter="%" /></label>
       <label><span>Số capture lấy mẫu</span><Select value={analysisLimit} onChange={setAnalysisLimit} options={[100, 300, 500].map((value) => ({ value, label: `${value} capture` }))} /></label>
-      <Button type="primary" size="large" icon={<SearchOutlined />} disabled={!pointId} loading={analysis.isFetching} onClick={run}>Phân tích</Button>
+      <Button type="primary" size="large" disabled={!pointId} loading={analysis.isFetching} onClick={run}>Phân tích</Button>
     </div>
     <Alert className="fft-sampling-note" type="warning" showIcon
       message="Không dùng bảng giá trị 68–72 ms để kết luận hài 50 Hz"
@@ -400,9 +399,9 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
         <span className="muted">Ghép thời gian ±</span><InputNumber value={compareToleranceMs} min={10} max={5000} step={10}
           onChange={(value) => value != null && setCompareToleranceMs(value)} addonAfter="ms" />
         <Upload accept=".csv,text/csv" showUploadList={false} beforeUpload={(file) => { void compareVendorFile(file); return false }}>
-          <Button icon={<UploadOutlined />} loading={compareLoading}>Nạp CSV hãng</Button>
+          <Button loading={compareLoading}>Nạp CSV hãng</Button>
         </Upload>
-        {comparison && <Button icon={<DownloadOutlined />} onClick={() => exportComparisonCsv(comparison, machine.id)}>Xuất bảng sai số</Button>}
+        {comparison && <Button onClick={() => exportComparisonCsv(comparison, machine.id)}>Xuất bảng sai số</Button>}
       </Space>}>
         <Alert type="info" showIcon message="File được xử lý tại phiên làm việc, không ghi đè dữ liệu gốc"
           description="Hệ thống ghép từng dòng theo timestamp gần nhất, tính sai số tuyệt đối, trung bình, P95 và cực đại cho từng kênh. Chuẩn mặc định: sai số trung bình ≤5%, P95 ≤8%; nhiệt độ P95 ≤2°C." />
@@ -481,50 +480,50 @@ export default function DeepAnalysis() {
   const skewMs = timestamps.length ? Math.max(...timestamps) - Math.min(...timestamps) : null
   const markers = rows.find((row: any) => row.spectrum)?.spectrum?.markers || []
   const spectra = rows.filter((row: any) => row.spectrum).map((row: any) => ({
-    name: `${row.point.id.toUpperCase()} · ${row.point.name}`, df: row.spectrum.df_hz, values: row.spectrum.values, color: row.color,
+    name: `${sensorCode(row.point)} | ${row.point.name}`, df: row.spectrum.df_hz, values: row.spectrum.values, color: row.color,
   }))
   const complete = points.length > 1 && rows.length === points.length
   const hasRef = points.some((p: any) => p.role === 'source' || p.role === 'base')
   const applicable = points.length >= 2 && hasRef
-  const roleName = (role: string) => (role === 'source' ? 'Nguồn rung (S1)' : role === 'base' ? 'Tham chiếu bệ (S2)' : 'Gối động cơ')
+  const roleName = (role: string) => (role === 'source' ? 'Nguồn rung (COMP)' : role === 'base' ? 'Tham chiếu bệ (BASE)' : 'Ổ đỡ (DE/NDE)')
 
   return <div className="page deep-analysis-page">
     <MachineNav id={id} />
     <div className="page-hero">
-      <div><div className="page-kicker">FFT & cross-channel vibration analysis</div><Typography.Title level={2} style={{ margin: 0 }}>Phân tích sâu rung động</Typography.Title><p className="page-description">Đếm và định lượng các đỉnh 1X–nX theo thời gian, sau đó đối chiếu đồng thời S1–S4 để phân biệt rung truyền và thành phần cục bộ.</p></div>
+      <div><div className="page-kicker">FFT & cross-channel vibration analysis</div><Typography.Title level={2} style={{ margin: 0 }}>Phân tích sâu rung động</Typography.Title><p className="page-description">Đếm và định lượng các đỉnh 1X–nX theo thời gian, sau đó đối chiếu COMP, BASE, DE và NDE để phân biệt rung truyền và thành phần cục bộ.</p></div>
     </div>
 
     <HarmonicAnalysis machine={machine} />
 
-    <div className="deep-section-title"><div><b>Đối chiếu đa điểm S1–S4</b><span>Capture mới nhất trong 6 giờ</span></div><Space><Segmented value={axis} onChange={(value) => setAxis(String(value))} options={['x', 'y', 'z'].map((value) => ({ value, label: `Trục ${value.toUpperCase()}` }))} /><Segmented value={fmax} onChange={(value) => setFmax(Number(value))} options={[250, 500, 1000].map((value) => ({ value, label: `${value} Hz` }))} /></Space></div>
+    <div className="deep-section-title"><div><b>Đối chiếu đa điểm</b><span>Capture mới nhất trong 6 giờ</span></div><Space><Segmented value={axis} onChange={(value) => setAxis(String(value))} options={['x', 'y', 'z'].map((value) => ({ value, label: `Trục ${value.toUpperCase()}` }))} /><Segmented value={fmax} onChange={(value) => setFmax(Number(value))} options={[250, 500, 1000].map((value) => ({ value, label: `${value} Hz` }))} /></Space></div>
     {!applicable && <Alert type="info" showIcon style={{ marginBottom: 12 }}
       message="Phân tích truyền rung chưa áp dụng cho máy này"
-      description={<>Phương pháp này cần ít nhất hai cảm biến đo đồng thời, trong đó có <b>S1</b> nguồn rung hoặc <b>S2</b> bệ tham chiếu. Máy hiện có {points.length} điểm đo{hasRef ? '' : ', chưa gán vai trò nguồn/bệ'}. Phần FFT 1X–nX phía trên vẫn dùng được cho từng điểm đo.</>} />}
+      description={<>Phương pháp này cần ít nhất hai cảm biến đo đồng thời, trong đó có <b>COMP</b> nguồn rung hoặc <b>BASE</b> bệ tham chiếu. Máy hiện có {points.length} điểm đo{hasRef ? '' : ', chưa gán vai trò nguồn/bệ'}. Phần FFT 1X–nX phía trên vẫn dùng được cho từng điểm đo.</>} />}
     {applicable && !complete && <Alert type="info" showIcon message="Đang ghép capture mới nhất của các điểm đo" description={`Đã có ${rows.length}/${points.length} điểm. Capture nhóm từ gateway sẽ cho kết quả tốt nhất.`} style={{ marginBottom: 12 }} />}
     <div className="sensor-flow">
-      {rows.map((row: any, index: number) => <div className="sensor-flow-node" key={row.point.id} style={{ borderColor: row.color }}><span>{row.point.id.split('-').pop()?.toUpperCase()}</span><b>{row.point.name}</b><small>{roleName(row.point.role)} · trục {axis.toUpperCase()}</small><strong>{num(row.feature?.iso_vrms_mm_s, 2)} mm/s <small>RMS ISO</small></strong>{index < rows.length - 1 && <NodeIndexOutlined className="sensor-flow-arrow" />}</div>)}
+      {rows.map((row: any, index: number) => <div className="sensor-flow-node" key={row.point.id} style={{ borderColor: row.color }}><span>{sensorCode(row.point)}</span><b>{row.point.name}</b><small>{roleName(row.point.role)} · trục {axis.toUpperCase()}</small><strong>{num(row.feature?.iso_vrms_mm_s, 2)} mm/s <small>RMS ISO</small></strong>{index < rows.length - 1 && <span className="sensor-flow-arrow">&gt;</span>}</div>)}
     </div>
     <Row gutter={[14, 14]}>
       <Col xs={24} xl={17}><Card title={`${spectra.length > 1 ? 'Phổ vận tốc chồng các điểm đo' : 'Phổ vận tốc'} · trục ${axis.toUpperCase()}`} extra={latest.length > 1 && <Tag color={skewMs != null && skewMs < 10_000 ? 'success' : 'warning'}>Lệch capture {num((skewMs ?? 0) / 1000, 2)} s</Tag>}>
         {spectra.length ? <MultiSpectrumChart spectra={spectra} markers={markers} fmax={fmax} /> : <Empty description="Chưa có phổ để so sánh" />}
       </Card></Col>
       <Col xs={24} xl={7}><Card title="Kết luận truyền rung" className="assessment-card">
-        {!applicable ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Cần ≥ 2 điểm đo đồng thời có S1 hoặc S2" />
+        {!applicable ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Cần ≥ 2 điểm đo đồng thời có COMP hoặc BASE" />
           : targetAssessment.length ? targetAssessment.map((item) => <Alert key={item.key} style={{ marginBottom: 10 }} showIcon
           type={item.local && !item.transmitted ? 'warning' : 'info'}
-          message={`${item.point.id.split('-').pop()?.toUpperCase()}: ${item.transmitted ? 'thiên về rung truyền' : item.local ? 'có thành phần cục bộ' : 'cần thêm capture đồng bộ'}`}
-          description={`Tương đồng phổ với S1 ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so S1 ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so S2 ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ S1/S2/S3/S4" />}
-        {applicable && <Alert type="warning" showIcon icon={<ApiOutlined />} message="Lưu ý kỹ thuật" description="Tương đồng phổ không thay thế coherence/pha. Kết luận chính thức cần capture nhóm đồng bộ từ gateway." />}
+          message={`${sensorCode(item.point)}: ${item.transmitted ? 'thiên về rung truyền' : item.local ? 'có thành phần cục bộ' : 'cần thêm capture đồng bộ'}`}
+          description={`Tương đồng phổ với COMP ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so COMP ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ COMP/BASE/DE/NDE" />}
+        {applicable && <Alert type="warning" showIcon message="Lưu ý kỹ thuật" description="Tương đồng phổ không thay thế coherence/pha. Kết luận chính thức cần capture nhóm đồng bộ từ gateway." />}
       </Card></Col>
       <Col span={24}><Card title="Ma trận đặc trưng đa điểm"><Table rowKey="key" size="small" pagination={false} dataSource={matrix} scroll={{ x: 980 }} columns={[
-        { title: 'Điểm', render: (_, row: any) => <Space><span className="series-dot" style={{ background: row.color }} /><b>{row.point.id.toUpperCase()}</b><span>{row.point.name}</span></Space> },
+        { title: 'Điểm', render: (_, row: any) => <Space><span className="series-dot" style={{ background: row.color }} /><b>{sensorCode(row.point)}</b><span>{row.point.name}</span></Space> },
         { title: 'Vai trò', render: (_, row: any) => <Tag>{roleName(row.point.role)}</Tag> },
         { title: 'RMS ISO', dataIndex: 'rms', render: (value) => `${num(value, 3)} mm/s` },
         { title: '1X', dataIndex: 'one', render: (value) => `${num(value, 3)} mm/s` },
         { title: '2X', dataIndex: 'two', render: (value) => `${num(value, 3)} mm/s` },
         { title: 'f_mesh', dataIndex: 'mesh', render: (value) => value == null ? '—' : `${num(value, 3)} mm/s` },
-        { title: 'So S1', dataIndex: 'sourceRatio', render: (value) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> },
-        { title: 'So S2', dataIndex: 'baseRatio', render: (value) => value == null ? '—' : `${num(value, 2)}×` },
+        { title: 'So COMP', dataIndex: 'sourceRatio', render: (value) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> },
+        { title: 'So BASE', dataIndex: 'baseRatio', render: (value) => value == null ? '—' : `${num(value, 2)}×` },
         { title: 'Tương đồng phổ', dataIndex: 'correlation', render: (value) => value == null ? '—' : `${num(value * 100, 0)}%` },
         { title: 'Capture', dataIndex: 'capture', render: (value) => <span className="muted">{dt(value.ts)}</span> },
       ]} /></Card></Col>

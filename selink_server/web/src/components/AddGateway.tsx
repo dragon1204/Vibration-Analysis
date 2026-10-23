@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, App, Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
 import { api, post } from '../api/client'
 import { ago } from '../utils/format'
 
@@ -44,7 +43,7 @@ export default function AddGateway() {
           status={mac && !valid ? 'error' : undefined} style={{ width: 280 }} allowClear />
         {sites.length > 1 && <Select placeholder="Khu vực" style={{ width: 220 }} value={site} onChange={setSite}
           options={sites.map((s: any) => ({ value: s.id, label: s.name || s.id }))} />}
-        <Button type="primary" icon={<PlusOutlined />} disabled={!valid || !siteId} loading={busy} onClick={claim}>Thêm gateway</Button>
+        <Button type="primary" disabled={!valid || !siteId} loading={busy} onClick={claim}>Thêm gateway</Button>
       </Space>
       {done && <Alert style={{ marginTop: 10 }} type="success" showIcon closable onClose={() => setDone(undefined)}
         message={`Đã thêm gateway ${done.gateway_id} (MAC ${done.mac})`} description={done.note} />}

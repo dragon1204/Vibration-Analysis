@@ -15,6 +15,7 @@ import (
 	"selink.vn/smartmotor/edge/internal/drivers"
 	"selink.vn/smartmotor/edge/internal/drivers/wtvb05"
 	"selink.vn/smartmotor/edge/internal/features"
+	"selink.vn/smartmotor/edge/internal/localview"
 	"selink.vn/smartmotor/edge/internal/rules"
 	"selink.vn/smartmotor/edge/internal/store"
 	"selink.vn/smartmotor/edge/internal/ulid"
@@ -242,8 +243,23 @@ func (p *pointRT) persistAndPublish(cd *capturedData, res *features.Result) {
 		MsgID: ulid.New(), CaptureID: c.CaptureID, PointID: p.cfg.ID, TS: fs.TS, FramesContiguous: fs.FramesContiguous,
 		Encoding: "json+gzip+base64", Data: base64.StdEncoding.EncodeToString(specGz),
 	})
+	p.viewCapture(fs)
 	p.log.Info("capture done", "capture", c.CaptureID, "frames", len(c.Frames), "speed_hz", fs.SpeedHz,
 		"iso_vrms", fs.ISOVrmsMax(p.cfg.ISOAxes), "flags", strings.Join(fs.QualityFlags, ","))
+}
+
+// viewCapture hands the capture summary (speed, orders) to the local panel.
+func (p *pointRT) viewCapture(fs *features.FeatureSet) {
+	ts, err := time.Parse(time.RFC3339Nano, fs.TS)
+	if err != nil {
+		ts = time.Now()
+	}
+	vc := localview.Capture{TS: ts, CaptureID: fs.CaptureID, Profile: fs.Profile, Running: fs.Running, SpeedHz: fs.SpeedHz,
+		DfHz: fs.DfHz, Axes: map[string]localview.CaptureAxis{}, Flags: fs.QualityFlags}
+	for name, ax := range fs.Axes {
+		vc.Axes[name] = localview.CaptureAxis{VrmsMMs: fptr(ax.ISOVrmsMMs), Kurtosis: fptr(ax.Kurtosis), Orders: ax.Orders, Line2X: fptr(ax.LineX2MMs)}
+	}
+	p.a.view.SetCapture(p.cfg.ID, vc)
 }
 
 // evaluateCapture applies ISO, kurtosis and baseline rules on capture features.

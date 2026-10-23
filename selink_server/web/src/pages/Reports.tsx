@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, DatePicker, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
-import { DeleteOutlined, DownloadOutlined, LoadingOutlined, PlayCircleOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { api, download, post } from '../api/client'
 import { useAuth } from '../auth'
@@ -58,10 +57,10 @@ export default function Reports() {
               placeholder={periodType === 'month' ? 'Tháng' : 'Quý'} />}
           {can('analyst') && (
             <Tooltip title={machine ? '' : 'Chọn máy trước'}>
-              <Button type="primary" icon={<PlayCircleOutlined />} disabled={!ready} onClick={create}>Tạo báo cáo</Button>
+              <Button type="primary" disabled={!ready} onClick={create}>Tạo báo cáo</Button>
             </Tooltip>
           )}
-          <Button icon={<ReloadOutlined />} onClick={refresh}>Làm mới</Button>
+          <Button onClick={refresh}>Làm mới</Button>
         </Space>
       </Card>
       <Card size="small" title="Báo cáo đã tạo">
@@ -75,7 +74,7 @@ export default function Reports() {
             { title: 'Kỳ', dataIndex: 'period', render: (v, r: any) => <Tooltip title={`${dt(r.period_start)} → ${dt(r.period_end)}`}>{v}</Tooltip> },
             { title: 'Máy', dataIndex: 'machine_name' },
             { title: 'Trạng thái', dataIndex: 'status', render: (s: string, r: any) => {
-              const tag = <Tag color={STATUS[s]?.color} icon={s === 'running' ? <LoadingOutlined /> : undefined}>{STATUS[s]?.label || s}</Tag>
+              const tag = <Tag color={STATUS[s]?.color}>{STATUS[s]?.label || s}</Tag>
               return s === 'failed' && r.error ? <Tooltip title={r.error}>{tag}</Tooltip> : tag
             } },
             { title: 'Đánh giá', key: 'zone', render: (_, r: any) => r.summary ? <Space size={4}><ZoneTag zone={r.summary.zone} />
@@ -85,14 +84,14 @@ export default function Reports() {
             { title: 'Người tạo', dataIndex: 'requested_by', render: (v) => v || '–' },
             { title: 'Tạo lúc', dataIndex: 'created_at', render: (v) => dt(v) },
             { title: '', key: 'act', render: (_, r: any) => <Space size={4}>
-              <Button size="small" icon={<DownloadOutlined />} disabled={r.status !== 'done'}
+              <Button size="small" disabled={r.status !== 'done'}
                 onClick={() => download(`/reports/${r.id}/download`, `${r.machine_id}-${r.period}-${r.id}.pdf`).catch((e) => message.error(e.message))}>PDF</Button>
-              {r.status === 'failed' && can('analyst') && <Button size="small" icon={<ReloadOutlined />}
+              {r.status === 'failed' && can('analyst') && <Button size="small"
                 onClick={() => post(`/reports/${r.id}/retry`, {}).then(refresh).catch((e) => message.error(e.message))}>Tạo lại</Button>}
               {can('admin') && r.status !== 'queued' && r.status !== 'running' && (
                 <Popconfirm title="Xóa báo cáo này?" okText="Xóa" cancelText="Hủy"
                   onConfirm={() => api(`/reports/${r.id}`, { method: 'DELETE' }).then(refresh).catch((e) => message.error(e.message))}>
-                  <Button size="small" danger icon={<DeleteOutlined />} />
+                  <Button size="small" danger />
                 </Popconfirm>
               )}
             </Space> },

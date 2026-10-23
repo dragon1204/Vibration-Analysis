@@ -26,11 +26,11 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
   render() {
     if (this.state.failed) {
       return (
-        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#f4f6fb' }}>
-          <div style={{ maxWidth: 520, padding: 28, borderRadius: 12, background: '#fff', boxShadow: '0 8px 30px rgba(15,39,92,.12)', textAlign: 'center' }}>
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: '#e9edf1' }}>
+          <div style={{ maxWidth: 520, padding: 28, border: '1px solid #c3ccd6', background: '#fff', textAlign: 'center' }}>
             <h2>Không thể hiển thị màn hình này</h2>
             <p>Ứng dụng vừa gặp lỗi hiển thị. Dữ liệu thiết bị không bị ảnh hưởng.</p>
-            <button onClick={() => window.location.reload()} style={{ padding: '9px 18px', border: 0, borderRadius: 8, color: '#fff', background: '#2563eb', cursor: 'pointer' }}>
+            <button onClick={() => window.location.reload()} style={{ padding: '9px 18px', border: 0, color: '#fff', background: '#2f6fa8', cursor: 'pointer' }}>
               Tải lại trang
             </button>
           </div>
@@ -49,16 +49,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConfigProvider locale={viVN} theme={{
       algorithm: theme.defaultAlgorithm,
+      // Industrial look: square corners, steel greys, colour reserved for machine state.
       token: {
-        colorPrimary: '#2563eb', colorInfo: '#2563eb', colorSuccess: '#18a873',
-        colorWarning: '#f59e0b', colorError: '#e5484d', colorBgBase: '#f4f6fb',
-        colorBgContainer: '#ffffff', colorBorder: '#dfe4ee', colorText: '#17213a',
-        borderRadius: 10, fontFamily: 'Inter, "Segoe UI", sans-serif',
+        colorPrimary: '#2f6fa8', colorInfo: '#2f6fa8', colorSuccess: '#2fa84f',
+        colorWarning: '#d9a406', colorError: '#d62f3a', colorBgBase: '#e9edf1',
+        colorBgContainer: '#ffffff', colorBorder: '#c3ccd6', colorText: '#1b2430',
+        borderRadius: 2, fontFamily: 'Inter, "Segoe UI", sans-serif',
       },
       components: {
-        Card: { colorBgContainer: '#ffffff' },
-        Layout: { bodyBg: '#f4f6fb', headerBg: '#10275c', siderBg: '#ffffff' },
-        Menu: { itemBg: '#ffffff', itemSelectedBg: '#eaf1ff', itemSelectedColor: '#2563eb' },
+        Card: { colorBgContainer: '#ffffff', headerBg: '#f3f5f8' },
+        Layout: { bodyBg: '#e9edf1', headerBg: '#161d26', siderBg: '#f3f5f7' },
+        Menu: { itemBg: '#f3f5f7', itemSelectedBg: '#ffffff', itemSelectedColor: '#1b2430' },
+        Table: { headerBg: '#f3f5f8' },
       },
     }}>
       <AntApp>

@@ -18,6 +18,7 @@ import (
 	"selink.vn/smartmotor/edge/internal/drivers/wtvb05"
 	"selink.vn/smartmotor/edge/internal/health"
 	"selink.vn/smartmotor/edge/internal/localalarm"
+	"selink.vn/smartmotor/edge/internal/localview"
 	"selink.vn/smartmotor/edge/internal/rules"
 	"selink.vn/smartmotor/edge/internal/store"
 	"selink.vn/smartmotor/edge/internal/ulid"
@@ -51,6 +52,7 @@ type Agent struct {
 	alarm  *localalarm.Alarm
 	health *health.Collector
 	wd     *health.Watchdog
+	view   *localview.Hub
 
 	wg  sync.WaitGroup
 	ctx context.Context // root context of Run (for event-triggered background work)
@@ -137,7 +139,43 @@ func New(cfg *config.Config, opt Options, log *slog.Logger) (*Agent, error) {
 		m.restoreState()
 		a.machines = append(a.machines, m)
 	}
+	a.view = localview.New(a.viewMachines(), a.viewGateway)
 	return a, nil
+}
+
+// viewMachines describes the configured machines for the local LCD panel.
+func (a *Agent) viewMachines() []localview.MachineInfo {
+	var out []localview.MachineInfo
+	for _, m := range a.machines {
+		lim := a.isoLimits(m.cfg)
+		mi := localview.MachineInfo{ID: m.cfg.ID, Name: m.cfg.Name, RatedSpeedRPM: m.cfg.RatedSpeedRPM,
+			ISOGroup: m.cfg.ISOGroup, Foundation: m.cfg.Foundation, Limits: localview.Limits{AB: lim.AB, BC: lim.BC, CD: lim.CD}}
+		for _, p := range m.points {
+			role := p.cfg.Role
+			if role == "" {
+				role = "bearing"
+			}
+			mi.Points = append(mi.Points, localview.PointInfo{ID: p.cfg.ID, Name: p.cfg.Name, Role: role, Location: p.cfg.Location,
+				AxesMap: p.cfg.AxesMap, ISOAxes: p.cfg.ISOAxes})
+		}
+		out = append(out, mi)
+	}
+	return out
+}
+
+func (a *Agent) viewGateway() localview.Gateway {
+	pending, _ := a.st.PendingCount()
+	return localview.Gateway{ID: a.cfg.Gateway.ID, Site: a.cfg.Gateway.Site, Version: version.Version,
+		MQTTConnected: a.up.Connected(), OutboxPending: pending, LocalAlarm: a.alarm.State()}
+}
+
+func (a *Agent) viewEvent(p eventPayload) {
+	t, err := time.Parse("2006-01-02T15:04:05.000Z", p.TS)
+	if err != nil {
+		t = time.Now()
+	}
+	a.view.AddEvent(localview.Event{EventID: p.EventID, TS: t, State: p.State, Type: p.Type, Severity: p.Severity,
+		MachineID: p.MachineID, PointID: p.PointID, Rule: p.Rule, Value: p.Value, Message: p.Message})
 }
 
 // Run starts all loops and blocks until ctx is cancelled.
@@ -163,17 +201,21 @@ func (a *Agent) Run(ctx context.Context) error {
 			p := p
 			a.goLoop(ctx, p.runIndicators)
 			a.goLoop(ctx, p.runCaptures)
-			if a.cfg.Intervals.FastRMSMS > 0 {
-				a.goLoop(ctx, p.runFastRMS)
-			}
 		}
 		if m.isolationEnabled() {
 			a.goLoop(ctx, m.runIsolation)
 		}
 	}
+	if a.cfg.Intervals.FastRMSMS > 0 {
+		for _, g := range fastRMSGroups(a.machines) {
+			g := g
+			a.goLoop(ctx, func(ctx context.Context) { a.runFastRMSBus(ctx, g) })
+		}
+	}
 	a.goLoop(ctx, a.runHealth)
 	a.goLoop(ctx, a.runCommands)
 	a.goLoop(ctx, a.runHousekeeping)
+	a.goLoop(ctx, func(ctx context.Context) { a.view.Serve(ctx, a.cfg.LocalUI.Listen, a.log) })
 	a.emitSystem("system", "agent_started", "info", fmt.Sprintf("edge-agent %s khởi động", version.Version))
 
 	<-ctx.Done()
@@ -223,6 +265,7 @@ func (a *Agent) handleEvents(evs []rules.Event) {
 		if err := a.up.Enqueue("events", 1, store.PrioEvent, p); err != nil {
 			a.log.Error("enqueue event", "err", err)
 		}
+		a.viewEvent(p)
 		a.log.Info("alarm event", "state", e.State, "severity", e.Severity, "point", e.PointID, "rule", e.Rule, "value", e.Value)
 		if e.State == "raised" && (e.Severity == "warning" || e.Severity == "danger") && e.PointID != "" {
 			if pt := a.points[e.PointID]; pt != nil {
@@ -256,6 +299,7 @@ func (a *Agent) emitSystem(typ, rule, severity, msg string, kv ...string) {
 		}
 	}
 	_ = a.up.Enqueue("events", 1, store.PrioEvent, p)
+	a.viewEvent(p)
 }
 
 func (a *Agent) runHealth(ctx context.Context) {

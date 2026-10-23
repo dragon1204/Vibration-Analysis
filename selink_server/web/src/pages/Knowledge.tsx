@@ -1,7 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Card, Col, Progress, Row, Statistic, Table, Tag, Typography } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
 import { api } from '../api/client'
 import { dt, num } from '../utils/format'
 
@@ -15,7 +14,7 @@ export default function Knowledge() {
   return <div className="page">
     <div className="page-hero">
       <div><div className="page-kicker">AI có thể giải thích</div><Typography.Title level={2} style={{ margin: 0 }}>Mô hình AI & tri thức</Typography.Title><p className="page-description">Theo dõi tri thức chẩn đoán, độ phủ baseline và các luật đang tham gia ra quyết định.</p></div>
-      <Button icon={<SettingOutlined />} onClick={() => nav('/settings')}>Cấu hình</Button>
+      <Button onClick={() => nav('/settings')}>Cấu hình</Button>
     </div>
     <Row gutter={[14, 14]}>
       <Col xs={12} lg={6}><Card><Statistic title="Luật đang bật" value={rules.filter((item) => item.enabled).length} suffix={`/ ${rules.length}`} /></Card></Col>
