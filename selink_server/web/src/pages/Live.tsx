@@ -223,7 +223,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
         <thead>
           <tr><th>Hướng đo</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
             {bearing && base && <th>BASE / ổ đỡ</th>}
-            {bearing && base && <th>Riêng ổ đỡ<small>{`α = ${num(BASE_ALPHA, 1)} (tạm)`}</small></th>}</tr>
+            {bearing && base && <th>Riêng ổ đỡ<small>{`α = ${num(BASE_ALPHA, 1)}`}</small></th>}</tr>
         </thead>
         <tbody>
           {ROLE_ORDER.map((role) => {
@@ -241,7 +241,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
           })}
         </tbody>
       </table>
-       {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)} (tạm thời), chỉ để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
+       {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)}, dùng để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
       </div>
       <div className="compare-diagram"><img src={installation.image} alt={installation.name} /></div>
       </div>
