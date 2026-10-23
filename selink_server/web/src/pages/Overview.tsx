@@ -44,11 +44,11 @@ export default function Overview() {
           </Row>
           <div className="section-label"><h2>Đội máy đang giám sát</h2><span className="muted">Tự động cập nhật mỗi 30 giây</span></div>
           <Row gutter={[12, 12]}>
-            <Col xs={24} xl={16}>
+            <Col xs={24} xl={8}>
               <Row gutter={[12, 12]}>
                 {data.machines.length === 0 && <Col span={24}><Empty description="Chưa có động cơ" /></Col>}
                 {data.machines.map((m: any) => (
-                  <Col xs={24} md={12} xl={8} xxl={6} key={m.id}>
+                  <Col span={24} key={m.id}>
                     <Card className="machine-card glass-card" hoverable onClick={() => nav(`/machines/${m.id}/live`)}
                       title={<div className="machine-card-title"><Badge color={STATUS[m.status]?.color} /><span title={m.name}>{m.name}</span></div>}
                       extra={<StatusTag status={m.status} />}>
@@ -90,7 +90,7 @@ export default function Overview() {
                 ))}
               </Row>
             </Col>
-            <Col xs={24} xl={8}>
+            <Col xs={24} xl={16}>
               <Card className="glass-card alert-strip" size="small" title={<span>Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
                 {data.events.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cảnh báo" /> : (
                   <div className="alert-rows">

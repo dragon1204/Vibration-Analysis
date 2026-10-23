@@ -9,6 +9,7 @@ import { useRealtime } from '../api/realtime'
 import { TrendChart, WaveformChart } from '../components/charts'
 import { lastHours, rangeParams } from '../components/common'
 import { POSITIONS, ago, num, sensorCode } from '../utils/format'
+import { templateById } from '../components/InstallationDiagram'
 
 type IsoSeries = Record<string, [string, number][]>
 type Sensor = { point: any; axis: string; data: any; series: [string, number][] }
@@ -206,7 +207,7 @@ function SensorOverview({ index, point, limits, active, onClick }: { index: numb
 }
 
 /** Same-direction RMS of every sensor side by side; the base/bearing ratio shows how much vibration reaches the foundation. */
-function CompareCard({ points, status }: { points: any[]; status: any[] }) {
+function CompareCard({ points, status, installation }: { points: any[]; status: any[]; installation: any }) {
   const cell = (point: any, role: string): number | null => {
     const axis = axisOfRole(point, role)
     if (!axis) return null
@@ -217,7 +218,8 @@ function CompareCard({ points, status }: { points: any[]; status: any[] }) {
   const base = points.find((p) => pointRole(p) === 'base')
   return (
     <Card className="dashboard-card" size="small" title="So sánh các cảm biến | vận tốc RMS, mm/s">
-      <table className="compare-table">
+      <div className="compare-layout">
+      <div className="compare-data"><table className="compare-table">
         <thead>
           <tr><th>Hướng đo</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
             {bearing && base && <th>BASE / ổ đỡ</th>}
@@ -239,7 +241,10 @@ function CompareCard({ points, status }: { points: any[]; status: any[] }) {
           })}
         </tbody>
       </table>
-      {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)} (tạm thời), chỉ để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
+       {bearing && base && <div className="compare-note">Riêng ổ đỡ = căn(DE² − (α × BASE)²) với α = {num(BASE_ALPHA, 1)} (tạm thời), chỉ để tham khảo; vùng ISO và cảnh báo vẫn dùng giá trị DE đo thật. Tỷ lệ BASE / ổ đỡ cao (trên 50 %) cho thấy rung truyền xuống nền nhiều: nên kiểm tra bu lông chân đế, độ phẳng bệ và kết cấu nền.</div>}
+      </div>
+      <div className="compare-diagram"><img src={installation.image} alt={installation.name} /></div>
+      </div>
     </Card>
   )
 }
@@ -369,6 +374,7 @@ export default function Live() {
   if (isInitialLoading) return <div className="page page-loading"><Spin size="large" /></div>
 
   const points = byPosition(status.points || [])
+  const installation = templateById(machine.meta?.installation_template)
   const selPoint = points.find((point: any) => point.id === wavePoint) || points[0]
   const selMeta = machine.points.find((point: any) => point.id === selPoint?.id) || selPoint
   const selApplicable = pointRole(selPoint) === 'bearing'
@@ -448,7 +454,7 @@ export default function Live() {
             </Card>
           </Col>
 
-          {points.length > 1 && <Col span={24}><CompareCard points={byPosition(machine.points)} status={points} /></Col>}
+          {points.length > 1 && <Col span={24}><CompareCard points={byPosition(machine.points)} status={points} installation={installation} /></Col>}
 
           <Col xs={24} xl={15}>
             <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc">

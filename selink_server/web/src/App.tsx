@@ -94,7 +94,6 @@ export default function App() {
         <div className="top-brand">
           <img className="top-brand-logo" src="/selink-logo.png" alt="SELINK - Quản Lý Thiết Bị Thông Minh" />
           <img className="top-brand-logo top-brand-logo-hem" src="/hem-logo.png" alt="HEM" />
-          <span>Giám sát rung động động cơ</span>
         </div>
         <Input className="header-search hide-tablet" placeholder="Tìm động cơ, cảnh báo, báo cáo..."
           onPressEnter={(e) => {
