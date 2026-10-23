@@ -150,7 +150,7 @@ export default function Diagnosis() {
                   ]} />
                 </Col>
                 <Col xs={24} md={8}>
-                  <Typography.Text strong>Đối chiếu chéo với S1</Typography.Text>
+                  <Typography.Text strong>Đối chiếu chéo với COMP</Typography.Text>
                   <div>Đỉnh cục bộ (lỗi thật tại động cơ):</div>
                   {(iso.local_peaks || []).map((p: any) => <Tag color="red" key={'l' + p.freq_hz}>{num(p.freq_hz, 1)} Hz · {num(p.vel_mm_s, 2)}</Tag>)}
                   <div style={{ marginTop: 6 }}>Đỉnh nhiễu truyền từ máy nén (bỏ qua):</div>

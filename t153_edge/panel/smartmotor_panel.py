@@ -20,7 +20,7 @@ import urllib.request
 from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject, QPointF, QRectF
-from PyQt5.QtGui import QFont, QColor, QPainter, QPen, QBrush, QPolygonF
+from PyQt5.QtGui import QFont, QColor, QPainter, QPen, QBrush, QPolygonF, QPixmap
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QFrame, QHBoxLayout, QVBoxLayout,
                              QGridLayout, QPushButton, QButtonGroup, QSizePolicy, QStackedWidget)
 import pyqtgraph as pg
@@ -90,7 +90,7 @@ def zone_of(v, lim):
 
 
 def main_axis(pinfo):
-    """Axis shown in the large box: the vertical radial axis (Z), else None (caller falls back)."""
+    """Vertical radial axis, used only as a display fallback when no ISO axis has data."""
     roles = dict(DEFAULT_ROLES)
     roles.update(pinfo.get("axes_map") or {})
     for a in ("z", "x", "y"):
@@ -551,8 +551,7 @@ class Panel(QWidget):
         if not ps.get("online", True) or t is None or now - t > STALE_S:
             return None
         best = None
-        main = main_axis(pinfo)
-        for a in ([main] if main else pinfo.get("iso_axes") or ["x", "y", "z"]):
+        for a in (pinfo.get("iso_axes") or ["x", "y", "z"]):
             v = ((fast.get("axes") or {}).get(a) or {}).get("vrms_mm_s")
             if v is not None and (best is None or v > best):
                 best = v
@@ -657,15 +656,18 @@ class Panel(QWidget):
         for a in ("x", "y", "z"):
             # A stale number is not shown as if it were live.
             vals[a] = (fast_axes.get(a) or {}).get("vrms_mm_s") if fresh else None
-        # The large box shows the vertical radial axis (Z); without one, the worst ISO axis.
+        # The ISO verdict always follows the worst RMS across every configured ISO axis.
         main = main_axis(pinfo)
         overall = None
-        for a in ([main] if main else iso_axes):
+        overall_axis = None
+        for a in iso_axes:
             if vals.get(a) is not None and (overall is None or vals[a] > overall):
                 overall = vals[a]
-        cap_txt = "Tình trạng rung | ISO 20816-3"
-        if main:
-            cap_txt = "Trục đứng (%s) | %s" % (main.upper(), "BASE" if pinfo.get("role", "bearing") != "bearing" else "ISO 20816-3")
+                overall_axis = a
+        cap_txt = "RMS lớn nhất | %s" % ("BASE" if pinfo.get("role", "bearing") != "bearing" else "ISO 20816-3")
+        if overall_axis:
+            cap_txt = "%s (%s) | %s" % (ROLE_LABEL.get(roles.get(overall_axis), overall_axis), overall_axis.upper(),
+                                          "BASE" if pinfo.get("role", "bearing") != "bearing" else "ISO 20816-3")
         self.z_caption.setText(cap_txt.upper())
 
         # Overall card.
@@ -692,7 +694,7 @@ class Panel(QWidget):
             self.z_text.setText("Không phân vùng ISO")
             self.z_value.setText("mm/s RMS")
             self.z_hint.setText("RMS %s, 10-1000 Hz" % (
-                ROLE_LABEL.get(roles.get(main), main or "").lower()))
+                ROLE_LABEL.get(roles.get(overall_axis), overall_axis or "").lower()))
             self.z_scale.set(None, lim)
         else:
             z = self.stable_zone(pid, overall, lim)
@@ -701,10 +703,9 @@ class Panel(QWidget):
             self.z_letter.setStyleSheet("color:%s;background:transparent;border:none;" % C[z])
             self.z_text.setText(ZONE_TEXT[z])
             self.z_value.setText("%s mm/s" % fmt(overall))
-            names = ROLE_LABEL.get(roles.get(main), main).lower() if main else ", ".join(
-                ROLE_LABEL.get(roles.get(a), a).lower() for a in iso_axes)
-            self.z_hint.setText("RMS %s, 10-1000 Hz\nnhóm %s, nền %s" % (
-                names, m.get("iso_group") or "--", {"rigid": "cứng", "flexible": "mềm"}.get(m.get("foundation"), "--")))
+            name = ROLE_LABEL.get(roles.get(overall_axis), overall_axis or "").lower()
+            self.z_hint.setText("RMS lớn nhất: %s, 10-1000 Hz\nnhóm %s, nền %s" % (
+                name, m.get("iso_group") or "--", {"rigid": "cứng", "flexible": "mềm"}.get(m.get("foundation"), "--")))
             self.z_scale.set(overall, lim)
 
         # Axis cards.
@@ -1016,12 +1017,49 @@ class ComparePage(QWidget):
                           if self.has_ratio else "")
 
 
-class Main(QStackedWidget):
-    """Network page first; the dashboard opens when the gateway is online (or on touch)."""
+class SplashPage(QWidget):
+    """Short branded start screen before the network status page."""
 
     def __init__(self):
         super().__init__()
+        self.setStyleSheet("background:%s;" % C["bg"])
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(60, 42, 60, 42)
+        layout.addStretch(2)
+
+        logo = QLabel()
+        logo.setAlignment(Qt.AlignCenter)
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "selink-logo.png")
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            logo.setText("SELINK")
+            logo.setFont(font(52, True))
+            logo.setStyleSheet("color:#2fa84f;")
+        else:
+            logo.setPixmap(pixmap.scaled(700, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        layout.addWidget(logo)
+
+        title = QLabel("SMART MOTOR")
+        title.setAlignment(Qt.AlignCenter)
+        title.setFont(font(19, True))
+        title.setStyleSheet("color:%s; letter-spacing:2px; padding-top:12px;" % C["text"])
+        layout.addWidget(title)
+        subtitle = QLabel("GIÁM SÁT RUNG ĐỘNG THIẾT BỊ")
+        subtitle.setAlignment(Qt.AlignCenter)
+        subtitle.setFont(font(10, True))
+        subtitle.setStyleSheet("color:%s; letter-spacing:1px; padding-top:5px;" % C["muted"])
+        layout.addWidget(subtitle)
+        layout.addStretch(3)
+
+
+class Main(QStackedWidget):
+    """Shows a brief splash screen, then network status; dashboard opens when online or touched."""
+
+    def __init__(self):
+        super().__init__()
+        self.splash = SplashPage()
         self.panel = Panel()
+        self.addWidget(self.splash)
         self.addWidget(self.panel)
         self.net = NetPage(self.panel, self.show_dashboard)
         self.addWidget(self.net)
@@ -1029,7 +1067,8 @@ class Main(QStackedWidget):
         self.addWidget(self.compare)
         self.panel.on_net = self.show_net
         self.panel.on_compare = lambda: self.setCurrentWidget(self.compare)
-        self.setCurrentWidget(self.net)
+        self.setCurrentWidget(self.splash)
+        QTimer.singleShot(2200, self.show_net)
 
     def show_dashboard(self):
         self.setCurrentWidget(self.panel)

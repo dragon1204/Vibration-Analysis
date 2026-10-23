@@ -91,7 +91,7 @@ export default function App() {
     <Layout className="app-shell">
       <Layout.Header className="app-header">
         {!screens.md && <Button className="mobile-menu-btn" onClick={() => setOpen(true)}>Menu</Button>}
-        <div className="top-brand"><div className="top-brand-mark">HEM</div><b>SMART MOTOR</b><span>Giám sát rung động động cơ</span></div>
+        <div className="top-brand"><img className="top-brand-logo" src="/selink-logo.png" alt="SELINK - Quản Lý Thiết Bị Thông Minh" /><span>Giám sát rung động động cơ</span></div>
         <Input className="header-search hide-tablet" placeholder="Tìm động cơ, cảnh báo, báo cáo..."
           onPressEnter={(e) => {
             const q = e.currentTarget.value.toLowerCase().trim()
