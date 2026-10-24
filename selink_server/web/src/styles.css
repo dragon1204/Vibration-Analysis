@@ -573,7 +573,7 @@ body, .app-shell, .app-content { background: var(--bg) !important; color: var(--
   --text: #172033; --muted: #6b778c; --steel: #152238; --accent: #2468a8;
 }
 body, .app-shell, .app-content { background: var(--bg) !important; }
-.app-header { height: 56px !important; padding: 0 22px !important; border-bottom: 1px solid #274667; }
+.app-header { height: 56px !important; padding: 0 22px 0 0 !important; border-bottom: 1px solid #274667; }
 .app-sidebar .ant-layout-sider-children { top: 56px; height: calc(100vh - 56px); }
 .machine-switch-loader { top: 56px; }
 .top-brand-mark { height: 28px; padding: 0 10px; border-radius: 5px; font-size: 12px; letter-spacing: .08em; }
@@ -581,6 +581,7 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .top-brand span { margin-left: 3px; padding-left: 14px; }
 .top-brand-logo { display: block; width: 122px; height: 42px; object-fit: contain; object-position: left center; }
 .top-brand-logo-hem { width: 76px; height: 34px; object-position: center; }
+.top-brand { box-sizing: border-box; flex: 0 0 256px; height: 56px; padding: 0 16px; background: #10192f; border-right: 1px solid #1c2944; }
 .product-title { flex: 0 0 auto; color: #d6e1ef; font-size: 14px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; }
 .header-search { border-radius: 6px !important; }
 .app-menu { padding: 10px 8px; }

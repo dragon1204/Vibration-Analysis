@@ -201,7 +201,7 @@ function SensorOverview({ index, point, basePoint, limits, active, onClick }: { 
         <span className={`overview-zone ${zone ? zoneClass[zone] : 'zone-empty'}`}>{zone ? `Vùng ${zone}` : applicable ? 'Chờ dữ liệu' : 'BASE'}</span>
       </div>
       <div className="sensor-overview-main">
-        <div><span>Vận tốc RMS · {axisName(point, mainAxis)} ({mainAxis.toUpperCase()})</span><strong><AnimatedNumber value={main.value} decimals={2} fallback="--" /><small>mm/s</small></strong></div>
+        <div><span>{applicable ? `Max Bearing-corrected RMS for ISO · ${axisName(point, mainAxis)} (${mainAxis.toUpperCase()})` : `RMS velocity · ${axisName(point, mainAxis)} (${mainAxis.toUpperCase()})`}</span><strong><AnimatedNumber value={main.value} decimals={2} fallback="--" /><small>mm/s</small></strong></div>
         <div className={`sensor-online ${point.gateway_online ? 'ok' : ''}`}><i />{point.gateway_online ? 'Trực tuyến' : 'Mất kết nối'}</div>
       </div>
       <div className="sensor-overview-axes">

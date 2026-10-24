@@ -373,9 +373,10 @@ class Panel(QWidget):
         for i, (k, t) in enumerate([("speed", "Tốc độ quay"), ("temp", "Nhiệt độ cảm biến"),
                                     ("run", "Trạng thái máy"), ("cap", "Phân tích phổ")]):
             key = label(t, 10, C["muted"])
-            fixw(key, 132)
+            fixw(key, 106)
             il.addWidget(key, i, 0)
             v = label("--", 11, C["text"], True, Qt.AlignRight | Qt.AlignVCenter)
+            v.setMinimumWidth(140)
             il.addWidget(v, i, 1)
             self.info[k] = v
         left.addWidget(info)
@@ -567,12 +568,51 @@ class Panel(QWidget):
         if not ps.get("online", True) or t is None or now - t > STALE_S:
             return None
         best = None
-        for a in (pinfo.get("iso_axes") or ["x", "y", "z"]):
+        # Machine-level ISO assessment uses the maximum corrected RMS across X/Y/Z.
+        for a in ("x", "y", "z"):
             v = ((fast.get("axes") or {}).get(a) or {}).get("vrms_mm_s")
             v = self.corrected_axis_value(machine, pinfo, a, now, v)
             if v is not None and (best is None or v > best):
                 best = v
         return best
+
+    def render_bearing_overall(self, machine, now):
+        """The large ISO card is always the machine's max bearing-corrected RMS, never BASE."""
+        pinfo = next((p for p in machine.get("points") or [] if p.get("role", "bearing") == "bearing"), None)
+        if pinfo is None:
+            return
+        ps = ((self.state or {}).get("points") or {}).get(pinfo["id"]) or {}
+        fast = ps.get("fast") or {}
+        fresh = (parse_ts(fast.get("ts")) or 0) >= now - STALE_S
+        roles = dict(DEFAULT_ROLES)
+        roles.update(pinfo.get("axes_map") or {})
+        iso_axes = ("x", "y", "z")
+        vals = {}
+        for axis in ("x", "y", "z"):
+            raw = ((fast.get("axes") or {}).get(axis) or {}).get("vrms_mm_s") if fresh else None
+            vals[axis] = self.corrected_axis_value(machine, pinfo, axis, now, raw)
+        overall_axis = max((axis for axis in iso_axes if vals.get(axis) is not None), key=lambda axis: vals[axis], default=None)
+        overall = vals.get(overall_axis) if overall_axis else None
+        lim = machine.get("limits") or {"ab": 3.5, "bc": 7.1, "cd": 11.0}
+        self.z_scale.setVisible(True)
+        self.z_caption.setText("MAX BEARING-CORRECTED RMS | ISO")
+        if overall is None:
+            self.z_letter.setText("--")
+            self.z_text.setText("Đang chờ dữ liệu Bearing-corrected RMS")
+            self.z_value.setText("")
+            self.z_hint.setText("")
+            self.z_scale.set(None, lim)
+            return
+        zone = self.stable_zone(pinfo["id"], overall, lim)
+        self.zone_card.accent(C[zone], "top")
+        self.z_letter.setStyleSheet("color:%s;background:transparent;border:none;" % C[zone])
+        self.z_letter.setText(zone)
+        self.z_text.setText(ZONE_TEXT[zone])
+        self.z_value.setText("%s mm/s" % fmt(overall))
+        name = ROLE_LABEL.get(roles.get(overall_axis), overall_axis).lower()
+        self.z_hint.setText("MAX BEARING-CORRECTED RMS: %s, 10-1000 Hz\nISO 20816-3 | nhóm %s, nền %s" % (
+            name, machine.get("iso_group") or "--", {"rigid": "cứng", "flexible": "mềm"}.get(machine.get("foundation"), "--")))
+        self.z_scale.set(overall, lim)
 
     def select(self, i):
         self.sel = i
@@ -671,9 +711,10 @@ class Panel(QWidget):
         # Per-axis value: live fast RMS, else last capture.
         vals = {}
         for a in ("x", "y", "z"):
-            # A stale number is not shown as if it were live.
+            # Axis cards show the live, direct sensor reading. The large ISO card
+            # below is independently rendered from max Bearing-corrected RMS.
             raw = (fast_axes.get(a) or {}).get("vrms_mm_s") if fresh else None
-            vals[a] = self.corrected_axis_value(m, pinfo, a, now, raw)
+            vals[a] = raw
         # The ISO verdict always follows the worst RMS across every configured ISO axis.
         main = main_axis(pinfo)
         overall = None
@@ -682,10 +723,9 @@ class Panel(QWidget):
             if vals.get(a) is not None and (overall is None or vals[a] > overall):
                 overall = vals[a]
                 overall_axis = a
-        cap_txt = "RMS lớn nhất | %s" % ("BASE" if pinfo.get("role", "bearing") != "bearing" else "ISO 20816-3")
-        if overall_axis:
-            cap_txt = "%s (%s) | %s" % (ROLE_LABEL.get(roles.get(overall_axis), overall_axis), overall_axis.upper(),
-                                          "BASE" if pinfo.get("role", "bearing") != "bearing" else "ISO 20816-3")
+        cap_txt = "MAX BEARING-CORRECTED RMS | ISO" if not base else "MAX BASE RMS"
+        if overall_axis and base:
+            cap_txt = "MAX BASE RMS | %s (%s)" % (ROLE_LABEL.get(roles.get(overall_axis), overall_axis), overall_axis.upper())
         self.z_caption.setText(cap_txt.upper())
 
         # Overall card.
@@ -722,9 +762,13 @@ class Panel(QWidget):
             self.z_text.setText(ZONE_TEXT[z])
             self.z_value.setText("%s mm/s" % fmt(overall))
             name = ROLE_LABEL.get(roles.get(overall_axis), overall_axis or "").lower()
-            self.z_hint.setText("RMS lớn nhất: %s, 10-1000 Hz\nnhóm %s, nền %s" % (
+            self.z_hint.setText("MAX BEARING-CORRECTED RMS: %s, 10-1000 Hz\nISO 20816-3 | nhóm %s, nền %s" % (
                 name, m.get("iso_group") or "--", {"rigid": "cứng", "flexible": "mềm"}.get(m.get("foundation"), "--")))
             self.z_scale.set(overall, lim)
+
+        # This primary assessment must not switch to a BASE reading when a user
+        # selects BASE in the sensor tabs.
+        self.render_bearing_overall(m, now)
 
         # Axis cards.
         peaks = ind.get("vel_peak_mm_s") or {}
