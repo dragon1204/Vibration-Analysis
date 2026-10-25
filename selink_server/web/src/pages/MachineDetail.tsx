@@ -42,7 +42,7 @@ export default function MachineDetail() {
         <div><div className="page-kicker">Asset intelligence</div><h1 className="page-heading">{m.name}</h1><p className="page-description">Hồ sơ kỹ thuật, cấu hình ISO và chuỗi điểm đo của thiết bị.</p></div>
         <Card size="small" style={{ minWidth: 250 }}><div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="muted">Độ hoàn thiện hồ sơ</span><strong>{profilePct}%</strong></div><Progress percent={profilePct} showInfo={false} strokeColor={profilePct === 100 ? '#34d399' : '#22d3ee'} /></Card>
       </div>
-      {profilePct < 100 && <Alert type="warning" showIcon message="Hồ sơ máy chưa đầy đủ" description="Bổ sung loại ổ/vòng bi trong Cài đặt để tăng độ tin cậy của chẩn đoán." style={{ marginBottom: 12 }} />}
+      {profilePct < 100 && <Alert type="warning" showIcon message="Hồ sơ máy chưa đầy đủ" description="Bổ sung loại ổ/vòng bi trong Cấu hình thiết bị để tăng độ tin cậy của chẩn đoán." style={{ marginBottom: 12 }} />}
       <Row gutter={[12, 12]}>
         <Col span={24}>
           <Card size="small" title="Sơ đồ lắp đặt" extra={can('analyst') ? <Select

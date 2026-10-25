@@ -22,7 +22,6 @@ const Accuracy = lazy(() => import('./pages/Accuracy'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Devices = lazy(() => import('./pages/Devices'))
 const Knowledge = lazy(() => import('./pages/Knowledge'))
-const Settings = lazy(() => import('./pages/Settings'))
 
 export default function App() {
   const { ready, loggedIn, me } = useAuth()
@@ -72,7 +71,6 @@ export default function App() {
     { type: 'group', label: 'QUẢN TRỊ', children: [
       { key: '/knowledge', label: 'Mô hình AI & tri thức' },
       { key: '/devices', label: 'Thiết bị & gateway' },
-      { key: '/settings', label: 'Cài đặt' },
     ] },
   ]
   const selected = loc.pathname === '/' ? '/' : loc.pathname.startsWith('/events') ? '/events'
@@ -133,7 +131,7 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<Devices />} />
               <Route path="/knowledge" element={<Knowledge />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings" element={<Navigate to="/devices" replace />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </Suspense>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Descriptions, Drawer, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
 import { api, post } from '../api/client'
@@ -6,15 +7,20 @@ import { useRealtime } from '../api/realtime'
 import { useAuth } from '../auth'
 import { ago, dt, num } from '../utils/format'
 import AddGateway from '../components/AddGateway'
+import MachineSetupWizard from '../components/MachineSetupWizard'
 
 export default function Devices() {
   const qc = useQueryClient()
   const { can } = useAuth()
+  const nav = useNavigate()
   const { message } = App.useApp()
   const [open, setOpen] = useState<string>()
+  const [configuredMachine, setConfiguredMachine] = useState<any>()
   const [cmd, setCmd] = useState<{ type: string; point_id?: string; profile?: string; url?: string; sha256?: string; machine_id?: string } | null>(null)
   const { data = [], isLoading } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways'), refetchInterval: 30_000 })
   const { data: gw } = useQuery<any>({ queryKey: ['gateway', open], queryFn: () => api(`/gateways/${open}`), enabled: !!open })
+  const { data: machines = [] } = useQuery<any[]>({ queryKey: ['machines'], queryFn: () => api('/machines') })
+  const { data: sites = [] } = useQuery<any[]>({ queryKey: ['sites'], queryFn: () => api('/sites') })
   useRealtime(['gateways'], (m) => {
     if (m.data.type === 'cmd_ack') message.info(`${m.data.gateway_id}: ${m.data.cmd_id} → ${m.data.status} ${m.data.detail || ''}`)
     qc.invalidateQueries({ queryKey: ['gateways'] })
@@ -34,9 +40,13 @@ export default function Devices() {
   }
   const h = gw?.health || {}
   const machinesOfGw = [...new Set((gw?.points || []).map((p: any) => p.machine_id))] as string[]
+  const connectedDevices = machinesOfGw.map((id) => machines.find((machine: any) => machine.id === id) || { id, name: id })
   return (
     <div className="page">
       {can('admin') && <AddGateway />}
+      <div className="page-hero" style={{ marginBottom: 14 }}>
+        <div><div className="page-kicker">Device configuration</div><h1 className="page-heading">Thiết bị & gateway</h1><p className="page-description">Mỗi gateway quản lý thiết bị và cảm biến gắn kèm. Mở gateway để xem, cấu hình và đẩy cấu hình đúng thiết bị đó.</p></div>
+      </div>
       <Card size="small" title="Gateway (T153)">
         <Table size="small" rowKey="id" loading={isLoading} dataSource={data}
           onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: 'pointer' } })}
@@ -50,7 +60,7 @@ export default function Devices() {
             { title: 'Điểm đo', dataIndex: 'points' }, { title: 'Cấu hình', dataIndex: 'config_version', render: (v) => `v${v}` },
           ]} />
       </Card>
-      <Drawer open={!!open} width={720} onClose={() => setOpen(undefined)} title={`Gateway ${open}`}>
+      <Drawer open={!!open} width={760} onClose={() => setOpen(undefined)} title={`Gateway ${open}`}>
         {gw && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Descriptions size="small" bordered column={2}>
@@ -63,7 +73,15 @@ export default function Devices() {
               <Descriptions.Item label="Outbox chờ gửi">{h.outbox_pending}</Descriptions.Item>
               <Descriptions.Item label="Còi/relay">{h.local_alarm_on ? <Tag color="red">BẬT</Tag> : 'tắt'}</Descriptions.Item>
             </Descriptions>
-            <Table size="small" pagination={false} rowKey="id" title={() => 'Cảm biến'} dataSource={gw.points} columns={[
+            <Card size="small" title={`Thiết bị đi kèm (${connectedDevices.length})`} extra={<Typography.Text type="secondary">Liên kết qua cảm biến</Typography.Text>}>
+              <Table size="small" pagination={false} rowKey="id" dataSource={connectedDevices} locale={{ emptyText: 'Gateway chưa được gán thiết bị. Thêm cảm biến cho máy để tạo liên kết.' }} columns={[
+                { title: 'Thiết bị', key: 'device', render: (_, machine: any) => <><strong>{machine.name}</strong><br /><Typography.Text type="secondary">{machine.id}</Typography.Text></> },
+                { title: 'Cảm biến', key: 'points', render: (_, machine: any) => (gw.points || []).filter((point: any) => point.machine_id === machine.id).map((point: any) => <Tag key={point.id}>{point.role || point.id}</Tag>) },
+                { title: 'Cấu hình', key: 'actions', render: (_, machine: any) => <Space size="small"><Button size="small" onClick={() => nav(`/machines/${machine.id}`)}>Chi tiết</Button>{can('analyst') && <Button size="small" type="primary" onClick={() => setConfiguredMachine(machine)}>Cấu hình</Button>}</Space> },
+              ]} />
+            </Card>
+            <Table size="small" pagination={false} rowKey="id" title={() => 'Cảm biến thuộc thiết bị'} dataSource={gw.points} columns={[
+              { title: 'Thiết bị', key: 'machine', render: (_, r: any) => connectedDevices.find((machine: any) => machine.id === r.machine_id)?.name || r.machine_id },
               { title: 'Điểm', dataIndex: 'id' }, { title: 'Địa chỉ', dataIndex: 'sensor_addr', render: (a) => `0x${(a || 0).toString(16).toUpperCase()}` },
               { title: 'Đọc cuối', dataIndex: 'last_reading', render: (v) => ago(v) },
               { title: 'Lỗi (timeout/CRC)', key: 'err', render: (_, r: any) => {
@@ -95,6 +113,10 @@ export default function Devices() {
           </Space>
         )}
       </Drawer>
+      <MachineSetupWizard open={!!configuredMachine} machine={configuredMachine} sites={sites} onClose={() => setConfiguredMachine(undefined)} onSaved={() => {
+        qc.invalidateQueries({ queryKey: ['machines'] })
+        if (open) qc.invalidateQueries({ queryKey: ['gateway', open] })
+      }} />
       <Modal open={!!cmd} title={`Gửi lệnh: ${cmd?.type}`} onCancel={() => setCmd(null)} onOk={send} okText="Gửi">
         {cmd && (
           <Space direction="vertical" style={{ width: '100%' }}>
