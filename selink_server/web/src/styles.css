@@ -662,3 +662,20 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .app-menu { padding: 4px 8px; }
 .app-menu .ant-menu-item { min-height: 36px; height: 36px; line-height: 20px; margin: 1px 0; padding-top: 8px !important; padding-bottom: 8px !important; font-size: 13px; }
 .app-menu .ant-menu-item-group-title { padding: 14px 10px 5px; font-size: 10px; line-height: 14px; }
+
+/* Mobile navigation uses the same opaque surface and contrast as the desktop sidebar. */
+.mobile-nav-drawer .ant-drawer-content,
+.mobile-nav-drawer .ant-drawer-header,
+.mobile-nav-drawer .ant-drawer-body { background: #10192f !important; }
+.mobile-nav-drawer .ant-drawer-close { color: #eef4fb !important; }
+.mobile-nav-drawer .app-menu {
+  min-height: 100%;
+  color: #eef4fb !important;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.mobile-nav-drawer .app-menu .ant-menu-item,
+.mobile-nav-drawer .app-menu .ant-menu-title-content { color: #eef4fb !important; opacity: 1 !important; }
+.mobile-nav-drawer .app-menu .ant-menu-item-group-title { color: #aebbd0 !important; opacity: 1 !important; }
+.mobile-nav-drawer .app-menu .ant-menu-item-selected,
+.mobile-nav-drawer .app-menu .ant-menu-item-selected .ant-menu-title-content { color: #6ee1c8 !important; }

@@ -114,7 +114,18 @@ export default function App() {
       </Layout.Header>
       <Layout>
         {screens.md ? <Layout.Sider className="app-sidebar" width={256}>{menu}</Layout.Sider>
-          : <Drawer open={open} onClose={() => setOpen(false)} placement="left" width={270} styles={{ body: { padding: 0 } }}>{menu}</Drawer>}
+          : <Drawer
+              rootClassName="mobile-nav-drawer"
+              open={open}
+              onClose={() => setOpen(false)}
+              placement="left"
+              width={270}
+              styles={{
+                header: { background: '#10192f', borderBottomColor: '#263650' },
+                body: { padding: 0, background: '#10192f' },
+                content: { background: '#10192f' },
+              }}
+            >{menu}</Drawer>}
         <Layout.Content className="app-content">
           <Suspense fallback={<Spin style={{ margin: 48 }} />}>
             <Routes>
