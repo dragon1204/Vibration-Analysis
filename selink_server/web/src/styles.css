@@ -656,8 +656,9 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 /* The former pseudo-footer overlapped the last menu item when the navigation scrolled. */
 .app-sidebar::after { display: none; }
 
-/* Keep the whole navigation visible as one continuous dark rail. */
-.app-sidebar .ant-layout-sider-children { position: relative; top: 0; height: calc(100vh - 56px); overflow: hidden; }
+/* Keep the navigation fixed below the sticky header while only the content scrolls. */
+.app-sidebar { position: sticky !important; top: 56px; align-self: flex-start; height: calc(100vh - 56px); overflow: hidden; }
+.app-sidebar .ant-layout-sider-children { position: static; top: auto; height: 100%; overflow: hidden; }
 .app-menu { padding: 4px 8px; }
 .app-menu .ant-menu-item { min-height: 36px; height: 36px; line-height: 20px; margin: 1px 0; padding-top: 8px !important; padding-bottom: 8px !important; font-size: 13px; }
 .app-menu .ant-menu-item-group-title { padding: 14px 10px 5px; font-size: 10px; line-height: 14px; }
