@@ -1,4 +1,4 @@
-from smartmotor.common.schemas import VibMetrics
+from smartmotor.common.schemas import RunState, VibMetrics
 
 
 def test_vibration_metrics_accept_subsecond_window_contract():
@@ -12,3 +12,8 @@ def test_vibration_metrics_accept_subsecond_window_contract():
     assert message.window_ms == 500
     assert message.window_s == 0
     assert message.model_extra["samples"] == 2
+
+
+def test_run_state_accepts_vibration_and_power_sources():
+    message = RunState.model_validate({"ts": "2026-10-25T00:00:00Z", "machine_id": "m1", "running": True})
+    assert message.source == "vibration"

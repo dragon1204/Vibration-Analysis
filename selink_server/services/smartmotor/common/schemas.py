@@ -106,6 +106,15 @@ class PowerMetrics(_M):
     running: Optional[bool] = None
 
 
+class RunState(_M):
+    """Authoritative operating-state sample emitted by the gateway."""
+    msg_id: Optional[str] = None
+    ts: datetime
+    machine_id: str
+    running: bool
+    source: Literal["vibration", "power"] = "vibration"
+
+
 class TempMetrics(_M):
     msg_id: Optional[str] = None
     ts: datetime
@@ -196,6 +205,7 @@ TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "metrics/vibstat": VibStat,
     "metrics/vibenergy": VibEnergy,
     "metrics/power": PowerMetrics,
+    "metrics/run": RunState,
     "metrics/temp": TempMetrics,
     "features": FeatureSet,
     "waveform": Blob,

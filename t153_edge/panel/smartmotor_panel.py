@@ -786,11 +786,10 @@ class Panel(QWidget):
         t = ind.get("temp_c")
         ind_fresh = (parse_ts(ind.get("ts")) or 0) >= now - STALE_S
         self.info["temp"].setText("%s °C" % fmt(t, 1) if t is not None and ind_fresh else "--")
+        self.info["run"].setText("Đang chạy" if m.get("running") else "Dừng")
         if cap:
-            self.info["run"].setText("Đang chạy" if cap.get("running") else "Dừng")
             self.info["cap"].setText(ago(now - parse_ts(cap.get("ts"))) if parse_ts(cap.get("ts")) else "--")
         else:
-            self.info["run"].setText("--")
             self.info["cap"].setText("chưa có")
 
         # Trend.

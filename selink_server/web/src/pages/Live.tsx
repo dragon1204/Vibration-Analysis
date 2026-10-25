@@ -97,26 +97,33 @@ function isoValue(sensor: Sensor): { value: number | null; acc: number | null; s
 }
 
 /** Correct a bearing axis with the BASE value from the same physical measurement direction. */
-function bearingIsoValue(point: any, axis: string, basePoint?: any): ReturnType<typeof isoValue> {
-  const raw = isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] })
+function captureIsoValue(point: any, axis: string): ReturnType<typeof isoValue> {
+  const cap = point?.last_capture
+  const iso = cap?.axes_iso?.[axis]
+  if (iso?.iso_vrms_mm_s != null) return { value: iso.iso_vrms_mm_s, acc: iso.acc_rms_g ?? null, source: `Last operating capture | ${ago(cap.ts)}`, reference: null, referenceSource: '' }
+  return isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] })
+}
+
+function bearingIsoValue(point: any, axis: string, basePoint?: any, operating = true): ReturnType<typeof isoValue> {
+  const raw = operating ? isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] }) : captureIsoValue(point, axis)
   if (pointRole(point) !== 'bearing' || !basePoint) return raw
   const role = point?.axes_map?.[axis] || defaultRoles[axis]
   const baseAxis = axisOfRole(basePoint, role)
   if (!baseAxis) return raw
-  const foundation = isoValue({ point: basePoint, axis: baseAxis, data: basePoint?.axes?.[baseAxis] || {}, series: [] })
+  const foundation = operating ? isoValue({ point: basePoint, axis: baseAxis, data: basePoint?.axes?.[baseAxis] || {}, series: [] }) : captureIsoValue(basePoint, baseAxis)
   const corrected = ownRms(raw.value, foundation.value)
   return corrected == null ? raw : { ...raw, value: corrected, source: `Bearing-corrected RMS | ${raw.source}` }
 }
 
 /** ISO state is the worst valid value across all configured ISO axes, never one preferred axis. */
-function worstIsoReading(point: any, basePoint?: any): { axis: string; reading: ReturnType<typeof isoValue> } {
+function worstIsoReading(point: any, basePoint?: any, operating = true): { axis: string; reading: ReturnType<typeof isoValue> } {
   const axes = (point?.iso_axes?.length ? point.iso_axes : ['x', 'y', 'z']) as string[]
-  const readings = axes.map((axis) => ({ axis, reading: bearingIsoValue(point, axis, basePoint) }))
+  const readings = axes.map((axis) => ({ axis, reading: bearingIsoValue(point, axis, basePoint, operating) }))
   const best = readings.reduce<typeof readings[number] | null>((worst, item) => {
     if (item.reading.value == null) return worst
     return !worst || worst.reading.value == null || item.reading.value > worst.reading.value ? item : worst
   }, null)
-  return best || readings[0] || { axis: 'z', reading: bearingIsoValue(point, 'z', basePoint) }
+  return best || readings[0] || { axis: 'z', reading: bearingIsoValue(point, 'z', basePoint, operating) }
 }
 
 /** Raw sensor measurement for the sensor tile. Never replace this with a derived ISO value. */
@@ -197,12 +204,12 @@ function OverallZoneTag({ value, limits }: { value: number | null; limits: any }
 }
 
 /** One square tile represents one physical sensor, with all of its X/Y/Z readings inside. */
-function SensorOverview({ index, point, basePoint, limits, active, onClick }: { index: number; point: any; basePoint?: any; limits: any; active: boolean; onClick: () => void }) {
+function SensorOverview({ index, point, basePoint, limits, running, active, onClick }: { index: number; point: any; basePoint?: any; limits: any; running: boolean; active: boolean; onClick: () => void }) {
   // The sensor tile is a measurement display: its large number is always direct sensor RMS.
   const { axis: mainAxis, reading: main } = worstRawReading(point)
   const applicable = pointRole(point) === 'bearing'
   // Zone evaluation remains separate and may use the bearing-corrected value.
-  const iso = applicable ? worstIsoReading(point, basePoint) : null
+  const iso = applicable ? worstIsoReading(point, basePoint, running) : null
   const stable = useStableZone(iso?.reading.value, limits)
   const zone = applicable ? stable : null
   const edge = zone ? ZONE_COLOR[zone] : '#5d7185'
@@ -293,6 +300,10 @@ export default function Live() {
     placeholderData: keepPreviousData,
   })
   const { data: overview } = useQuery<any>({ queryKey: ['shell-overview'], queryFn: () => api('/overview') })
+  const { data: runtime } = useQuery<any>({
+    queryKey: ['runtime', id], queryFn: () => api(`/machines/${id}/runtime`, { params: rangeParams(lastHours(24)) }),
+    refetchInterval: 30_000, placeholderData: keepPreviousData,
+  })
   const [wavePoint, setWavePoint] = useState<string>()
   const [, setTick] = useState(0)
   // Arrival time (browser clock) of the last live push: immune to browser/server clock skew.
@@ -334,6 +345,11 @@ export default function Live() {
   useRealtime([`machine:${id}`], (message) => {
     const d = message.data || {}
     if (d.type === 'vib' || d.type === 'vibstat' || d.type === 'capture') lastPushAt.current = Date.now()
+    if (d.type === 'run') {
+      qc.setQueryData(['status', id], (old: any) => old && ({ ...old, run_state: { ts: d.ts, running: d.running, source: d.source } }))
+      qc.invalidateQueries({ queryKey: ['runtime', id] })
+      return
+    }
     if (d.type === 'vib') {
       qc.setQueryData(['status', id], (old: any) => old && ({
         ...old,
@@ -400,13 +416,14 @@ export default function Live() {
 
   const points = byPosition(status.points || [])
   const basePoint = points.find((point: any) => pointRole(point) === 'base')
+  const isRunning = status.run_state?.running ?? status.power?.running ?? true
   const installation = templateById(machine.meta?.installation_template)
   const selPoint = points.find((point: any) => point.id === wavePoint) || points[0]
   const selMeta = machine.points.find((point: any) => point.id === selPoint?.id) || selPoint
   const selApplicable = pointRole(selPoint) === 'bearing'
   // Overall ISO state: worst valid RMS value across every configured ISO axis of every bearing.
   const maxValue = Math.max(0, ...points.filter((point: any) => pointRole(point) === 'bearing')
-    .map((point: any) => worstIsoReading(point, basePoint).reading.value ?? 0))
+    .map((point: any) => worstIsoReading(point, basePoint, isRunning).reading.value ?? 0))
 
   // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
   const dataTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
@@ -453,6 +470,7 @@ export default function Live() {
           <div><h1>{machine.id.toUpperCase()} | {machine.name}</h1><p>{subtitle}</p></div>
           <div className="live-actions">
             <OverallZoneTag value={maxValue || null} limits={machine.iso_limits} />
+            {runtime && <Tag className="runtime-tag">RUN {num(runtime.run_seconds / 3600, 1)} h · RATE {num(runtime.rate_pct, 1)} %</Tag>}
             {isLive
               ? <Tag className="live-tag">TRỰC TIẾP | cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
               : <Tag className="offline-tag">{lastTs ? `MẤT KẾT NỐI | dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'GATEWAY CHƯA GỬI DỮ LIỆU'}</Tag>}
@@ -467,7 +485,7 @@ export default function Live() {
 
         <Row gutter={[14, 14]}>
           {points.map((point: any, i: number) => <Col xs={24} md={12} key={point.id}>
-            <SensorOverview index={i} point={point} basePoint={basePoint} limits={machine.iso_limits} active={point.id === selPoint?.id}
+            <SensorOverview index={i} point={point} basePoint={basePoint} limits={machine.iso_limits} running={isRunning} active={point.id === selPoint?.id}
               onClick={() => setWavePoint(point.id)} />
           </Col>)}
           {!points.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}

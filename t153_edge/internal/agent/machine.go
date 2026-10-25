@@ -403,6 +403,16 @@ func (m *machineRT) flushWindow(end time.Time) {
 	}
 	m.mu.Unlock()
 	running, load := m.runLoad()
+	source := "vibration"
+	if m.meter != nil {
+		source = "power"
+	}
+	// Persist the operating state independently of capture and power-meter
+	// availability. This is the source of truth for Runtime and Run Rate.
+	_ = m.a.up.Enqueue("metrics/run/"+m.cfg.ID, 1, store.PrioMetrics, runStateMetrics{
+		MsgID: ulid.New(), TS: tsString(end), MachineID: m.cfg.ID, Running: running, Source: source,
+	})
+	m.a.view.SetMachineRunning(m.cfg.ID, running)
 	var avgI [3]float64
 	if len(win) > 0 {
 		var p drivers.PowerReading

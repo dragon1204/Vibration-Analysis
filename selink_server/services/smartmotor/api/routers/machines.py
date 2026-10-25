@@ -46,6 +46,25 @@ def _vendor_number(row: dict | None, key: str, digits: int = 4, scale: float = 1
     number = float(value) * scale
     return round(number) if digits == 0 else round(number, digits)
 
+
+def runtime_summary(rows: list[dict], frm: datetime, to: datetime, prior_running: bool = False,
+                    max_gap_s: float = 90.0) -> dict[str, float | bool | int]:
+    """Integrate gateway RUN samples without counting a disconnect as runtime."""
+    run_s = 0.0
+    cursor = frm
+    running = prior_running
+    for row in rows:
+        elapsed = max(0.0, (row["ts"] - cursor).total_seconds())
+        if running:
+            run_s += min(max_gap_s, elapsed)
+        cursor = row["ts"]
+        running = bool(row["running"])
+    if running:
+        run_s += min(max_gap_s, max(0.0, (to - cursor).total_seconds()))
+    total_s = max(1.0, (to - frm).total_seconds())
+    return {"run_seconds": round(run_s), "total_seconds": round(total_s),
+            "rate_pct": round(run_s / total_s * 100, 2), "samples": len(rows), "running": running}
+
 MACHINE_FIELDS = ["site_id", "name", "type", "maker", "model", "serial", "rated_power_kw", "rated_speed_rpm", "poles",
                   "line_freq_hz", "rated_voltage_v", "rated_current_a", "insulation_class", "mounting", "iso_group",
                   "foundation", "iso_band_lo_hz", "iso_band_hi_hz", "thermal_params", "meta", "photo_url", "male_lobes",
@@ -285,12 +304,14 @@ async def machine_status(machine_id: str, request: Request, user: User = Depends
             out_pts.append({**dict(p), "axes": {r["axis"]: {**dict(r), **{k: v for k, v in rms_by_axis.get(r["axis"], {}).items() if k != "axis"}} for r in rows},
                             "last_capture": rezone(dict(cap), lim) if cap else None})
         power = await c.fetchrow("SELECT * FROM power_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
+        run_state = await c.fetchrow("SELECT ts, running, source FROM machine_run_states WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
         temp = await c.fetchrow("SELECT * FROM temp_metrics WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1", machine_id)
         acc = await c.fetch("""SELECT quantity, count(*) n, avg(error_pct) mean_pct,
                                  percentile_cont(0.95) WITHIN GROUP (ORDER BY error_pct) p95_pct
                                FROM accuracy_tests a JOIN measurement_points p ON p.id=a.point_id
                                WHERE p.machine_id=$1 GROUP BY quantity""", machine_id)
     return {"machine_id": machine_id, "points": out_pts, "power": dict(power) if power else None,
+            "run_state": dict(run_state) if run_state else None,
             "temps": dict(temp) if temp else None, "accuracy": [dict(a) for a in acc]}
 
 
@@ -459,30 +480,27 @@ async def machine_health(machine_id: str, request: Request, rng=Depends(time_ran
 
 @router.get("/machines/{machine_id}/runtime")
 async def machine_runtime(machine_id: str, request: Request, rng=Depends(time_range), user: User = Depends(current_user)):
-    """Observed RUN duration and utilization rate from the gateway RUN flag.
-
-    Capture gaps are capped at 90 seconds so an offline gateway never inflates
-    operating hours.  Rate is RUN seconds over the requested calendar range.
-    """
+    """Observed RUN duration and utilization rate from independent gateway state samples."""
     await check_machine(request.app.state.pool, user, machine_id)
     frm, to = rng
     async with request.app.state.pool.acquire() as c:
-        point = await c.fetchrow("""SELECT id FROM measurement_points WHERE machine_id=$1
-                                    ORDER BY CASE WHEN upper(location)='DE' THEN 0 ELSE 1 END, id LIMIT 1""", machine_id)
-        if not point:
-            raise HTTPException(404, "Máy chưa có điểm đo")
-        rows = await c.fetch("""SELECT ts, running FROM captures WHERE point_id=$1 AND ts >= $2 AND ts <= $3
-                                ORDER BY ts""", point["id"], frm, to)
-    run_s = 0.0
-    for i, row in enumerate(rows):
-        if not row["running"]:
-            continue
-        nxt = rows[i + 1]["ts"] if i + 1 < len(rows) else min(to, row["ts"] + (to - frm))
-        run_s += max(0.0, min(90.0, (nxt - row["ts"]).total_seconds()))
-    total_s = max(1.0, (to - frm).total_seconds())
-    return {"machine_id": machine_id, "point_id": point["id"], "from": frm, "to": to,
-            "run_seconds": round(run_s), "total_seconds": round(total_s), "rate_pct": round(run_s / total_s * 100, 2),
-            "samples": len(rows)}
+        prior = await c.fetchrow("""SELECT ts, running FROM machine_run_states
+                                    WHERE machine_id=$1 AND ts < $2 ORDER BY ts DESC LIMIT 1""", machine_id, frm)
+        rows = await c.fetch("""SELECT ts, running FROM machine_run_states
+                                WHERE machine_id=$1 AND ts >= $2 AND ts <= $3 ORDER BY ts""", machine_id, frm, to)
+        # Backward-compatible fallback until a gateway begins emitting metrics/run.
+        legacy = False
+        if not rows and not prior:
+            point = await c.fetchrow("""SELECT id FROM measurement_points WHERE machine_id=$1
+                                        ORDER BY CASE WHEN upper(location)='DE' THEN 0 ELSE 1 END, id LIMIT 1""", machine_id)
+            if not point:
+                raise HTTPException(404, "Máy chưa có điểm đo")
+            rows = await c.fetch("""SELECT ts, running FROM captures WHERE point_id=$1 AND ts >= $2 AND ts <= $3
+                                    ORDER BY ts""", point["id"], frm, to)
+            legacy = True
+    summary = runtime_summary([dict(row) for row in rows], frm, to, bool(prior["running"]) if prior else False)
+    return {"machine_id": machine_id, "from": frm, "to": to, **summary,
+            "source": "captures" if legacy else "run_state"}
 
 
 class AnalyticsCmd(BaseModel):

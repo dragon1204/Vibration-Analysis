@@ -47,6 +47,7 @@ type MachineInfo struct {
 	ISOGroup      int         `json:"iso_group"`
 	Foundation    string      `json:"foundation"`
 	Limits        Limits      `json:"limits"`
+	Running       bool        `json:"running"`
 	Points        []PointInfo `json:"points"`
 }
 
@@ -226,6 +227,18 @@ func (h *Hub) SetLink(pointID string, online bool, fails int, lastOK time.Time) 
 	if !lastOK.IsZero() {
 		t := lastOK
 		ps.LastOK = &t
+	}
+}
+
+// SetMachineRunning publishes the current operating state to the local panel.
+func (h *Hub) SetMachineRunning(machineID string, running bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i := range h.machines {
+		if h.machines[i].ID == machineID {
+			h.machines[i].Running = running
+			return
+		}
 	}
 }
 

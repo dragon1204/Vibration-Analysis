@@ -96,6 +96,16 @@ type powerMetrics struct {
 	Running       bool       `json:"running"`
 }
 
+// runStateMetrics is independent of FFT captures and electrical-meter samples.
+// It preserves the machine operating timeline even while the motor is stopped.
+type runStateMetrics struct {
+	MsgID     string `json:"msg_id"`
+	TS        string `json:"ts"`
+	MachineID string `json:"machine_id"`
+	Running   bool   `json:"running"`
+	Source    string `json:"source"`
+}
+
 type tempMetrics struct {
 	MsgID           string   `json:"msg_id"`
 	TS              string   `json:"ts"`
