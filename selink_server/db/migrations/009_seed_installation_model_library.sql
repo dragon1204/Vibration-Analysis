@@ -1,0 +1,35 @@
+-- Starter library for common rotating-machine topologies.  Images remain
+-- customer-owned assets and are uploaded through the Installation Model UI.
+-- Slot codes stay within the current edge commissioning vocabulary (DE/NDE/BASE/COMP).
+INSERT INTO installation_models (id, name, description, asset_class, slots, algorithms, parameters, builtin) VALUES
+('motor-pump-3point', 'Motor–pump — DE + COMP + BASE',
+ 'Close-coupled motor and pump. DE monitors the motor bearing, COMP the pump casing/load and BASE the foundation.',
+ 'motor_pump',
+ '[{"code":"DE","label":"Motor drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":52,"y":34}},{"code":"COMP","label":"Pump casing","role":"driven","axes":["x","y","z"],"marker":{"x":30,"y":37}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":56,"y":72}}]'::jsonb,
+ '["iso_corrected_rms","bearing_envelope","hydraulic_vane_pass","alignment_screening","run_detection"]'::jsonb,
+ '{"run_detection":{"metric":"max_corrected_rms"}}'::jsonb, TRUE),
+('motor-pump-4point', 'Motor–pump — DE + NDE + COMP + BASE',
+ 'Motor–pump train with both motor bearing locations, pump casing/load and a foundation reference.',
+ 'motor_pump',
+ '[{"code":"DE","label":"Motor drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":53,"y":34}},{"code":"NDE","label":"Motor non-drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":72,"y":30}},{"code":"COMP","label":"Pump casing","role":"driven","axes":["x","y","z"],"marker":{"x":28,"y":39}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":57,"y":73}}]'::jsonb,
+ '["iso_corrected_rms","bearing_envelope","hydraulic_vane_pass","alignment_screening","unbalance_screening","run_detection"]'::jsonb,
+ '{"run_detection":{"metric":"max_corrected_rms"}}'::jsonb, TRUE),
+('belt-driven-fan-3point', 'Belt-driven fan — DE + NDE + COMP',
+ 'Motor bearing pair with a fan/load measurement location. BASE can be added if foundation correction is required.',
+ 'motor_fan',
+ '[{"code":"DE","label":"Motor drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":45,"y":35}},{"code":"NDE","label":"Motor non-drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":63,"y":30}},{"code":"COMP","label":"Fan bearing / housing","role":"driven","axes":["x","y","z"],"marker":{"x":25,"y":38}}]'::jsonb,
+ '["iso_corrected_rms","bearing_envelope","belt_frequency","fan_blade_pass","unbalance_screening","run_detection"]'::jsonb,
+ '{"run_detection":{"metric":"max_rms_velocity"}}'::jsonb, TRUE),
+('motor-gearbox-load-4point', 'Motor–gearbox — DE + NDE + COMP + BASE',
+ 'Motor bearing pair, gearbox/load location and a foundation reference for a compact geared train.',
+ 'motor_gearbox',
+ '[{"code":"DE","label":"Motor drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":52,"y":34}},{"code":"NDE","label":"Motor non-drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":72,"y":30}},{"code":"COMP","label":"Gearbox / driven load","role":"gearbox_input","axes":["x","y","z"],"marker":{"x":29,"y":39}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":56,"y":73}}]'::jsonb,
+ '["iso_corrected_rms","bearing_envelope","gear_mesh","alignment_screening","unbalance_screening","run_detection"]'::jsonb,
+ '{"run_detection":{"metric":"max_corrected_rms"}}'::jsonb, TRUE),
+('vertical-pump-4point', 'Vertical pump — DE + NDE + COMP + BASE',
+ 'Vertical motor/pump train with thrust and casing monitoring. Axial measurements are required at bearing slots.',
+ 'vertical_pump',
+ '[{"code":"DE","label":"Upper motor bearing","role":"bearing","axes":["x","y","z"],"marker":{"x":51,"y":28}},{"code":"NDE","label":"Lower / thrust bearing","role":"thrust","axes":["x","y","z"],"marker":{"x":51,"y":51}},{"code":"COMP","label":"Pump casing","role":"driven","axes":["x","y","z"],"marker":{"x":51,"y":73}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":65,"y":87}}]'::jsonb,
+ '["iso_corrected_rms","bearing_envelope","hydraulic_vane_pass","axial_thrust","run_detection"]'::jsonb,
+ '{"run_detection":{"metric":"max_corrected_rms"},"required_axes":{"NDE":["z"]}}'::jsonb, TRUE)
+ON CONFLICT (id) DO NOTHING;
