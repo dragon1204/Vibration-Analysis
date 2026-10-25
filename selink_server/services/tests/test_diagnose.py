@@ -45,6 +45,17 @@ def test_transmitted_peaks_are_ignored():
     assert "bearing_outer" not in faults
 
 
+def test_2x_without_axial_evidence_does_not_diagnose_misalignment():
+    f = _features("misalignment_orders")
+    for axis in f["axes"].values():
+        axis.setdefault("orders", {})["1"] = 0.01
+        axis.setdefault("orders", {})["2"] = 0.01
+    # Keep strong radial 2X but remove the independent axial signature.
+    f["axes"]["x"]["orders"].update({"1": 1.0, "2": 0.8})
+    faults = [item["fault"] for item in diagnose(f, DiagContext(axes_map=AXES_MAP, iso_zone="C"))]
+    assert "misalignment" not in faults
+
+
 def test_iso_and_rss():
     l = iso_limits(1, "rigid")
     assert (l.ab, l.bc, l.cd) == (2.3, 4.5, 7.1)

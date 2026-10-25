@@ -135,12 +135,13 @@ def diagnose(features: dict, ctx: DiagContext) -> list[dict]:
             add("unbalance", conf, ev)
 
     # --- Misalignment / bent shaft: strong 2X, high axial ---
-    if v1 > 0 and v2 >= p["misalign_2x_ratio"] * v1:
-        conf = 0.45 + (0.15 if v2 >= v1 else 0)
-        ev = [{"feature": f"{r_axis}.orders.2", "value": round(v2, 3), "ref": round(v1, 3), "note": "2X ≥ 0,5 × 1X"}]
-        if max(a1, a2) >= p["misalign_axial_ratio"] * max(v1, v2):
-            conf += 0.2
-            ev.append({"feature": f"{axial[0]}.orders.1-2", "value": round(max(a1, a2), 3), "note": "rung dọc trục cao"})
+    axial_high = bool(axial) and max(a1, a2) >= p["misalign_axial_ratio"] * max(v1, v2)
+    if v1 > 0 and v2 >= p["misalign_2x_ratio"] * v1 and axial_high:
+        # 2X alone is not diagnostic: electrical excitation, looseness and base
+        # transmission can produce it. Require independent axial evidence.
+        conf = 0.65 + (0.15 if v2 >= v1 else 0)
+        ev = [{"feature": f"{r_axis}.orders.2", "value": round(v2, 3), "ref": round(v1, 3), "note": "2X ≥ 0,5 × 1X"},
+              {"feature": f"{axial[0]}.orders.1-2", "value": round(max(a1, a2), 3), "note": "rung dọc trục cao"}]
         if o_r.get("3", 0) > 0.3 * v1:
             conf += 0.05
             ev.append({"feature": f"{r_axis}.orders.3", "value": round(o_r.get("3", 0), 3), "note": "có 3X"})
