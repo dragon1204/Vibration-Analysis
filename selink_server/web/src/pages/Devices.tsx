@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Descriptions, Drawer, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Card, Descriptions, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd'
 import { api, post } from '../api/client'
 import { useRealtime } from '../api/realtime'
 import { useAuth } from '../auth'
@@ -16,6 +16,8 @@ export default function Devices() {
   const { message } = App.useApp()
   const [open, setOpen] = useState<string>()
   const [configuredMachine, setConfiguredMachine] = useState<any>()
+  const [deploymentMachine, setDeploymentMachine] = useState<string>()
+  const [deploying, setDeploying] = useState(false)
   const [cmd, setCmd] = useState<{ type: string; point_id?: string; profile?: string; url?: string; sha256?: string; machine_id?: string } | null>(null)
   const { data = [], isLoading } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways'), refetchInterval: 30_000 })
   const { data: gw } = useQuery<any>({ queryKey: ['gateway', open], queryFn: () => api(`/gateways/${open}`), enabled: !!open })
@@ -41,17 +43,30 @@ export default function Devices() {
   const h = gw?.health || {}
   const machinesOfGw = [...new Set((gw?.points || []).map((p: any) => p.machine_id))] as string[]
   const connectedDevices = machinesOfGw.map((id) => machines.find((machine: any) => machine.id === id) || { id, name: id })
+  const deploy = async () => {
+    if (!open || !deploymentMachine) return
+    setDeploying(true)
+    try {
+      const result = await post(`/gateways/${open}/deployments`, { machine_id: deploymentMachine })
+      message.success(result.unchanged ? 'Gateway đã được gán cho máy này' : `Đã chuyển gateway sang máy mới · cấu hình v${result.config_version}`)
+      setDeploymentMachine(undefined)
+      qc.invalidateQueries({ queryKey: ['gateways'] })
+      qc.invalidateQueries({ queryKey: ['gateway', open] })
+      qc.invalidateQueries({ queryKey: ['machines'] })
+    } catch (e: any) { message.error(e.message) } finally { setDeploying(false) }
+  }
   return (
     <div className="page">
       {can('admin') && <AddGateway />}
       <div className="page-hero" style={{ marginBottom: 14 }}>
-        <div><div className="page-kicker">Device configuration</div><h1 className="page-heading">Thiết bị & gateway</h1><p className="page-description">Mỗi gateway quản lý thiết bị và cảm biến gắn kèm. Mở gateway để xem, cấu hình và đẩy cấu hình đúng thiết bị đó.</p></div>
+        <div><div className="page-kicker">Portable acquisition hardware</div><h1 className="page-heading">Thiết bị & gateway</h1><p className="page-description">Gateway là thiết bị di động. Mỗi lần phân công sẽ tạo một phiên đo gắn với máy, giữ nguyên lịch sử và chỉ đẩy cấu hình của máy đang đo.</p></div>
       </div>
       <Card size="small" title="Gateway (T153)">
         <Table size="small" rowKey="id" loading={isLoading} dataSource={data}
           onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Gateway', dataIndex: 'id' }, { title: 'Site', dataIndex: 'site_id' },
+            { title: 'Máy đang đo', key: 'assignment', render: (_, r: any) => r.assigned_machine_id ? <><Tag color="blue">{r.assigned_machine_name || r.assigned_machine_id}</Tag><br /><Typography.Text type="secondary">từ {ago(r.deployment_started_at)}</Typography.Text></> : <Tag>Chưa gán</Tag> },
             { title: 'Trạng thái', dataIndex: 'online', render: (o) => (o ? <Tag color="green">Trực tuyến</Tag> : <Tag>Mất kết nối</Tag>) },
             { title: 'Phiên bản', dataIndex: 'fw_version' }, { title: 'Liên lạc cuối', dataIndex: 'last_seen', render: (v) => ago(v) },
             { title: 'Outbox', key: 'ob', render: (_, r: any) => r.health?.outbox_pending ?? '–' },
@@ -73,6 +88,15 @@ export default function Devices() {
               <Descriptions.Item label="Outbox chờ gửi">{h.outbox_pending}</Descriptions.Item>
               <Descriptions.Item label="Còi/relay">{h.local_alarm_on ? <Tag color="red">BẬT</Tag> : 'tắt'}</Descriptions.Item>
             </Descriptions>
+            <Card size="small" title="Phiên đo hiện tại" extra={can('analyst') && <Button type="primary" size="small" onClick={() => setDeploymentMachine(gw.deployment?.machine_id || machines[0]?.id)}>Gán / chuyển máy</Button>}>
+              {gw.deployment ? <Descriptions size="small" column={2}>
+                <Descriptions.Item label="Máy"><strong>{gw.deployment.machine_name}</strong></Descriptions.Item>
+                <Descriptions.Item label="Bắt đầu">{dt(gw.deployment.started_at, true)}</Descriptions.Item>
+                <Descriptions.Item label="Cấu hình edge">v{gw.deployment.config_version ?? '–'}</Descriptions.Item>
+                <Descriptions.Item label="Trạng thái"><Tag color="green">Đang đo</Tag></Descriptions.Item>
+              </Descriptions> : <Typography.Text type="secondary">Gateway chưa gán máy. Gán máy trước, sau đó map cảm biến theo sơ đồ lắp đặt.</Typography.Text>}
+              {can('analyst') && gw.deployment && <div style={{ marginTop: 10 }}><Popconfirm title="Dừng đo và bỏ gán máy hiện tại?" description="Gateway sẽ nhận cấu hình trống trước khi được di chuyển." okText="Bỏ gán" okButtonProps={{ danger: true }} onConfirm={() => post(`/gateways/${open}/unassign`, {}).then(() => { message.success('Đã bỏ gán gateway'); qc.invalidateQueries({ queryKey: ['gateway', open] }); qc.invalidateQueries({ queryKey: ['gateways'] }) }).catch((e) => message.error(e.message))}><Button danger size="small">Bỏ gán an toàn</Button></Popconfirm></div>}
+            </Card>
             <Card size="small" title={`Thiết bị đi kèm (${connectedDevices.length})`} extra={<Typography.Text type="secondary">Liên kết qua cảm biến</Typography.Text>}>
               <Table size="small" pagination={false} rowKey="id" dataSource={connectedDevices} locale={{ emptyText: 'Gateway chưa được gán thiết bị. Thêm cảm biến cho máy để tạo liên kết.' }} columns={[
                 { title: 'Thiết bị', key: 'device', render: (_, machine: any) => <><strong>{machine.name}</strong><br /><Typography.Text type="secondary">{machine.id}</Typography.Text></> },
@@ -141,6 +165,11 @@ export default function Devices() {
             {cmd.type === 'reboot' && <Typography.Text type="danger">Gateway sẽ khởi động lại sau 5 giây.</Typography.Text>}
           </Space>
         )}
+      </Modal>
+      <Modal open={!!deploymentMachine} title={`Phân công gateway ${open || ''}`} okText="Xác nhận & đẩy cấu hình" confirmLoading={deploying} onOk={deploy} onCancel={() => setDeploymentMachine(undefined)}>
+        <Typography.Paragraph>Gateway chỉ đo một máy trong một phiên. Khi xác nhận, phiên cũ được đóng và cấu hình edge chỉ giữ máy mới.</Typography.Paragraph>
+        <Select autoFocus style={{ width: '100%' }} value={deploymentMachine} onChange={setDeploymentMachine}
+          options={machines.filter((m: any) => !gw || m.site_id === gw.site_id).map((m: any) => ({ value: m.id, label: `${m.name} (${m.id})` }))} />
       </Modal>
     </div>
   )

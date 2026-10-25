@@ -22,6 +22,43 @@ EDGE_FEATURES = {"iso_vrms_mm_s", "vel_rms_mm_s", "env.rms", "env.bpfo", "env.bp
                  "x.kurtosis", "y.kurtosis", "z.kurtosis"}
 
 
+def deployment_machine(machine: dict, existing: dict | None = None) -> dict:
+    """Return the edge configuration block for one active asset.
+
+    The gateway keeps its transport/bus configuration, while its ``machines``
+    array is replaced when it is moved.  Existing point definitions for the
+    selected asset are retained; a newly assigned asset intentionally starts
+    with no points until the installer maps physical sensors to its slots.
+    """
+    previous = copy.deepcopy(existing or {})
+    out = {
+        "id": machine["id"], "name": machine["name"],
+        "type": machine.get("type") or "other",
+        "rated_power_kw": machine.get("rated_power_kw") or 0,
+        "rated_speed_rpm": machine.get("rated_speed_rpm") or 0,
+        "poles": machine.get("poles") or 0,
+        "line_freq_hz": machine.get("line_freq_hz") or 50,
+        "iso_group": machine.get("iso_group") or 2,
+        "foundation": machine.get("foundation") or "rigid",
+        "iso_band_hz": [machine.get("iso_band_lo_hz") or 10, machine.get("iso_band_hi_hz") or 1000],
+        "thermal": machine.get("thermal_params") or {},
+        "points": previous.get("points") or [],
+    }
+    for key in ("power_meter", "temps"):
+        if key in previous:
+            out[key] = previous[key]
+    return out
+
+
+def activate_deployment(cfg: dict, machine: dict) -> dict:
+    """Safely switch an edge config to one asset without erasing transport settings."""
+    out = copy.deepcopy(cfg)
+    current = next((m for m in out.get("machines") or [] if m.get("id") == machine["id"]), None)
+    out["machines"] = [deployment_machine(machine, current)]
+    out.pop("version", None)
+    return out
+
+
 async def latest(conn: asyncpg.Connection, gateway_id: str) -> dict | None:
     r = await conn.fetchrow("SELECT version, config FROM gateway_configs WHERE gateway_id=$1 ORDER BY version DESC LIMIT 1",
                             gateway_id)

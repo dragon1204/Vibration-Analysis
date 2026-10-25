@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Card, Col, Descriptions, InputNumber, message, Progress, Row, Select, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd'
-import { api, patch } from '../api/client'
+import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress, Row, Select, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd'
+import { api, patch, post } from '../api/client'
 import { num } from '../utils/format'
 import MachineNav from './MachineNav'
 import InstallationDiagram from '../components/InstallationDiagram'
@@ -13,7 +14,11 @@ export default function MachineDetail() {
   const nav = useNavigate()
   const queryClient = useQueryClient()
   const { can } = useAuth()
+  const [selectedGateway, setSelectedGateway] = useState<string>()
+  const [assigningGateway, setAssigningGateway] = useState(false)
   const { data: m } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
+  const { data: deployment } = useQuery<any>({ queryKey: ['machine-deployment', id], queryFn: () => api(`/machines/${id}/deployment`) })
+  const { data: gateways = [] } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways') })
   const { data: installationModels } = useQuery<any[]>({ queryKey: ['installation-models'], queryFn: () => api('/installation-models') })
   const { data: runtime } = useQuery<any>({ queryKey: ['machine-runtime', id], queryFn: () => api(`/machines/${id}/runtime`), refetchInterval: 30_000 })
   const templateMutation = useMutation({
@@ -36,6 +41,18 @@ export default function MachineDetail() {
   }
   const profileFields = [m.type, m.rated_power_kw, m.rated_speed_rpm, m.mounting, m.foundation, m.meta?.bearing_type]
   const profilePct = Math.round(profileFields.filter(Boolean).length / profileFields.length * 100)
+  const assignGateway = async () => {
+    if (!selectedGateway) return
+    setAssigningGateway(true)
+    try {
+      const result = await post(`/gateways/${selectedGateway}/deployments`, { machine_id: id })
+      message.success(result.unchanged ? 'Gateway đã đang đo máy này' : `Đã phân công gateway · cấu hình v${result.config_version}`)
+      setSelectedGateway(undefined)
+      queryClient.invalidateQueries({ queryKey: ['machine-deployment', id] })
+      queryClient.invalidateQueries({ queryKey: ['machine', id] })
+      queryClient.invalidateQueries({ queryKey: ['gateways'] })
+    } catch (e: any) { message.error(e.message) } finally { setAssigningGateway(false) }
+  }
   return (
     <div className="page">
       <MachineNav id={id} />
@@ -45,6 +62,14 @@ export default function MachineDetail() {
       </div>
       {profilePct < 100 && <Alert type="warning" showIcon message="Hồ sơ máy chưa đầy đủ" description="Bổ sung loại ổ/vòng bi trong Cấu hình thiết bị để tăng độ tin cậy của chẩn đoán." style={{ marginBottom: 12 }} />}
       <Row gutter={[12, 12]}>
+        <Col span={24}>
+          <Card size="small" title="Gateway phân công" extra={deployment?.active ? <Tag color={deployment.active.online ? 'green' : 'default'}>{deployment.active.online ? 'Trực tuyến' : 'Mất kết nối'}</Tag> : <Tag>Chưa phân công</Tag>}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>{deployment?.active ? <><strong>{deployment.active.gateway_id}</strong><span className="muted"> · bắt đầu {new Date(deployment.active.started_at).toLocaleString('vi-VN')}</span></> : <span className="muted">Chọn gateway trước khi thêm cảm biến. Khi chuyển gateway, dữ liệu của máy cũ vẫn giữ nguyên trong phiên trước.</span>}</div>
+              {can('analyst') && <div style={{ display: 'flex', gap: 8 }}><Select placeholder="Chọn gateway" value={selectedGateway} onChange={setSelectedGateway} style={{ minWidth: 220 }} options={gateways.filter((gateway: any) => gateway.site_id === m.site_id).map((gateway: any) => ({ value: gateway.id, label: `${gateway.id}${gateway.assigned_machine_name ? ` · ${gateway.assigned_machine_name}` : ' · sẵn sàng'}` }))} /><Button type="primary" disabled={!selectedGateway} loading={assigningGateway} onClick={assignGateway}>{deployment?.active ? 'Chuyển gateway' : 'Gán gateway'}</Button></div>}
+            </div>
+          </Card>
+        </Col>
         <Col span={24}>
           <Card size="small" title="Sơ đồ lắp đặt" extra={can('analyst') ? <Select
             aria-label="Mẫu sơ đồ lắp đặt"

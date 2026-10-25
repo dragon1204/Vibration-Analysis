@@ -77,6 +77,9 @@ async def add_sensor(machine_id: str, body: SensorIn, request: Request, user: Us
             raise HTTPException(409, f"Vị trí {SLOTS[body.slot]['short']} đã có cảm biến")
         gw_id = next((p["gateway_id"] for p in pts if p["gateway_id"]), None)
         if not gw_id:
+            gw_id = await c.fetchval("""SELECT gateway_id FROM gateway_deployments
+                                       WHERE machine_id=$1 AND state='active' ORDER BY started_at DESC LIMIT 1""", machine_id)
+        if not gw_id:
             raise HTTPException(400, "Máy chưa gắn gateway")
         if any(p["sensor_addr"] == body.addr and p["gateway_id"] == gw_id for p in pts):
             raise HTTPException(409, f"Địa chỉ Modbus {body.addr} đã dùng cho cảm biến khác")

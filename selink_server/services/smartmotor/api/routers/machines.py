@@ -137,8 +137,11 @@ async def get_machine(machine_id: str, request: Request, user: User = Depends(cu
     await check_machine(request.app.state.pool, user, machine_id)
     async with request.app.state.pool.acquire() as c:
         m = await c.fetchrow("SELECT m.*, s.name AS site_name FROM machines m LEFT JOIN sites s ON s.id=m.site_id WHERE m.id=$1", machine_id)
-        pts = await c.fetch("""SELECT p.*, b.model AS bearing_model, g.online AS gateway_online FROM measurement_points p
+        pts = await c.fetch("""SELECT p.*, b.model AS bearing_model,
+                               CASE WHEN d.id IS NOT NULL THEN g.online ELSE FALSE END AS gateway_online
+                               FROM measurement_points p
                                LEFT JOIN bearings b ON b.id=p.bearing_id LEFT JOIN gateways g ON g.id=p.gateway_id
+                               LEFT JOIN gateway_deployments d ON d.gateway_id=p.gateway_id AND d.machine_id=p.machine_id AND d.state='active'
                                WHERE p.machine_id=$1 ORDER BY p.id""", machine_id)
     lim = iso_limits(m["iso_group"], m["foundation"])
     return {**dict(m), "points": [dict(p) for p in pts], "iso_limits": {"ab": lim.ab, "bc": lim.bc, "cd": lim.cd}}
