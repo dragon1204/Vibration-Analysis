@@ -26,6 +26,8 @@ const pointRole = (point: any): string => point?.role || 'bearing'
 const posLabel = (point: any, _index: number): string => sensorCode(point)
 /** Temporary BASE→bearing transmission coefficient (measured overall ratio is 0.2 to 0.9 depending on direction). */
 const BASE_ALPHA = 0.8
+/** Gateway reports acceleration in g; the live sensor cards use engineering SI units. */
+const G_TO_MM_S2 = 9806.65
 /** Bearing vibration after removing the foundation contribution. */
 const ownRms = (bearing: number | null, base: number | null): number | null =>
   bearing == null || base == null ? null : Math.sqrt(Math.max(0, bearing * bearing - (BASE_ALPHA * base) ** 2))
@@ -231,7 +233,7 @@ function SensorOverview({ index, point, basePoint, limits, running, active, onCl
           return <div key={axis}>
             <span>{axisName(point, axis)} ({axis.toUpperCase()})</span>
             <b><AnimatedNumber value={reading.value} decimals={2} fallback="--" /> <small>mm/s</small></b>
-            <em><AnimatedNumber value={reading.acc} decimals={2} fallback="--" /> g</em>
+            <em><AnimatedNumber value={reading.acc == null ? null : reading.acc * G_TO_MM_S2} decimals={0} fallback="--" /> mm/s²</em>
           </div>
         })}
       </div>
