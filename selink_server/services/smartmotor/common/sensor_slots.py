@@ -1,6 +1,6 @@
 """Fixed WTVB05 mounting positions and edge-configuration helpers.
 
-The physical mounting position (DE, NDE, BASE or COMP) is the identity shown
+The physical mounting position (DE, NDE, BASE or LOAD) is the identity shown
 to users; the Modbus address is only wiring. Legacy ``S1``..``S4`` location
 values remain readable while existing configurations are migrated.
 """
@@ -13,7 +13,7 @@ import re
 # Numeric slots are an internal stable ordering for the API and legacy point IDs.
 # ISO zones apply only to bearing positions.
 SLOTS: dict[int, dict] = {
-    1: {"location": "COMP", "label": "Đỉnh của tải", "short": "COMP", "role": "source"},
+    1: {"location": "LOAD", "label": "Tải", "short": "LOAD", "role": "source"},
     2: {"location": "BASE", "label": "Đế", "short": "BASE", "role": "base"},
     3: {"location": "DE", "label": "Đầu truyền động", "short": "DE", "role": "bearing"},
     4: {"location": "NDE", "label": "Đầu đối diện", "short": "NDE", "role": "bearing"},
@@ -26,6 +26,8 @@ FACTORY_ADDRS = (0x50, 0x01)
 def slot_of(location: str | None) -> int | None:
     """Internal slot for a position code, also accepting legacy ``S1``..``S4``."""
     text = (location or "").strip().upper()
+    if text == "COMP":
+        text = "LOAD"
     if text in LOCATION_TO_SLOT:
         return LOCATION_TO_SLOT[text]
     m = re.fullmatch(r"S([1-4])", text)

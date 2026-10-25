@@ -32,7 +32,7 @@ const G_TO_MM_S2 = 9806.65
 const ownRms = (bearing: number | null, base: number | null): number | null =>
   bearing == null || base == null ? null : Math.sqrt(Math.max(0, bearing * bearing - (BASE_ALPHA * base) ** 2))
 const POS_ORDER = POSITIONS
-/** Sensors in a fixed order: DE, NDE, BASE, COMP, then anything else. */
+/** Sensors in a fixed order: DE, NDE, BASE, LOAD, then anything else. */
 const byPosition = (points: any[]): any[] => [...points].sort((a, b) => {
   const ia = POS_ORDER.indexOf(posLabel(a, 0)), ib = POS_ORDER.indexOf(posLabel(b, 0))
   return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib)

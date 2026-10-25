@@ -62,10 +62,10 @@ export function saveCSV(name: string, rows: (string | number | null | undefined)
 export const ROLE_RANK: Record<string, number> = { viewer: 1, operator: 2, engineer: 3, analyst: 4, admin: 5 }
 
 /** Mounting positions in display order. */
-export const POSITIONS = ['DE', 'NDE', 'BASE', 'COMP']
-const LEGACY_POSITION: Record<string, string> = { S1: 'COMP', S2: 'BASE', S3: 'DE', S4: 'NDE' }
+export const POSITIONS = ['DE', 'NDE', 'BASE', 'LOAD']
+const LEGACY_POSITION: Record<string, string> = { S1: 'LOAD', S2: 'BASE', S3: 'DE', S4: 'NDE', COMP: 'LOAD' }
 
-/** Sensor name used everywhere on screen: its mounting position (DE, NDE, BASE, COMP). */
+/** Sensor name used everywhere on screen: its mounting position (DE, NDE, BASE, LOAD). */
 export function sensorCode(point: { location?: string | null; role?: string | null; id?: string } | null | undefined): string {
   const raw = String(point?.location || '').trim().toUpperCase()
   const loc = LEGACY_POSITION[raw] || raw

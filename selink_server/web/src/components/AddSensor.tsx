@@ -5,7 +5,7 @@ import { ApiError, api, post } from '../api/client'
 
 type Slot = { slot: number; location: string; label: string; short: string; role: string; point: { id: string; name: string } | null }
 
-/** Add a sensor to a machine: choose where it is mounted (DE, NDE, BASE, COMP) and its Modbus address. */
+/** Add a sensor to a machine: choose where it is mounted (DE, NDE, BASE, LOAD) and its Modbus address. */
 export default function AddSensor({ machineId }: { machineId: string }) {
   const { message } = App.useApp()
   const qc = useQueryClient()

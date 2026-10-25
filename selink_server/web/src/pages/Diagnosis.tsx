@@ -131,7 +131,7 @@ export default function Diagnosis() {
         )}
         {iso && (
           <Col span={24}>
-            <Card size="small" title="Cô lập nhiễu đa cảm biến (COMP nguồn rung · BASE đế · DE/NDE ổ đỡ)">
+            <Card size="small" title="Cô lập nhiễu đa cảm biến (LOAD tải · BASE đế · DE/NDE ổ đỡ)">
               <Row gutter={12}>
                 <Col xs={24} md={8}>
                   <p>Tham chiếu bệ: <Tag>{iso.reference_point}</Tag> Nguồn: <Tag>{iso.source_point || '–'}</Tag></p>
@@ -150,7 +150,7 @@ export default function Diagnosis() {
                   ]} />
                 </Col>
                 <Col xs={24} md={8}>
-                  <Typography.Text strong>Đối chiếu chéo với COMP</Typography.Text>
+                  <Typography.Text strong>Đối chiếu chéo với LOAD</Typography.Text>
                   <div>Đỉnh cục bộ (lỗi thật tại động cơ):</div>
                   {(iso.local_peaks || []).map((p: any) => <Tag color="red" key={'l' + p.freq_hz}>{num(p.freq_hz, 1)} Hz · {num(p.vel_mm_s, 2)}</Tag>)}
                   <div style={{ marginTop: 6 }}>Đỉnh nhiễu truyền từ máy nén (bỏ qua):</div>

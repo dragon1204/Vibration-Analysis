@@ -22,10 +22,10 @@ export const installationTemplates: InstallationTemplate[] = [
   {
     id: 'motor-load-4point',
     name: 'Tổ máy — Load + DE + NDE + BASE',
-    description: 'Tổ máy có tải, giám sát bốn vị trí COMP, DE, NDE và BASE.',
+    description: 'Tổ máy có tải, giám sát bốn vị trí LOAD, DE, NDE và BASE.',
     image: '/installation-templates/motor-load-4point.jpg',
-    locations: ['COMP', 'DE', 'NDE', 'BASE'],
-    markers: { COMP: { x: 28.0, y: 28.8 }, DE: { x: 54.6, y: 33.4 }, NDE: { x: 74.2, y: 23.1 }, BASE: { x: 64.5, y: 66.8 } },
+    locations: ['LOAD', 'DE', 'NDE', 'BASE'],
+    markers: { LOAD: { x: 28.0, y: 28.8 }, DE: { x: 54.6, y: 33.4 }, NDE: { x: 74.2, y: 23.1 }, BASE: { x: 64.5, y: 66.8 } },
   },
 ]
 

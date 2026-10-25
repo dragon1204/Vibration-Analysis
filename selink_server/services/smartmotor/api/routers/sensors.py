@@ -1,4 +1,4 @@
-"""Add a sensor to a machine by choosing its mounting position (DE/NDE/BASE/COMP).
+"""Add a sensor to a machine by choosing its mounting position (DE/NDE/BASE/LOAD).
 
 One call creates the measurement point, optionally gives a factory-new sensor its Modbus address through
 the gateway, and pushes the new edge configuration so the gateway starts reading it.

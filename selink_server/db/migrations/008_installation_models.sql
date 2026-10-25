@@ -21,6 +21,6 @@ INSERT INTO installation_models (id, name, description, asset_class, image_url, 
  '[{"code":"DE","label":"Drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":41.2,"y":34.2}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":59.4,"y":68.8}}]'::jsonb,
  '["iso_corrected_rms","bearing_envelope","run_detection"]'::jsonb, TRUE),
 ('motor-load-4point', 'Motor train — Load + DE + NDE + BASE', 'Motor and driven load with four monitoring locations.', 'motor_driven_load', '/installation-templates/motor-load-4point.jpg',
- '[{"code":"COMP","label":"Driven load","role":"driven","axes":["x","y","z"],"marker":{"x":28.0,"y":28.8}},{"code":"DE","label":"Drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":54.6,"y":33.4}},{"code":"NDE","label":"Non-drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":74.2,"y":23.1}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":64.5,"y":66.8}}]'::jsonb,
+ '[{"code":"LOAD","label":"Driven load","role":"driven","axes":["x","y","z"],"marker":{"x":28.0,"y":28.8}},{"code":"DE","label":"Drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":54.6,"y":33.4}},{"code":"NDE","label":"Non-drive end","role":"bearing","axes":["x","y","z"],"marker":{"x":74.2,"y":23.1}},{"code":"BASE","label":"Foundation","role":"base","axes":["x","y","z"],"marker":{"x":64.5,"y":66.8}}]'::jsonb,
  '["iso_corrected_rms","bearing_envelope","alignment_screening","unbalance_screening","run_detection"]'::jsonb, TRUE)
 ON CONFLICT (id) DO NOTHING;

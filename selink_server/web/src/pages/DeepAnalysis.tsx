@@ -485,12 +485,12 @@ export default function DeepAnalysis() {
   const complete = points.length > 1 && rows.length === points.length
   const hasRef = points.some((p: any) => p.role === 'source' || p.role === 'base')
   const applicable = points.length >= 2 && hasRef
-  const roleName = (role: string) => (role === 'source' ? 'Nguồn rung (COMP)' : role === 'base' ? 'Tham chiếu bệ (BASE)' : 'Ổ đỡ (DE/NDE)')
+  const roleName = (role: string) => (role === 'source' ? 'Tải (LOAD)' : role === 'base' ? 'Tham chiếu bệ (BASE)' : 'Ổ đỡ (DE/NDE)')
 
   return <div className="page deep-analysis-page">
     <MachineNav id={id} />
     <div className="page-hero">
-      <div><div className="page-kicker">FFT & cross-channel vibration analysis</div><Typography.Title level={2} style={{ margin: 0 }}>Phân tích sâu rung động</Typography.Title><p className="page-description">Đếm và định lượng các đỉnh 1X–nX theo thời gian, sau đó đối chiếu COMP, BASE, DE và NDE để phân biệt rung truyền và thành phần cục bộ.</p></div>
+      <div><div className="page-kicker">FFT & cross-channel vibration analysis</div><Typography.Title level={2} style={{ margin: 0 }}>Phân tích sâu rung động</Typography.Title><p className="page-description">Đếm và định lượng các đỉnh 1X–nX theo thời gian, sau đó đối chiếu LOAD, BASE, DE và NDE để phân biệt rung truyền và thành phần cục bộ.</p></div>
     </div>
 
     <HarmonicAnalysis machine={machine} />
@@ -498,7 +498,7 @@ export default function DeepAnalysis() {
     <div className="deep-section-title"><div><b>Đối chiếu đa điểm</b><span>Capture mới nhất trong 6 giờ</span></div><Space><Segmented value={axis} onChange={(value) => setAxis(String(value))} options={['x', 'y', 'z'].map((value) => ({ value, label: `Trục ${value.toUpperCase()}` }))} /><Segmented value={fmax} onChange={(value) => setFmax(Number(value))} options={[250, 500, 1000].map((value) => ({ value, label: `${value} Hz` }))} /></Space></div>
     {!applicable && <Alert type="info" showIcon style={{ marginBottom: 12 }}
       message="Phân tích truyền rung chưa áp dụng cho máy này"
-      description={<>Phương pháp này cần ít nhất hai cảm biến đo đồng thời, trong đó có <b>COMP</b> nguồn rung hoặc <b>BASE</b> bệ tham chiếu. Máy hiện có {points.length} điểm đo{hasRef ? '' : ', chưa gán vai trò nguồn/bệ'}. Phần FFT 1X–nX phía trên vẫn dùng được cho từng điểm đo.</>} />}
+      description={<>Phương pháp này cần ít nhất hai cảm biến đo đồng thời, trong đó có <b>LOAD</b> tại tải hoặc <b>BASE</b> bệ tham chiếu. Máy hiện có {points.length} điểm đo{hasRef ? '' : ', chưa gán vai trò tải/bệ'}. Phần FFT 1X–nX phía trên vẫn dùng được cho từng điểm đo.</>} />}
     {applicable && !complete && <Alert type="info" showIcon message="Đang ghép capture mới nhất của các điểm đo" description={`Đã có ${rows.length}/${points.length} điểm. Capture nhóm từ gateway sẽ cho kết quả tốt nhất.`} style={{ marginBottom: 12 }} />}
     <div className="sensor-flow">
       {rows.map((row: any, index: number) => <div className="sensor-flow-node" key={row.point.id} style={{ borderColor: row.color }}><span>{sensorCode(row.point)}</span><b>{row.point.name}</b><small>{roleName(row.point.role)} · trục {axis.toUpperCase()}</small><strong>{num(row.feature?.iso_vrms_mm_s, 2)} mm/s <small>RMS ISO</small></strong>{index < rows.length - 1 && <span className="sensor-flow-arrow">&gt;</span>}</div>)}
@@ -508,11 +508,11 @@ export default function DeepAnalysis() {
         {spectra.length ? <MultiSpectrumChart spectra={spectra} markers={markers} fmax={fmax} /> : <Empty description="Chưa có phổ để so sánh" />}
       </Card></Col>
       <Col xs={24} xl={7}><Card title="Kết luận truyền rung" className="assessment-card">
-        {!applicable ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Cần ≥ 2 điểm đo đồng thời có COMP hoặc BASE" />
+        {!applicable ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Cần ≥ 2 điểm đo đồng thời có LOAD hoặc BASE" />
           : targetAssessment.length ? targetAssessment.map((item) => <Alert key={item.key} style={{ marginBottom: 10 }} showIcon
           type={item.local && !item.transmitted ? 'warning' : 'info'}
           message={`${sensorCode(item.point)}: ${item.transmitted ? 'thiên về rung truyền' : item.local ? 'có thành phần cục bộ' : 'cần thêm capture đồng bộ'}`}
-          description={`Tương đồng phổ với COMP ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so COMP ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ COMP/BASE/DE/NDE" />}
+          description={`Tương đồng phổ với LOAD ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so LOAD ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ LOAD/BASE/DE/NDE" />}
         {applicable && <Alert type="warning" showIcon message="Lưu ý kỹ thuật" description="Tương đồng phổ không thay thế coherence/pha. Kết luận chính thức cần capture nhóm đồng bộ từ gateway." />}
       </Card></Col>
       <Col span={24}><Card title="Ma trận đặc trưng đa điểm"><Table rowKey="key" size="small" pagination={false} dataSource={matrix} scroll={{ x: 980 }} columns={[
@@ -522,7 +522,7 @@ export default function DeepAnalysis() {
         { title: '1X', dataIndex: 'one', render: (value) => `${num(value, 3)} mm/s` },
         { title: '2X', dataIndex: 'two', render: (value) => `${num(value, 3)} mm/s` },
         { title: 'f_mesh', dataIndex: 'mesh', render: (value) => value == null ? '—' : `${num(value, 3)} mm/s` },
-        { title: 'So COMP', dataIndex: 'sourceRatio', render: (value) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> },
+        { title: 'So LOAD', dataIndex: 'sourceRatio', render: (value) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> },
         { title: 'So BASE', dataIndex: 'baseRatio', render: (value) => value == null ? '—' : `${num(value, 2)}×` },
         { title: 'Tương đồng phổ', dataIndex: 'correlation', render: (value) => value == null ? '—' : `${num(value * 100, 0)}%` },
         { title: 'Capture', dataIndex: 'capture', render: (value) => <span className="muted">{dt(value.ts)}</span> },

@@ -105,11 +105,11 @@ def pos_label(i, pinfo):
     if role == "base":
         return "BASE"
     if role == "source":
-        return "COMP"
+        return "LOAD"
     loc = str(pinfo.get("location") or "").strip().upper()
-    legacy = {"S1": "COMP", "S2": "BASE", "S3": "DE", "S4": "NDE"}
+    legacy = {"S1": "LOAD", "S2": "BASE", "S3": "DE", "S4": "NDE", "COMP": "LOAD"}
     loc = legacy.get(loc, loc)
-    if loc in ("DE", "NDE", "BASE", "COMP"):
+    if loc in ("DE", "NDE", "BASE", "LOAD"):
         return loc
     return loc[:8] if loc else "--"
 
@@ -483,7 +483,7 @@ class Panel(QWidget):
         for m in (self.state or {}).get("machines") or []:
             for p in m.get("points") or []:
                 out.append((m, p))
-        order = ("DE", "NDE", "BASE", "COMP")   # fixed order on screen, whatever the config order is
+        order = ("DE", "NDE", "BASE", "LOAD")   # fixed order on screen, whatever the config order is
         out.sort(key=lambda mp: order.index(pos_label(0, mp[1])) if pos_label(0, mp[1]) in order else len(order))
         return out
 
