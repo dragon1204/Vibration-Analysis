@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Descriptions, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Card, Col, Descriptions, Drawer, Input, Modal, Popconfirm, Row, Select, Space, Table, Tag, Typography } from 'antd'
 import { api, post } from '../api/client'
 import { useRealtime } from '../api/realtime'
 import { useAuth } from '../auth'
@@ -88,19 +88,20 @@ export default function Devices() {
         </div>
         {selectedGatewayInfo?.assigned_machine_name && <Typography.Paragraph type="secondary" style={{ margin: '10px 0 0' }}>Xác nhận sẽ đóng phiên đo của <strong>{selectedGatewayInfo.assigned_machine_name}</strong>, giữ nguyên lịch sử, rồi kích hoạt cấu hình của máy mới.</Typography.Paragraph>}
       </Card>}
-      <Card size="small" title="Gateway (T153)">
-        <Table size="small" rowKey="id" loading={isLoading} dataSource={data}
-          onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: 'pointer' } })}
-          columns={[
-            { title: 'Gateway', dataIndex: 'id' }, { title: 'Site', dataIndex: 'site_id' },
-            { title: 'Máy đang đo', key: 'assignment', render: (_, r: any) => r.assigned_machine_id ? <><Tag color="blue">{r.assigned_machine_name || r.assigned_machine_id}</Tag><br /><Typography.Text type="secondary">từ {ago(r.deployment_started_at)}</Typography.Text></> : <Tag>Chưa gán</Tag> },
-            { title: 'Trạng thái', dataIndex: 'online', render: (o) => (o ? <Tag color="green">Trực tuyến</Tag> : <Tag>Mất kết nối</Tag>) },
-            { title: 'Phiên bản', dataIndex: 'fw_version' }, { title: 'Liên lạc cuối', dataIndex: 'last_seen', render: (v) => ago(v) },
-            { title: 'Outbox', key: 'ob', render: (_, r: any) => r.health?.outbox_pending ?? '–' },
-            { title: 'CPU / RAM', key: 'cpu', render: (_, r: any) => r.health ? `${num(r.health.cpu_pct, 0)}% / ${num(r.health.mem_rss_mb, 0)} MB` : '–', responsive: ['md'] },
-            { title: 'Mạng', key: 'net', render: (_, r: any) => r.health ? `${r.health.net_iface || ''} ${r.health.rssi_dbm != null ? num(r.health.rssi_dbm, 0) + ' dBm' : ''}` : '–', responsive: ['lg'] },
-            { title: 'Điểm đo', dataIndex: 'points' }, { title: 'Cấu hình', dataIndex: 'config_version', render: (v) => `v${v}` },
-          ]} />
+      <Card size="small" title="Gateway (T153)" loading={isLoading}>
+        <Row gutter={[14, 14]}>
+          {data.map((gateway: any) => <Col xs={24} md={12} xl={8} key={gateway.id}>
+            <Card size="small" className="gateway-summary-card" title={<Space><strong>{gateway.id}</strong><Tag color={gateway.online ? 'green' : 'default'}>{gateway.online ? 'Trực tuyến' : 'Mất kết nối'}</Tag></Space>}
+              extra={<Button type="link" size="small" onClick={() => setOpen(gateway.id)}>Chi tiết</Button>}>
+              <Descriptions size="small" column={1} colon={false}>
+                <Descriptions.Item label="Máy đang đo">{gateway.assigned_machine_id ? <strong>{gateway.assigned_machine_name || gateway.assigned_machine_id}</strong> : <Typography.Text type="secondary">Chưa gán</Typography.Text>}</Descriptions.Item>
+                <Descriptions.Item label="Phiên đo">{gateway.deployment_started_at ? `Từ ${ago(gateway.deployment_started_at)}` : '–'}</Descriptions.Item>
+                <Descriptions.Item label="Kết nối cuối">{ago(gateway.last_seen)}</Descriptions.Item>
+                <Descriptions.Item label="Cấu hình">v{gateway.config_version} · {gateway.fw_version || '–'}</Descriptions.Item>
+              </Descriptions>
+            </Card>
+          </Col>)}
+        </Row>
       </Card>
       <Drawer open={!!open} width={760} onClose={() => setOpen(undefined)} title={`Gateway ${open}`}>
         {gw && (
