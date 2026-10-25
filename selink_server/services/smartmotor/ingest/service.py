@@ -58,8 +58,8 @@ VALUES ($1,$2,$3,$4,$5) ON CONFLICT (machine_id, ts) DO UPDATE
 SET running=EXCLUDED.running, source=EXCLUDED.source, msg_id=EXCLUDED.msg_id"""
 
 SQL_TEMP = """
-INSERT INTO temp_metrics (ts, machine_id, frame_temp_c, ambient_temp_c, bearing_temp_c, winding_temp_est_c,
-  winding_rise_est_k, thermal_model) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+INSERT INTO temp_metrics (ts, machine_id, frame_temp_c, ambient_temp_c, bearing_temp_c, sensor_temp_c, winding_temp_est_c,
+  winding_rise_est_k, thermal_model) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 ON CONFLICT (machine_id, ts) DO NOTHING"""
 
 
@@ -277,8 +277,8 @@ class Ingest:
 
     async def on_metrics_temp(self, t: Topic, d) -> None:
         await self.batch.add(SQL_TEMP, [(d.ts, d.machine_id, _num(d.frame_temp_c), _num(d.ambient_temp_c),
-                                         _num(d.bearing_temp_c), _num(d.winding_temp_est_c), _num(d.winding_rise_est_k),
-                                         d.thermal_model)])
+                                         _num(d.bearing_temp_c), _num(d.sensor_temp_c), _num(d.winding_temp_est_c),
+                                         _num(d.winding_rise_est_k), d.thermal_model)])
         await bus.publish(self.redis, f"rt:machine:{d.machine_id}", {"type": "temp", **json.loads(d.model_dump_json())})
 
     # ------------------------------------------------------------------ captures

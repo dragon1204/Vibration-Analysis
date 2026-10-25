@@ -39,7 +39,7 @@ export default function Machines() {
         { title: 'Trạng thái', dataIndex: 'status', render: (value) => <Tag color={statusColor[value]}>{statusLabel[value] || value}</Tag> },
         { title: 'ISO', dataIndex: 'iso_zone', render: (value) => value ? <ZoneTag zone={value} /> : '—' },
         { title: 'Rung RMS ISO', dataIndex: 'vib_max_mm_s', render: (value) => value == null ? '—' : `${num(value, 2)} mm/s` },
-        { title: 'Nhiệt ổ bi', dataIndex: 'bearing_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },
+        { title: 'Nhiệt độ sensor', dataIndex: 'sensor_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },
         { title: 'Sức khỏe', dataIndex: 'health_index', render: (value) => value == null ? '—' : `${num(value, 0)}%` },
         { title: 'RUL', dataIndex: 'rul_days', render: (value) => value == null ? '—' : `${num(value, 0)} ngày` },
         { title: '', align: 'right', render: (_, row: any) => <Button onClick={() => nav(`/machines/${row.id}/live`)}>Giám sát</Button> },

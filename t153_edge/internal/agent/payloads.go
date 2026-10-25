@@ -113,6 +113,7 @@ type tempMetrics struct {
 	FrameTempC      *float64 `json:"frame_temp_c"`
 	AmbientTempC    *float64 `json:"ambient_temp_c"`
 	BearingTempC    *float64 `json:"bearing_temp_c"`
+	SensorTempC     *float64 `json:"sensor_temp_c"`
 	WindingTempEstC *float64 `json:"winding_temp_est_c"`
 	WindingRiseEstK *float64 `json:"winding_rise_est_k"`
 	ThermalModel    string   `json:"thermal_model"`

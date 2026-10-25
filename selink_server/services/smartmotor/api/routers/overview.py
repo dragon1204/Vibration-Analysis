@@ -47,7 +47,7 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
                                FROM vib_metrics v JOIN measurement_points p ON p.id=v.point_id
                                WHERE p.machine_id = ANY($1) AND p.role='bearing' AND v.ts > now() - interval '10 minutes'
                                GROUP BY p.machine_id""", mids)
-        temps = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, winding_temp_est_c, bearing_temp_c, frame_temp_c
+        temps = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, winding_temp_est_c, bearing_temp_c, sensor_temp_c, frame_temp_c
                                  FROM temp_metrics WHERE machine_id = ANY($1) AND ts > now() - interval '30 minutes'
                                  ORDER BY machine_id, ts DESC""", mids)
         power = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, running, load_pct FROM power_metrics
@@ -110,7 +110,8 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
             "rul_hi_days": r.get("rul_hi_days"), "rul_detail": r.get("detail"),
             "iso_zone": z.get("iso_zone"), "iso_vrms_mm_s": z.get("iso_vrms_max_mm_s"),
             "vib_max_mm_s": z.get("iso_vrms_max_mm_s"), "iso_ts": z.get("ts"),
-            "bearing_temp_c": (temp_m.get(mid) or {}).get("bearing_temp_c") or (vib_m.get(mid) or {}).get("tmax"),
+            "bearing_temp_c": (temp_m.get(mid) or {}).get("bearing_temp_c"),
+            "sensor_temp_c": (temp_m.get(mid) or {}).get("sensor_temp_c") or (vib_m.get(mid) or {}).get("tmax"),
             "winding_temp_est_c": (temp_m.get(mid) or {}).get("winding_temp_est_c"), "running": running,
             "load_pct": (pow_m.get(mid) or {}).get("load_pct"),
             "iso_limits": {"ab": lim.ab, "bc": lim.bc, "cd": lim.cd}, "trend_7d": trend_m.get(mid, []),

@@ -441,7 +441,8 @@ export default function Live() {
   const power = status.power
   const temps = status.temps
   const temperatureRows = [
-    ['Ổ DE', temps?.bearing_temp_c], ['Vỏ động cơ', temps?.frame_temp_c], ['Môi trường', temps?.ambient_temp_c],
+    ['Sensor temperature', temps?.sensor_temp_c], ['Bearing housing (PT100)', temps?.bearing_temp_c],
+    ['Motor housing (PT100)', temps?.frame_temp_c], ['Ambient', temps?.ambient_temp_c],
     ['Cuộn dây (ước lượng)', temps?.winding_temp_est_c],
   ].filter(([, value]) => value != null)
   const powerRows = [

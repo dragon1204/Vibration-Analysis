@@ -336,7 +336,7 @@ async def machine_temps(machine_id: str, request: Request, rng=Depends(time_rang
     bucket = _bucket(frm, to)
     async with request.app.state.pool.acquire() as c:
         rows = await c.fetch(f"""SELECT time_bucket('{bucket}', ts) AS ts, avg(frame_temp_c) frame_temp_c,
-                                   avg(ambient_temp_c) ambient_temp_c, avg(bearing_temp_c) bearing_temp_c,
+                                   avg(ambient_temp_c) ambient_temp_c, avg(bearing_temp_c) bearing_temp_c, avg(sensor_temp_c) sensor_temp_c,
                                    avg(winding_temp_est_c) winding_temp_est_c, avg(winding_rise_est_k) winding_rise_est_k
                                  FROM temp_metrics WHERE machine_id=$1 AND ts BETWEEN $2 AND $3 GROUP BY 1 ORDER BY 1""",
                              machine_id, frm, to)

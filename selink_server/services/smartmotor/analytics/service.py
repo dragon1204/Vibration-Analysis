@@ -178,14 +178,15 @@ class Analytics:
                                  machine["id"])
             p = await c.fetchrow("SELECT * FROM power_metrics WHERE machine_id=$1 AND ts > now()-interval '30 min' ORDER BY ts DESC LIMIT 1",
                                  machine["id"])
-            vt = await c.fetchval("SELECT avg(temp_c) FROM vib_metrics WHERE point_id=$1 AND ts > now()-interval '10 min'", point["id"])
             bl = await c.fetch("SELECT feature, median, warn, alarm FROM baselines WHERE point_id=$1 AND status='active' AND load_bin='all'",
                                point["id"])
             rule = await c.fetchrow("""SELECT params FROM alarm_rules WHERE rule='diagnose' AND enabled
                                        AND (scope='global' OR (scope='machine' AND scope_id=$1)) ORDER BY scope='machine' DESC LIMIT 1""",
                                     machine["id"])
         baseline = {r["feature"]: dict(r) for r in bl}
-        bearing_t = (t["bearing_temp_c"] if t and t["bearing_temp_c"] is not None else None) or vt
+        # A vibration sensor's internal temperature is telemetry, not independent proof
+        # of bearing-housing overheating. Only a dedicated PT100 may confirm that fault.
+        bearing_t = t["bearing_temp_c"] if t and t["bearing_temp_c"] is not None else None
         mesh_base = None
         for k in ("x.mesh_mm_s", "z.mesh_mm_s"):
             if k in baseline and baseline[k]["median"]:

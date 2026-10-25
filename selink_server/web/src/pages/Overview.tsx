@@ -71,7 +71,7 @@ export default function Overview() {
                                 : <Tag>Dừng</Tag>}
                             </Space>
                             <div className="metric-line"><Tooltip title={m.iso_ts ? `Vận tốc RMS ISO lớn nhất (trục hướng kính) · capture ${ago(m.iso_ts)}` : 'Chưa có capture'}><span>Rung RMS ISO</span></Tooltip><strong>{num(m.vib_max_mm_s)} mm/s</strong></div>
-                            <div className="metric-line"><span>Nhiệt độ ổ</span><strong>{num(m.bearing_temp_c, 1)} °C</strong></div>
+                            <div className="metric-line"><span>Nhiệt độ sensor</span><strong>{num(m.sensor_temp_c, 1)} °C</strong></div>
                             <div className="metric-line"><span>Cuộn dây <EstimateTag /></span><strong>{num(m.winding_temp_est_c, 1)} °C</strong></div>
                             {m.rul_days != null && (
                               <div>RUL: <b>{num(m.rul_days, 0)}</b> ngày ({num(m.rul_lo_days, 0)}–{num(m.rul_hi_days, 0)}) <EstimateTag /></div>

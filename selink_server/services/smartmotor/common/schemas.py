@@ -122,6 +122,7 @@ class TempMetrics(_M):
     frame_temp_c: Optional[float] = None
     ambient_temp_c: Optional[float] = None
     bearing_temp_c: Optional[float] = None
+    sensor_temp_c: Optional[float] = None
     winding_temp_est_c: Optional[float] = None
     winding_rise_est_k: Optional[float] = None
     thermal_model: Optional[str] = None

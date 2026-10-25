@@ -340,12 +340,12 @@ func (p *pointRT) flushWindow(end time.Time) {
 			}
 		}
 		p.a.view.SetIndicators(p.cfg.ID, vi)
-		// Bearing housing temperature from the sensor itself.
+		// Internal sensor temperature: useful for sensor health, but not a PT100 housing measurement.
 		if p.cfg.Role == "bearing" && !math.IsNaN(tMean) {
 			p.a.handleEvents(p.a.engine.Evaluate(rules.Observation{
 				MachineID: p.m.cfg.ID, PointID: p.cfg.ID, Rule: "bearing_temp", Metric: "temp_c", Value: tMean,
 				Limits:  rules.Thresholds{Warning: p.a.cfg.Rules.BearingTempWarningC, Danger: p.a.cfg.Rules.BearingTempAlarmC},
-				Message: "Nhiệt độ ổ đỡ vượt ngưỡng",
+				Message: "Nhiệt độ cảm biến vượt ngưỡng",
 			}, end))
 			p.m.setBearingTemp(p.cfg.ID, tMean)
 		}

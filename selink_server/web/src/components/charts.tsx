@@ -215,11 +215,14 @@ const axisLabel = (a: string, roles?: Record<string, string>) => `${a.toUpperCas
 
 /** Acceleration waveform. One axis at a time by default (three overlaid 2 kS/s traces read as a solid band),
  * opened on the first ~100 ms so individual cycles are visible; the slider pans/zooms over the whole frame. */
-export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis = 'x', windowS = 0.1, roles }: {
-  roles?: Record<string, string>; axes: Record<string, number[]>; dt: number; unit?: string; height?: number; defaultAxis?: string; windowS?: number
+export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windowS = 0.1, roles }: {
+  roles?: Record<string, string>; axes: Record<string, number[]>; dt: number; height?: number; defaultAxis?: string; windowS?: number
 }) {
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
+  // Gateway samples are g. Engineering view defaults to SI while retaining g as a quick check.
+  const [accUnit, setAccUnit] = useState<'m/s²' | 'g'>('m/s²')
+  const scale = accUnit === 'm/s²' ? 9.80665 : 1
   const total = Math.max(0, ...names.map((a) => axes[a]?.length || 0)) * dt
   const defaultEndPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
 
@@ -261,7 +264,7 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
       grid: { left: 52, right: 16, top: 16, bottom: 56 },
       tooltip: {
         trigger: 'axis',
-        valueFormatter: (v: number) => `${num(v, 3)} ${unit}`,
+        valueFormatter: (v: number) => `${num(v, 3)} ${accUnit}`,
         axisPointer: {
           label: {
             formatter: (p: any) => (p.axisDimension === 'x' ? `${num(p.value * 1000, 1)} ms` : num(p.value, 3)),
@@ -288,7 +291,7 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
       },
       yAxis: {
         type: 'value',
-        name: unit,
+        name: accUnit,
         nameTextStyle: { align: 'left' },
         axisLabel: { formatter: axisNum },
       },
@@ -304,11 +307,11 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
             width: isAll ? 1 : 1.5,
             opacity: isShown ? (isAll ? 0.85 : 1) : 0,
           },
-          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, v]) : [],
+          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, v * scale]) : [],
         }
       }),
     }
-  }, [axes, dt, unit, names, sel, zoomRange])
+  }, [axes, dt, accUnit, scale, names, sel, zoomRange])
 
   return (
     <div>
@@ -330,6 +333,8 @@ export function WaveformChart({ axes, dt, unit = 'g', height = 260, defaultAxis 
             { value: 'all', label: 'Cả 3 trục' },
           ]}
         />
+        <Segmented size="small" value={accUnit} onChange={(v) => setAccUnit(v as 'm/s²' | 'g')}
+          options={[{ value: 'm/s²', label: 'm/s²' }, { value: 'g', label: 'g' }]} />
         <span className="muted">Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
       </div>
       <ReactECharts

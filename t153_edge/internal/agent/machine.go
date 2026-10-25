@@ -396,9 +396,10 @@ func (m *machineRT) flushWindow(end time.Time) {
 	m.powerWin = nil
 	frameC, ambC := m.frameC, m.ambC
 	bearing := m.ptBearingC
+	sensorTemp := math.NaN()
 	for _, t := range m.bearingTemps {
-		if math.IsNaN(bearing) || t > bearing {
-			bearing = t
+		if math.IsNaN(sensorTemp) || t > sensorTemp {
+			sensorTemp = t
 		}
 	}
 	m.mu.Unlock()
@@ -463,7 +464,7 @@ func (m *machineRT) flushWindow(end time.Time) {
 		return
 	}
 	msg := tempMetrics{MsgID: ulid.New(), TS: tsString(end), MachineID: m.cfg.ID, FrameTempC: fptr(frameC),
-		AmbientTempC: fptr(ambC), BearingTempC: fptr(bearing), ThermalModel: thermal.Version}
+		AmbientTempC: fptr(ambC), BearingTempC: fptr(bearing), SensorTempC: fptr(sensorTemp), ThermalModel: thermal.Version}
 	if out != nil {
 		msg.WindingTempEstC = fptr(out.WindingTempC)
 		msg.WindingRiseEstK = fptr(out.WindingRiseK)

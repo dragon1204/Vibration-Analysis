@@ -1078,9 +1078,7 @@ class ComparePage(QWidget):
                 alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
                 own = None if b is None or d is None else math.sqrt(max(0.0, b * b - (alpha * d) ** 2))
                 self.cells[(r, len(pts) + 2)].setText(fmt(own))
-        alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
-        self.note.setText("BEARING-CORRECTED RMS = √(DE² - (α × BASE)²)  ·  α = %s" % fmt(alpha, 1)
-                          if self.has_ratio else "")
+        self.note.setText("BEARING-CORRECTED RMS = √(DE² − (k × BASE)²)" if self.has_ratio else "")
 
 
 class SplashPage(QWidget):
