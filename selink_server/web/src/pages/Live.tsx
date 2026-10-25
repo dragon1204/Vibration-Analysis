@@ -119,6 +119,17 @@ function worstIsoReading(point: any, basePoint?: any): { axis: string; reading: 
   return best || readings[0] || { axis: 'z', reading: bearingIsoValue(point, 'z', basePoint) }
 }
 
+/** Raw sensor measurement for the sensor tile. Never replace this with a derived ISO value. */
+function worstRawReading(point: any): { axis: string; reading: ReturnType<typeof isoValue> } {
+  const axes = (point?.iso_axes?.length ? point.iso_axes : ['x', 'y', 'z']) as string[]
+  const readings = axes.map((axis) => ({ axis, reading: isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] }) }))
+  const best = readings.reduce<typeof readings[number] | null>((worst, item) => {
+    if (item.reading.value == null) return worst
+    return !worst || worst.reading.value == null || item.reading.value > worst.reading.value ? item : worst
+  }, null)
+  return best || readings[0] || { axis: 'z', reading: isoValue({ point, axis: 'z', data: point?.axes?.z || {}, series: [] }) }
+}
+
 export function AnimatedNumber({ value, decimals = 2, fallback = '—' }: { value: number | null | undefined; decimals?: number; fallback?: string }) {
   const [displayValue, setDisplayValue] = useState<number | null>(value ?? null)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -187,9 +198,12 @@ function OverallZoneTag({ value, limits }: { value: number | null; limits: any }
 
 /** One square tile represents one physical sensor, with all of its X/Y/Z readings inside. */
 function SensorOverview({ index, point, basePoint, limits, active, onClick }: { index: number; point: any; basePoint?: any; limits: any; active: boolean; onClick: () => void }) {
-  const { axis: mainAxis, reading: main } = worstIsoReading(point, basePoint)
+  // The sensor tile is a measurement display: its large number is always direct sensor RMS.
+  const { axis: mainAxis, reading: main } = worstRawReading(point)
   const applicable = pointRole(point) === 'bearing'
-  const stable = useStableZone(main.value, limits)
+  // Zone evaluation remains separate and may use the bearing-corrected value.
+  const iso = applicable ? worstIsoReading(point, basePoint) : null
+  const stable = useStableZone(iso?.reading.value, limits)
   const zone = applicable ? stable : null
   const edge = zone ? ZONE_COLOR[zone] : '#5d7185'
   const axes = ROLE_ORDER.map((role) => axisOfRole(point, role)).filter((axis): axis is string => !!axis)
@@ -201,12 +215,12 @@ function SensorOverview({ index, point, basePoint, limits, active, onClick }: { 
         <span className={`overview-zone ${zone ? zoneClass[zone] : 'zone-empty'}`}>{zone ? `Vùng ${zone}` : applicable ? 'Chờ dữ liệu' : 'BASE'}</span>
       </div>
       <div className="sensor-overview-main">
-        <div><span>{applicable ? `Max Bearing-corrected RMS for ISO · ${axisName(point, mainAxis)} (${mainAxis.toUpperCase()})` : `RMS velocity · ${axisName(point, mainAxis)} (${mainAxis.toUpperCase()})`}</span><strong><AnimatedNumber value={main.value} decimals={2} fallback="--" /><small>mm/s</small></strong></div>
+        <div><span>{`RMS velocity · ${axisName(point, mainAxis)} (${mainAxis.toUpperCase()})`}</span><strong><AnimatedNumber value={main.value} decimals={2} fallback="--" /><small>mm/s</small></strong></div>
         <div className={`sensor-online ${point.gateway_online ? 'ok' : ''}`}><i />{point.gateway_online ? 'Trực tuyến' : 'Mất kết nối'}</div>
       </div>
       <div className="sensor-overview-axes">
         {axes.map((axis) => {
-          const reading = bearingIsoValue(point, axis, basePoint)
+          const reading = isoValue({ point, axis, data: point?.axes?.[axis] || {}, series: [] })
           return <div key={axis}>
             <span>{axisName(point, axis)} ({axis.toUpperCase()})</span>
             <b><AnimatedNumber value={reading.value} decimals={2} fallback="--" /> <small>mm/s</small></b>
@@ -235,7 +249,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
         <thead>
           <tr><th>Measurement axis</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
             {bearing && base && <th>Base / bearing ratio</th>}
-            {bearing && base && <th>Bearing-corrected RMS<small>{`α = ${num(BASE_ALPHA, 1)}`}</small></th>}</tr>
+            {bearing && base && <th>Bearing-corrected RMS</th>}</tr>
         </thead>
         <tbody>
           {ROLE_ORDER.map((role) => {
@@ -253,7 +267,6 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
           })}
         </tbody>
       </table>
-       {bearing && base && <div className="compare-note">Bearing-corrected RMS = √(DE² − (α × BASE)²) &nbsp;·&nbsp; α = {num(BASE_ALPHA, 1)}</div>}
       </div>
       <div className="compare-diagram"><img src={installation.image} alt={installation.name} /></div>
       </div>
