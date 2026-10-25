@@ -294,6 +294,7 @@ export default function Live() {
     queryFn: () => api(`/machines/${id}`),
     placeholderData: keepPreviousData,
   })
+  const { data: installationModels } = useQuery<any[]>({ queryKey: ['installation-models'], queryFn: () => api('/installation-models') })
   const { data: status, isLoading: isLoadingStatus, isFetching: isFetchingStatus } = useQuery<any>({
     queryKey: ['status', id],
     queryFn: () => api(`/machines/${id}/status`),
@@ -419,7 +420,7 @@ export default function Live() {
   const points = byPosition(status.points || [])
   const basePoint = points.find((point: any) => pointRole(point) === 'base')
   const isRunning = status.run_state?.running ?? status.power?.running ?? true
-  const installation = templateById(machine.meta?.installation_template)
+  const installation = templateById(machine.meta?.installation_template, installationModels)
   const selPoint = points.find((point: any) => point.id === wavePoint) || points[0]
   const selMeta = machine.points.find((point: any) => point.id === selPoint?.id) || selPoint
   const selApplicable = pointRole(selPoint) === 'bearing'

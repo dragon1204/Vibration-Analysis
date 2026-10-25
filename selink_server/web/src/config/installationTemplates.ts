@@ -5,6 +5,7 @@ export type InstallationTemplate = {
   image: string
   locations: string[]
   markers: Record<string, { x: number; y: number }>
+  algorithms?: string[]
 }
 
 // The images are supplied by the customer. Marker coordinates are percentages
@@ -29,3 +30,25 @@ export const installationTemplates: InstallationTemplate[] = [
 ]
 
 export const DEFAULT_INSTALLATION_TEMPLATE = 'motor-de-base'
+
+/** API models are persisted as sensor slots; normalise them for every diagram. */
+export function asInstallationTemplate(model: any): InstallationTemplate {
+  const slots = Array.isArray(model?.slots) ? model.slots : []
+  const locations = slots.map((slot: any) => String(slot.code || '').toUpperCase()).filter(Boolean)
+  const markers = Object.fromEntries(slots.map((slot: any) => [String(slot.code || '').toUpperCase(), {
+    x: Number(slot.marker?.x ?? 50), y: Number(slot.marker?.y ?? 50),
+  }]))
+  return {
+    id: model.id,
+    name: model.name,
+    description: model.description || '',
+    image: model.image_url || '',
+    locations,
+    markers,
+    algorithms: Array.isArray(model.algorithms) ? model.algorithms : [],
+  }
+}
+
+export function installationTemplateList(models?: any[]): InstallationTemplate[] {
+  return models?.length ? models.map(asInstallationTemplate) : installationTemplates
+}

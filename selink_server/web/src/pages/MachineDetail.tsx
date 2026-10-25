@@ -5,7 +5,7 @@ import { api, patch } from '../api/client'
 import { num } from '../utils/format'
 import MachineNav from './MachineNav'
 import InstallationDiagram from '../components/InstallationDiagram'
-import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplates } from '../config/installationTemplates'
+import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
 import { useAuth } from '../auth'
 
 export default function MachineDetail() {
@@ -14,6 +14,7 @@ export default function MachineDetail() {
   const queryClient = useQueryClient()
   const { can } = useAuth()
   const { data: m } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
+  const { data: installationModels } = useQuery<any[]>({ queryKey: ['installation-models'], queryFn: () => api('/installation-models') })
   const { data: runtime } = useQuery<any>({ queryKey: ['machine-runtime', id], queryFn: () => api(`/machines/${id}/runtime`), refetchInterval: 30_000 })
   const templateMutation = useMutation({
     mutationFn: (installation_template: string) => patch(`/machines/${id}`, { meta: { ...(m?.meta || {}), installation_template } }),
@@ -50,10 +51,10 @@ export default function MachineDetail() {
             value={m.meta?.installation_template || DEFAULT_INSTALLATION_TEMPLATE}
             loading={templateMutation.isPending}
             onChange={(value) => templateMutation.mutate(value)}
-            options={installationTemplates.map((item) => ({ value: item.id, label: item.name }))}
+            options={installationTemplateList(installationModels).map((item) => ({ value: item.id, label: item.name }))}
             style={{ minWidth: 280 }}
           /> : null}>
-            <InstallationDiagram templateId={m.meta?.installation_template} points={m.points || []} />
+            <InstallationDiagram templateId={m.meta?.installation_template} points={m.points || []} models={installationModels} />
           </Card>
         </Col>
         <Col xs={24} lg={12}>

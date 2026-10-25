@@ -21,6 +21,7 @@ const DeepAnalysis = lazy(() => import('./pages/DeepAnalysis'))
 const Accuracy = lazy(() => import('./pages/Accuracy'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Devices = lazy(() => import('./pages/Devices'))
+const InstallationModels = lazy(() => import('./pages/InstallationModels'))
 const Knowledge = lazy(() => import('./pages/Knowledge'))
 
 export default function App() {
@@ -71,10 +72,11 @@ export default function App() {
     { type: 'group', label: 'QUẢN TRỊ', children: [
       { key: '/knowledge', label: 'Mô hình AI & tri thức' },
       { key: '/devices', label: 'Thiết bị & gateway' },
+      { key: '/installation-models', label: 'Mô hình lắp đặt' },
     ] },
   ]
   const selected = loc.pathname === '/' ? '/' : loc.pathname.startsWith('/events') ? '/events'
-    : loc.pathname.startsWith('/reports') ? '/reports' : loc.pathname.startsWith('/knowledge') ? '/knowledge' : loc.pathname.startsWith('/devices') ? '/devices'
+    : loc.pathname.startsWith('/reports') ? '/reports' : loc.pathname.startsWith('/knowledge') ? '/knowledge' : loc.pathname.startsWith('/installation-models') ? '/installation-models' : loc.pathname.startsWith('/devices') ? '/devices'
       : loc.pathname.startsWith('/settings') ? '/settings' : loc.pathname.includes('/deep-analysis') ? deepPath : loc.pathname.includes('/rul') ? rulPath : loc.pathname.includes('/diagnosis') ? diagnosisPath
         : loc.pathname.startsWith('/points/') && loc.pathname.endsWith('/spectrum') ? 'spectrum'
           : loc.pathname.includes('/live') ? livePath : '/machines'
@@ -130,6 +132,7 @@ export default function App() {
               <Route path="/accuracy" element={<Accuracy />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/devices" element={<Devices />} />
+              <Route path="/installation-models" element={<InstallationModels />} />
               <Route path="/knowledge" element={<Knowledge />} />
               <Route path="/settings" element={<Navigate to="/devices" replace />} />
               <Route path="*" element={<Navigate to="/" />} />

@@ -12,7 +12,7 @@ from ..common.logs import setup
 from ..common.settings import get_settings
 from ..common.storage import Storage
 from . import ws
-from .routers import accuracy, auth, events, gateways, internal, machines, overview, points, provision, reports, sensors, settings_rt
+from .routers import accuracy, auth, events, gateways, installation_models, internal, machines, overview, points, provision, reports, sensors, settings_rt
 from .security import hash_password
 
 log = logging.getLogger("api")
@@ -54,7 +54,7 @@ app = FastAPI(title="Smart Motor API", version=__version__, lifespan=lifespan,
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
 
-for r in (auth, overview, machines, points, sensors, events, gateways, settings_rt, accuracy, reports, provision, internal):
+for r in (auth, overview, machines, points, sensors, events, gateways, installation_models, settings_rt, accuracy, reports, provision, internal):
     app.include_router(r.router, prefix="/api/v1")
 app.include_router(ws.router)
 
