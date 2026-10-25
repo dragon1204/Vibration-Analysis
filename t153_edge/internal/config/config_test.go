@@ -32,6 +32,14 @@ func TestSampleConfigs(t *testing.T) {
 	if b.Machines[0].ISOGroup != 1 || !b.Machines[0].Isolation.Enabled {
 		t.Fatal("beer hn isolation config")
 	}
+	tg, err := Load(deployFile("edge.truonggiang.yaml"))
+	if err != nil || len(tg.Machines[0].RunDetection.Sources) != 1 {
+		t.Fatalf("truong giang run config: %v", err)
+	}
+	s := tg.Machines[0].RunDetection.Sources[0]
+	if s.PointID != "pump-tg-01-p1" || len(s.Axes) != 1 || s.Axes[0] != "z" || s.ThresholdMMs != 0.5 {
+		t.Fatalf("unexpected default RUN source: %+v", s)
+	}
 }
 
 func TestSubsecondVibrationIntervals(t *testing.T) {

@@ -4,6 +4,7 @@ import csv
 import io
 from datetime import datetime
 from typing import Any, Optional
+import math
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -77,6 +78,31 @@ class MachineIn(BaseModel):
     male_lobes: Optional[int] = None
     isolation: Optional[dict] = None
     band_limits: Optional[list] = None
+
+
+def validate_run_detection(meta: dict | None, point_ids: set[str]) -> None:
+    """Reject unsafe RUN rules before they are versioned and sent to a gateway."""
+    if not meta or "run_detection" not in meta:
+        return
+    rule = meta["run_detection"]
+    if not isinstance(rule, dict):
+        raise HTTPException(422, "run_detection phải là một đối tượng")
+    for key in ("on_delay_s", "off_delay_s"):
+        value = rule.get(key, 10)
+        if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or value > 3600:
+            raise HTTPException(422, f"{key} phải nằm trong khoảng 0–3600 giây")
+    sources = rule.get("sources", [])
+    if not isinstance(sources, list) or not sources:
+        raise HTTPException(422, "Cần cấu hình ít nhất một nguồn RUN")
+    for source in sources:
+        if not isinstance(source, dict) or source.get("point_id") not in point_ids:
+            raise HTTPException(422, "RUN source phải thuộc động cơ đang cấu hình")
+        axes = source.get("axes")
+        if not isinstance(axes, list) or not axes or any(axis not in {"x", "y", "z"} for axis in axes):
+            raise HTTPException(422, "RUN source cần chọn ít nhất một trục X, Y hoặc Z")
+        threshold = source.get("threshold_mm_s")
+        if not isinstance(threshold, (int, float)) or not math.isfinite(threshold) or threshold <= 0 or threshold > 100:
+            raise HTTPException(422, "Ngưỡng RUN phải lớn hơn 0 và không quá 100 mm/s")
 
 
 @router.get("/machines")
@@ -210,6 +236,9 @@ async def update_machine(machine_id: str, body: MachineIn, request: Request, use
         return {"ok": True}
     sets = ", ".join(f"{k}=${i + 2}" for i, k in enumerate(data))
     async with pool.acquire() as c:
+        if "meta" in data:
+            point_rows = await c.fetch("SELECT id FROM measurement_points WHERE machine_id=$1", machine_id)
+            validate_run_detection(data["meta"], {row["id"] for row in point_rows})
         await c.execute(f"UPDATE machines SET {sets} WHERE id=$1", machine_id, *data.values())
         gateways = [r["gateway_id"] for r in await c.fetch(
             "SELECT DISTINCT gateway_id FROM measurement_points WHERE machine_id=$1 AND gateway_id IS NOT NULL", machine_id)]
