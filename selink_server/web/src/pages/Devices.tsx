@@ -18,6 +18,9 @@ export default function Devices() {
   const [configuredMachine, setConfiguredMachine] = useState<any>()
   const [deploymentMachine, setDeploymentMachine] = useState<string>()
   const [deploying, setDeploying] = useState(false)
+  const [assignmentGateway, setAssignmentGateway] = useState<string>()
+  const [assignmentMachine, setAssignmentMachine] = useState<string>()
+  const [assigning, setAssigning] = useState(false)
   const [cmd, setCmd] = useState<{ type: string; point_id?: string; profile?: string; url?: string; sha256?: string; machine_id?: string } | null>(null)
   const { data = [], isLoading } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways'), refetchInterval: 30_000 })
   const { data: gw } = useQuery<any>({ queryKey: ['gateway', open], queryFn: () => api(`/gateways/${open}`), enabled: !!open })
@@ -55,12 +58,36 @@ export default function Devices() {
       qc.invalidateQueries({ queryKey: ['machines'] })
     } catch (e: any) { message.error(e.message) } finally { setDeploying(false) }
   }
+  const assignFromBoard = async () => {
+    if (!assignmentGateway || !assignmentMachine) return
+    setAssigning(true)
+    try {
+      const result = await post(`/gateways/${assignmentGateway}/deployments`, { machine_id: assignmentMachine })
+      message.success(result.unchanged ? 'Gateway đã được gán cho máy này' : `Đã phân công thành công · cấu hình v${result.config_version}`)
+      setAssignmentMachine(undefined)
+      qc.invalidateQueries({ queryKey: ['gateways'] })
+      qc.invalidateQueries({ queryKey: ['gateway', assignmentGateway] })
+      qc.invalidateQueries({ queryKey: ['machines'] })
+    } catch (e: any) { message.error(e.message) } finally { setAssigning(false) }
+  }
+  const selectedGatewayInfo = data.find((gateway: any) => gateway.id === assignmentGateway)
+  const assignmentMachines = machines.filter((machine: any) => !selectedGatewayInfo || machine.site_id === selectedGatewayInfo.site_id)
   return (
     <div className="page">
       {can('admin') && <AddGateway />}
       <div className="page-hero" style={{ marginBottom: 14 }}>
         <div><div className="page-kicker">Portable acquisition hardware</div><h1 className="page-heading">Thiết bị & gateway</h1><p className="page-description">Gateway là thiết bị di động. Mỗi lần phân công sẽ tạo một phiên đo gắn với máy, giữ nguyên lịch sử và chỉ đẩy cấu hình của máy đang đo.</p></div>
       </div>
+      {can('analyst') && <Card size="small" className="gateway-assignment-board" title="Phân công gateway cho máy" style={{ marginBottom: 14 }} extra={<Typography.Text type="secondary">Một gateway · một máy tại một thời điểm</Typography.Text>}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(230px, 1fr) minmax(260px, 1fr) auto', gap: 12, alignItems: 'center' }}>
+          <Select value={assignmentGateway} placeholder="1. Chọn gateway" onChange={(value) => { setAssignmentGateway(value); setAssignmentMachine(undefined) }}
+            options={data.map((gateway: any) => ({ value: gateway.id, label: `${gateway.id}${gateway.assigned_machine_name ? ` · đang đo ${gateway.assigned_machine_name}` : ' · chưa gán'}` }))} />
+          <Select value={assignmentMachine} placeholder="2. Chọn động cơ / máy" disabled={!assignmentGateway} onChange={setAssignmentMachine}
+            options={assignmentMachines.map((machine: any) => ({ value: machine.id, label: `${machine.name} (${machine.id})` }))} />
+          <Button type="primary" loading={assigning} disabled={!assignmentGateway || !assignmentMachine} onClick={assignFromBoard}>Phân công & đẩy cấu hình</Button>
+        </div>
+        {selectedGatewayInfo?.assigned_machine_name && <Typography.Paragraph type="secondary" style={{ margin: '10px 0 0' }}>Xác nhận sẽ đóng phiên đo của <strong>{selectedGatewayInfo.assigned_machine_name}</strong>, giữ nguyên lịch sử, rồi kích hoạt cấu hình của máy mới.</Typography.Paragraph>}
+      </Card>}
       <Card size="small" title="Gateway (T153)">
         <Table size="small" rowKey="id" loading={isLoading} dataSource={data}
           onRow={(r) => ({ onClick: () => setOpen(r.id), style: { cursor: 'pointer' } })}
