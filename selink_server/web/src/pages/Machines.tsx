@@ -37,20 +37,18 @@ export default function Machines() {
         <Select allowClear placeholder="Trạng thái" value={status} onChange={setStatus} style={{ width: 170 }} options={Object.entries(statusLabel).map(([value, label]) => ({ value, label }))} />
         <Tag>{rows.length} động cơ</Tag>
       </Space>
-      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} scroll={{ x: 'max-content' }}
+      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} tableLayout="fixed"
         onRow={(record: any) => ({ onClick: () => nav(`/machines/${record.id}`), style: { cursor: 'pointer' } })} columns={[
-        { title: 'Mã', dataIndex: 'id', render: (value) => <b>{String(value).toUpperCase()}</b> },
-        { title: 'Động cơ', key: 'machine', render: (_, row: any) => <div className="wrap-cell"><b>{row.name}</b><div className="muted">{[row.type, row.rated_power_kw ? `${num(row.rated_power_kw, 0)} kW` : null].filter(Boolean).join(' · ') || '—'}</div></div> },
-        { title: 'Nhà máy', dataIndex: 'site_name', render: (value, row: any) => value || row.site_id },
-        { title: 'Cảnh báo', dataIndex: 'status', render: (value) => <Tag color={statusColor[value]}>{statusLabel[value] || value}</Tag> },
-        { title: 'Kết nối', dataIndex: 'online', render: (value) => <Tag color={value ? 'blue' : 'default'}>{value ? 'Trực tuyến' : 'Mất kết nối'}</Tag> },
-        { title: 'Vận hành', key: 'operation', render: (_, row: any) => operation(row) },
-        { title: 'ISO', dataIndex: 'iso_zone', render: (value) => value ? <ZoneTag zone={value} /> : '—' },
-        { title: 'Rung RMS ISO', dataIndex: 'vib_max_mm_s', render: (value) => value == null ? '—' : `${num(value, 2)} mm/s` },
-        { title: 'Nhiệt độ sensor', dataIndex: 'sensor_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },
-        { title: 'Sức khỏe', dataIndex: 'health_index', render: (value) => value == null ? '—' : `${num(value, 0)}%` },
-        { title: 'RUL', dataIndex: 'rul_days', render: (value) => value == null ? '—' : `${num(value, 0)} ngày` },
-        { title: '', align: 'right', fixed: 'right', render: (_, row: any) => <Space size={6}>
+        { title: 'Động cơ', key: 'machine', width: '28%', render: (_, row: any) => <div className="wrap-cell">
+          <b>{row.name}</b>
+          <div className="muted">{[String(row.id).toUpperCase(), row.site_name || row.site_id, row.type, row.rated_power_kw ? `${num(row.rated_power_kw, 0)} kW` : null].filter(Boolean).join(' · ')}</div>
+        </div> },
+        { title: 'Cảnh báo', dataIndex: 'status', width: '12%', render: (value) => <Tag color={statusColor[value]}>{statusLabel[value] || value}</Tag> },
+        { title: 'Kết nối', dataIndex: 'online', width: '12%', render: (value) => <Tag color={value ? 'blue' : 'default'}>{value ? 'Trực tuyến' : 'Mất kết nối'}</Tag> },
+        { title: 'Vận hành', key: 'operation', width: '13%', render: (_, row: any) => operation(row) },
+        { title: 'ISO', dataIndex: 'iso_zone', width: '9%', render: (value) => value ? <ZoneTag zone={value} /> : '—' },
+        { title: 'RMS ISO', dataIndex: 'vib_max_mm_s', width: '10%', render: (value) => value == null ? '—' : `${num(value, 2)} mm/s` },
+        { title: '', align: 'right', width: 190, render: (_, row: any) => <Space size={6}>
           <Button onClick={(event) => { event.stopPropagation(); nav(`/machines/${row.id}`) }}>Chi tiết</Button>
           <Button type="primary" onClick={(event) => { event.stopPropagation(); nav(`/machines/${row.id}/live`) }}>Giám sát</Button>
         </Space> },
