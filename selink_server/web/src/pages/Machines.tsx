@@ -37,7 +37,8 @@ export default function Machines() {
         <Select allowClear placeholder="Trạng thái" value={status} onChange={setStatus} style={{ width: 170 }} options={Object.entries(statusLabel).map(([value, label]) => ({ value, label }))} />
         <Tag>{rows.length} động cơ</Tag>
       </Space>
-      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} scroll={{ x: 'max-content' }} onRow={(record: any) => ({ onDoubleClick: () => nav(`/machines/${record.id}/live`) })} columns={[
+      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} scroll={{ x: 'max-content' }}
+        onRow={(record: any) => ({ onClick: () => nav(`/machines/${record.id}`), style: { cursor: 'pointer' } })} columns={[
         { title: 'Mã', dataIndex: 'id', render: (value) => <b>{String(value).toUpperCase()}</b> },
         { title: 'Động cơ', key: 'machine', render: (_, row: any) => <div className="wrap-cell"><b>{row.name}</b><div className="muted">{[row.type, row.rated_power_kw ? `${num(row.rated_power_kw, 0)} kW` : null].filter(Boolean).join(' · ') || '—'}</div></div> },
         { title: 'Nhà máy', dataIndex: 'site_name', render: (value, row: any) => value || row.site_id },
@@ -49,7 +50,10 @@ export default function Machines() {
         { title: 'Nhiệt độ sensor', dataIndex: 'sensor_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },
         { title: 'Sức khỏe', dataIndex: 'health_index', render: (value) => value == null ? '—' : `${num(value, 0)}%` },
         { title: 'RUL', dataIndex: 'rul_days', render: (value) => value == null ? '—' : `${num(value, 0)} ngày` },
-        { title: '', align: 'right', render: (_, row: any) => <Button onClick={() => nav(`/machines/${row.id}/live`)}>Giám sát</Button> },
+        { title: '', align: 'right', fixed: 'right', render: (_, row: any) => <Space size={6}>
+          <Button onClick={(event) => { event.stopPropagation(); nav(`/machines/${row.id}`) }}>Chi tiết</Button>
+          <Button type="primary" onClick={(event) => { event.stopPropagation(); nav(`/machines/${row.id}/live`) }}>Giám sát</Button>
+        </Space> },
       ]} />
     </Card>
   </div>
