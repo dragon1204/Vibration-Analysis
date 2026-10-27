@@ -103,7 +103,14 @@ export default function Devices() {
           </Col>)}
         </Row>
       </Card>
-      <Drawer open={!!open} width={760} onClose={() => setOpen(undefined)} title={`Gateway ${open}`}>
+      <Drawer
+        open={!!open}
+        width="min(960px, 88vw)"
+        rootStyle={{ top: 56 }}
+        styles={{ body: { overflowY: 'auto' } }}
+        onClose={() => setOpen(undefined)}
+        title={`Gateway ${open}`}
+      >
         {gw && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Descriptions size="small" bordered column={2}>
