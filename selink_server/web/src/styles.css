@@ -289,7 +289,7 @@ body { background: #f4f6fb; color: #17213a; }
 .app-sidebar::after { content: "SELINK SMART MOTOR"; position: absolute; right: 0; bottom: 0; left: 0; padding: 16px; color: #70819a; border-top: 1px solid #1d2942; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
 
 /* Customer-supplied installation drawings with responsive live labels. */
-.installation-diagram { max-width: 1100px; margin: 0 auto; }
+.installation-diagram { width: min(100%, 820px); margin: 0 auto; }
 .installation-image-wrap { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .installation-image { display: block; width: 100%; height: auto; }
 .installation-marker { position: absolute; transform: translate(-50%, -50%); display: grid; grid-template-columns: auto auto; gap: 0 5px; align-items: center; min-width: 84px; padding: 5px 8px; border: 1px solid; border-radius: 7px; background: rgba(255,255,255,.95); box-shadow: 0 3px 12px rgba(15,23,42,.16); font-size: 12px; line-height: 1.05; }

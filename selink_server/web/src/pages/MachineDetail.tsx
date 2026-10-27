@@ -172,14 +172,6 @@ export default function MachineDetail() {
               <Descriptions.Item label="K_neg">{num(tp.k_neg, 1)}</Descriptions.Item>
               <Descriptions.Item label="c_frame">{num(tp.c_frame, 2)}</Descriptions.Item>
             </Descriptions>
-            <div style={{ margin: '16px -12px 12px', borderTop: '1px solid #e5e7eb' }} />
-            <Typography.Text strong>Cách hệ thống đang đánh giá</Typography.Text>
-            <Row gutter={[10, 10]}>
-              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(52,211,153,.07)', '--stat-color': '#34d399' } as React.CSSProperties}><div className="muted">Bình thường</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#34d399' }}>&lt; {num(m.iso_limits.ab, 1)}</Typography.Title></div></Col>
-              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,191,36,.07)', '--stat-color': '#fbbf24' } as React.CSSProperties}><div className="muted">Cảnh báo</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fbbf24' }}>{num(m.iso_limits.bc, 1)}</Typography.Title></div></Col>
-              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,113,133,.07)', '--stat-color': '#fb7185' } as React.CSSProperties}><div className="muted">Nguy hiểm</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fb7185' }}>&gt; {num(m.iso_limits.cd, 1)}</Typography.Title></div></Col>
-            </Row>
-            <div className="muted" style={{ marginTop: 10 }}>RMS vận tốc · dải {num(m.iso_band_lo_hz, 0)}–{num(m.iso_band_hi_hz, 0)} Hz · ISO 20816-3</div>
           </Card>
           {m.isolation?.enabled && (
             <Card size="small" title="Cô lập nhiễu (Beer HN)" style={{ marginTop: 12 }}>
@@ -192,6 +184,16 @@ export default function MachineDetail() {
                   { title: 'α', dataIndex: 'alpha', render: (v) => num(v, 3) }]} />
             </Card>
           )}
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Cách hệ thống đang đánh giá">
+            <Row gutter={[10, 10]}>
+              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(52,211,153,.07)', '--stat-color': '#34d399' } as React.CSSProperties}><div className="muted">Bình thường</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#34d399' }}>&lt; {num(m.iso_limits.ab, 1)}</Typography.Title></div></Col>
+              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,191,36,.07)', '--stat-color': '#fbbf24' } as React.CSSProperties}><div className="muted">Cảnh báo</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fbbf24' }}>{num(m.iso_limits.bc, 1)}</Typography.Title></div></Col>
+              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,113,133,.07)', '--stat-color': '#fb7185' } as React.CSSProperties}><div className="muted">Nguy hiểm</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fb7185' }}>&gt; {num(m.iso_limits.cd, 1)}</Typography.Title></div></Col>
+            </Row>
+            <div className="muted" style={{ marginTop: 10 }}>RMS vận tốc · dải {num(m.iso_band_lo_hz, 0)}–{num(m.iso_band_hi_hz, 0)} Hz · ISO 20816-3</div>
+          </Card>
         </Col>
         <Col span={24}>
           <Card size="small" title="Điểm đo">
