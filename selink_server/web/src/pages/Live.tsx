@@ -483,9 +483,7 @@ export default function Live() {
             <Tag color={operationState === 'running' ? 'green' : operationState === 'stopped' ? 'default' : 'gold'}>
               {operationState === 'running' ? 'MÁY ĐANG CHẠY' : operationState === 'stopped' ? 'MÁY ĐANG DỪNG' : 'VẬN HÀNH: KHÔNG XÁC ĐỊNH'}
             </Tag>
-            {isLive
-              ? <Tag className="live-tag">TRỰC TIẾP | cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
-              : <Tag className="offline-tag">{lastTs ? `MẤT KẾT NỐI | dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'GATEWAY CHƯA GỬI DỮ LIỆU'}</Tag>}
+            {!isLive && <Tag className="offline-tag">{lastTs ? `MẤT KẾT NỐI | dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'GATEWAY CHƯA GỬI DỮ LIỆU'}</Tag>}
             {can('admin') && <AddSensor machineId={id} />}
             <label className="machine-picker">
               <span>Động cơ</span>

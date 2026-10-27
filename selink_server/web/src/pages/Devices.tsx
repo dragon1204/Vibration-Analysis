@@ -105,8 +105,8 @@ export default function Devices() {
       </Card>
       <Drawer
         open={!!open}
-        width="min(960px, 88vw)"
-        rootStyle={{ top: 56 }}
+        width="min(1120px, 92vw)"
+        rootStyle={{ top: 56, height: 'calc(100vh - 56px)' }}
         styles={{ body: { overflowY: 'auto' } }}
         onClose={() => setOpen(undefined)}
         title={`Gateway ${open}`}

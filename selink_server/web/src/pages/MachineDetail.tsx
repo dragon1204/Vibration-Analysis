@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress, Row, Select, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd'
 import { api, patch, post } from '../api/client'
-import { num } from '../utils/format'
+import { ago, dt, num } from '../utils/format'
 import MachineNav from './MachineNav'
 import InstallationDiagram from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
@@ -18,6 +18,8 @@ export default function MachineDetail() {
   const [assigningGateway, setAssigningGateway] = useState(false)
   const { data: m } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
   const { data: deployment } = useQuery<any>({ queryKey: ['machine-deployment', id], queryFn: () => api(`/machines/${id}/deployment`) })
+  const activeGatewayId = deployment?.active?.gateway_id
+  const { data: gatewayDetail } = useQuery<any>({ queryKey: ['gateway', activeGatewayId], queryFn: () => api(`/gateways/${activeGatewayId}`), enabled: !!activeGatewayId })
   const { data: gateways = [] } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways') })
   const { data: installationModels } = useQuery<any[]>({ queryKey: ['installation-models'], queryFn: () => api('/installation-models') })
   const { data: runtime } = useQuery<any>({ queryKey: ['machine-runtime', id], queryFn: () => api(`/machines/${id}/runtime`), refetchInterval: 30_000 })
@@ -28,6 +30,7 @@ export default function MachineDetail() {
   })
   if (!m) return <div className="page"><MachineNav id={id} /><Spin /></div>
   const tp = m.thermal_params || {}
+  const gatewayHealth = gatewayDetail?.health || {}
   const primaryPoint = (m.points || []).find((p: any) => String(p.location || '').toUpperCase() === 'DE') || m.points?.[0]
   const runDetection = m.meta?.run_detection || {
     on_delay_s: 10, off_delay_s: 10,
@@ -70,6 +73,31 @@ export default function MachineDetail() {
             </div>
           </Card>
         </Col>
+        {gatewayDetail && <Col span={24}>
+          <Card size="small" title="Chi tiết gateway & phiên đo">
+            <Descriptions size="small" bordered column={{ xs: 1, sm: 2, lg: 4 }}>
+              <Descriptions.Item label="Gateway"><strong>{gatewayDetail.id || activeGatewayId}</strong></Descriptions.Item>
+              <Descriptions.Item label="Trạng thái"><Tag color={gatewayDetail.online ? 'green' : 'default'}>{gatewayDetail.online ? 'Trực tuyến' : 'Mất kết nối'}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Liên lạc cuối">{dt(gatewayDetail.last_seen, true)}</Descriptions.Item>
+              <Descriptions.Item label="Bắt đầu phiên">{deployment?.active?.started_at ? dt(deployment.active.started_at, true) : '–'}</Descriptions.Item>
+              <Descriptions.Item label="Uptime">{num((gatewayHealth.uptime_s || 0) / 3600, 1)} giờ</Descriptions.Item>
+              <Descriptions.Item label="Nhiệt SoC">{num(gatewayHealth.soc_temp_c, 1)} °C</Descriptions.Item>
+              <Descriptions.Item label="Đĩa trống">{num(gatewayHealth.disk_free_mb, 0)} MB</Descriptions.Item>
+              <Descriptions.Item label="Dữ liệu edge">{num(gatewayHealth.data_used_mb, 0)} MB</Descriptions.Item>
+              <Descriptions.Item label="Outbox chờ gửi">{gatewayHealth.outbox_pending ?? '–'}</Descriptions.Item>
+              <Descriptions.Item label="Còi/relay">{gatewayHealth.local_alarm_on ? <Tag color="red">BẬT</Tag> : 'tắt'}</Descriptions.Item>
+              <Descriptions.Item label="Cấu hình edge">v{gatewayDetail.deployment?.config_version ?? deployment?.active?.config_version ?? '–'}</Descriptions.Item>
+              <Descriptions.Item label="Phiên đo"><Tag color="green">Đang đo</Tag></Descriptions.Item>
+            </Descriptions>
+            <Table size="small" pagination={false} rowKey="id" title={() => 'Cảm biến của động cơ'} dataSource={(gatewayDetail.points || []).filter((point: any) => point.machine_id === id)} style={{ marginTop: 12 }} columns={[
+              { title: 'Điểm đo', dataIndex: 'id' },
+              { title: 'Vị trí', dataIndex: 'location', render: (value, row: any) => value || row.role || '–' },
+              { title: 'Địa chỉ', dataIndex: 'sensor_addr', render: (value) => `0x${(value || 0).toString(16).toUpperCase()}` },
+              { title: 'Đọc cuối', dataIndex: 'last_reading', render: (value) => value ? ago(value) : '–' },
+              { title: 'Trạng thái', key: 'status', render: (_, row: any) => gatewayHealth.devices?.[row.id]?.offline ? <Tag color="red">offline</Tag> : <Tag color="green">ok</Tag> },
+            ]} />
+          </Card>
+        </Col>}
         <Col span={24}>
           <Card size="small" title="Sơ đồ lắp đặt" extra={can('analyst') ? <Select
             aria-label="Mẫu sơ đồ lắp đặt"
@@ -144,12 +172,12 @@ export default function MachineDetail() {
               <Descriptions.Item label="K_neg">{num(tp.k_neg, 1)}</Descriptions.Item>
               <Descriptions.Item label="c_frame">{num(tp.c_frame, 2)}</Descriptions.Item>
             </Descriptions>
-          </Card>
-          <Card size="small" title="Cách hệ thống đang đánh giá" style={{ marginTop: 12 }}>
+            <div style={{ margin: '16px -12px 12px', borderTop: '1px solid #e5e7eb' }} />
+            <Typography.Text strong>Cách hệ thống đang đánh giá</Typography.Text>
             <Row gutter={[10, 10]}>
-              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(52,211,153,.07)', '--stat-color': '#34d399' } as React.CSSProperties}><div className="muted">Bình thường</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#34d399' }}>&lt; {num(m.iso_limits.ab, 1)}</Typography.Title></div></Col>
-              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,191,36,.07)', '--stat-color': '#fbbf24' } as React.CSSProperties}><div className="muted">Cảnh báo</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fbbf24' }}>{num(m.iso_limits.bc, 1)}</Typography.Title></div></Col>
-              <Col span={8}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,113,133,.07)', '--stat-color': '#fb7185' } as React.CSSProperties}><div className="muted">Nguy hiểm</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fb7185' }}>&gt; {num(m.iso_limits.cd, 1)}</Typography.Title></div></Col>
+              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(52,211,153,.07)', '--stat-color': '#34d399' } as React.CSSProperties}><div className="muted">Bình thường</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#34d399' }}>&lt; {num(m.iso_limits.ab, 1)}</Typography.Title></div></Col>
+              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,191,36,.07)', '--stat-color': '#fbbf24' } as React.CSSProperties}><div className="muted">Cảnh báo</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fbbf24' }}>{num(m.iso_limits.bc, 1)}</Typography.Title></div></Col>
+              <Col span={8} style={{ marginTop: 10 }}><div className="status-stat" style={{ padding: 12, borderRadius: 10, background: 'rgba(251,113,133,.07)', '--stat-color': '#fb7185' } as React.CSSProperties}><div className="muted">Nguy hiểm</div><Typography.Title level={4} style={{ margin: '5px 0 0', color: '#fb7185' }}>&gt; {num(m.iso_limits.cd, 1)}</Typography.Title></div></Col>
             </Row>
             <div className="muted" style={{ marginTop: 10 }}>RMS vận tốc · dải {num(m.iso_band_lo_hz, 0)}–{num(m.iso_band_hi_hz, 0)} Hz · ISO 20816-3</div>
           </Card>
