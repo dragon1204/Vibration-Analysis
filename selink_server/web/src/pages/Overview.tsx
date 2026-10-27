@@ -101,7 +101,7 @@ export default function Overview() {
               <Card className="glass-card alert-strip overview-alert-card" size="small" title={<span>Cảnh báo mới nhất</span>} extra={<Button type="link" size="small" onClick={() => nav('/events')}>Tất cả</Button>}>
                 {data.events.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có cảnh báo" /> : (
                   <div className="alert-rows">
-                    {data.events.map((e: any) => (
+                    {data.events.slice(0, 6).map((e: any) => (
                       <div key={e.event_id} className="alert-row" role="button" tabIndex={0}
                         onClick={() => nav(`/events?event=${e.event_id}`)}
                         onKeyDown={(ev) => { if (ev.key === 'Enter') nav(`/events?event=${e.event_id}`) }}>
