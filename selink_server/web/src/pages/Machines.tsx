@@ -21,6 +21,11 @@ export default function Machines() {
     return (!q || machine.id.toLowerCase().includes(q) || machine.name.toLowerCase().includes(q) || (machine.type || '').toLowerCase().includes(q))
       && (!status || machine.status === status)
   }), [data, search, status])
+  const operation = (row: any) => {
+    const ts = row.run_ts ? Date.parse(row.run_ts) : 0
+    if (!row.online || !ts || Date.now() - ts >= 180_000 || row.running == null) return <Tag color="gold">Không xác định</Tag>
+    return row.running ? <Tag color="green">Đang chạy</Tag> : <Tag>Dừng</Tag>
+  }
   return <div className="page">
     <div className="page-hero">
       <div><div className="page-kicker">Quản lý tài sản</div><Typography.Title level={2} style={{ margin: 0 }}>Danh sách động cơ</Typography.Title><p className="page-description">Tra cứu trạng thái, sức khỏe và mở nhanh màn hình giám sát của từng máy.</p></div>
@@ -36,7 +41,9 @@ export default function Machines() {
         { title: 'Mã', dataIndex: 'id', render: (value) => <b>{String(value).toUpperCase()}</b> },
         { title: 'Động cơ', key: 'machine', render: (_, row: any) => <div className="wrap-cell"><b>{row.name}</b><div className="muted">{[row.type, row.rated_power_kw ? `${num(row.rated_power_kw, 0)} kW` : null].filter(Boolean).join(' · ') || '—'}</div></div> },
         { title: 'Nhà máy', dataIndex: 'site_name', render: (value, row: any) => value || row.site_id },
-        { title: 'Trạng thái', dataIndex: 'status', render: (value) => <Tag color={statusColor[value]}>{statusLabel[value] || value}</Tag> },
+        { title: 'Cảnh báo', dataIndex: 'status', render: (value) => <Tag color={statusColor[value]}>{statusLabel[value] || value}</Tag> },
+        { title: 'Kết nối', dataIndex: 'online', render: (value) => <Tag color={value ? 'blue' : 'default'}>{value ? 'Trực tuyến' : 'Mất kết nối'}</Tag> },
+        { title: 'Vận hành', key: 'operation', render: (_, row: any) => operation(row) },
         { title: 'ISO', dataIndex: 'iso_zone', render: (value) => value ? <ZoneTag zone={value} /> : '—' },
         { title: 'Rung RMS ISO', dataIndex: 'vib_max_mm_s', render: (value) => value == null ? '—' : `${num(value, 2)} mm/s` },
         { title: 'Nhiệt độ sensor', dataIndex: 'sensor_temp_c', render: (value) => value == null ? '—' : `${num(value, 1)} °C` },

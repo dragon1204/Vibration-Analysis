@@ -360,6 +360,16 @@ class Ingest:
     # ------------------------------------------------------------------ events & gateway
     async def on_events(self, t: Topic, d) -> None:
         async with self.pool.acquire() as c:
+            # Residual vibration/noise while the motor is stopped must not create a condition
+            # alarm. Still accept clears and connectivity/system events.
+            if d.state == "raised" and d.type == "alarm" and d.machine_id:
+                running = await c.fetchval(
+                    "SELECT running FROM machine_run_states WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1",
+                    d.machine_id,
+                )
+                if running is False:
+                    log.info("suppress edge alarm while machine is stopped: machine=%s rule=%s", d.machine_id, d.rule)
+                    return
             if d.state == "cleared":
                 n = await c.execute("UPDATE events SET cleared_at=$2 WHERE event_id=$1", d.event_id, d.ts)
                 if n.endswith(" 0"):

@@ -20,6 +20,12 @@ export default function Overview() {
   })
   useRealtime(['events'], () => qc.invalidateQueries({ queryKey: ['overview'] }))
 
+  const operationState = (machine: any): 'running' | 'stopped' | 'unknown' => {
+    const ts = machine.run_ts ? Date.parse(machine.run_ts) : 0
+    if (!machine.online || !ts || Date.now() - ts >= 180_000 || machine.running == null) return 'unknown'
+    return machine.running ? 'running' : 'stopped'
+  }
+
   return (
     <div className="page overview-page">
       <div className="page-hero">
@@ -66,9 +72,10 @@ export default function Overview() {
                           <Space direction="vertical" size={5} style={{ width: '100%' }}>
                             <Space wrap>
                               <ZoneTag zone={m.iso_zone} />
-                              {m.running == null ? null : m.running
+                              <Tag color={m.online ? 'blue' : 'default'}>{m.online ? 'Kết nối' : 'Mất kết nối'}</Tag>
+                              {operationState(m) === 'running'
                                 ? <Tag color="green">Đang chạy{m.load_pct != null ? ` ${num(m.load_pct, 0)}%` : ''}</Tag>
-                                : <Tag>Dừng</Tag>}
+                                : operationState(m) === 'stopped' ? <Tag>Dừng</Tag> : <Tag color="gold">Không xác định</Tag>}
                             </Space>
                             <div className="metric-line"><Tooltip title={m.iso_ts ? `Vận tốc RMS ISO lớn nhất (trục hướng kính) · capture ${ago(m.iso_ts)}` : 'Chưa có capture'}><span>Rung RMS ISO</span></Tooltip><strong>{num(m.vib_max_mm_s)} mm/s</strong></div>
                             <div className="metric-line"><span>Nhiệt độ sensor</span><strong>{num(m.sensor_temp_c, 1)} °C</strong></div>

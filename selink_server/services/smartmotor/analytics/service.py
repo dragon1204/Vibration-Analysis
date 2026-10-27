@@ -281,6 +281,16 @@ class Analytics:
     async def server_event(self, machine_id, point_id, rule, metric, value, threshold, severity, message,
                            capture_id=None, dedupe_hours: int = 24, typ: str = "alarm", gateway_id: str | None = None) -> str | None:
         async with self.pool.acquire() as c:
+            # A stopped machine may keep reporting residual/noise vibration. Do not turn that
+            # into a condition alarm. Connectivity/system events are deliberately exempt.
+            if machine_id and typ == "alarm":
+                running = await c.fetchval(
+                    "SELECT running FROM machine_run_states WHERE machine_id=$1 ORDER BY ts DESC LIMIT 1",
+                    machine_id,
+                )
+                if running is False:
+                    log.info("suppress alarm while machine is stopped: machine=%s rule=%s", machine_id, rule)
+                    return None
             exists = await c.fetchval(
                 """SELECT event_id FROM events WHERE source='server' AND rule=$1 AND COALESCE(point_id,'')=COALESCE($2,'')
                      AND COALESCE(machine_id,'')=COALESCE($3,'') AND COALESCE(gateway_id,'')=COALESCE($5,'')

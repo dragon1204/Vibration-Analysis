@@ -419,7 +419,13 @@ export default function Live() {
 
   const points = byPosition(status.points || [])
   const basePoint = points.find((point: any) => pointRole(point) === 'base')
-  const isRunning = status.run_state?.running ?? status.power?.running ?? true
+  const runTs = status.run_state?.ts ? Date.parse(status.run_state.ts) : 0
+  const gatewayOnline = points.some((p: any) => p.gateway_online)
+  const runStateFresh = gatewayOnline && runTs > 0 && Date.now() - runTs < 180_000
+  const operationState: 'running' | 'stopped' | 'unknown' = runStateFresh
+    ? (status.run_state.running ? 'running' : 'stopped')
+    : 'unknown'
+  const isRunning = operationState === 'running'
   const installation = templateById(machine.meta?.installation_template, installationModels)
   const selPoint = points.find((point: any) => point.id === wavePoint) || points[0]
   const selMeta = machine.points.find((point: any) => point.id === selPoint?.id) || selPoint
@@ -430,7 +436,6 @@ export default function Live() {
 
   // "Live" only when indicators are fresh AND the gateway is online; otherwise say how old the data is.
   const dataTs = Math.max(0, ...points.flatMap((p: any) => Object.values(p.axes || {}).map((a: any) => Date.parse(a.ts) || 0)))
-  const gatewayOnline = points.some((p: any) => p.gateway_online)
   const pushFresh = lastPushAt.current > 0 && Date.now() - lastPushAt.current < LIVE_MAX_AGE_MS
   const lastTs = pushFresh ? lastPushAt.current : dataTs
   const isLive = gatewayOnline && lastTs > 0 && Date.now() - lastTs < LIVE_MAX_AGE_MS
@@ -475,6 +480,9 @@ export default function Live() {
           <div className="live-actions">
             <OverallZoneTag value={maxValue || null} limits={machine.iso_limits} />
             {runtime && <Tag className="runtime-tag">RUN {num(runtime.run_seconds / 3600, 1)} h · RATE {num(runtime.rate_pct, 1)} %</Tag>}
+            <Tag color={operationState === 'running' ? 'green' : operationState === 'stopped' ? 'default' : 'gold'}>
+              {operationState === 'running' ? 'MÁY ĐANG CHẠY' : operationState === 'stopped' ? 'MÁY ĐANG DỪNG' : 'VẬN HÀNH: KHÔNG XÁC ĐỊNH'}
+            </Tag>
             {isLive
               ? <Tag className="live-tag">TRỰC TIẾP | cập nhật {ago(new Date(lastTs).toISOString())}</Tag>
               : <Tag className="offline-tag">{lastTs ? `MẤT KẾT NỐI | dữ liệu cuối ${ago(new Date(lastTs).toISOString())}` : 'GATEWAY CHƯA GỬI DỮ LIỆU'}</Tag>}
@@ -492,6 +500,13 @@ export default function Live() {
             <SensorOverview index={i} point={point} basePoint={basePoint} limits={machine.iso_limits} running={isRunning} active={point.id === selPoint?.id}
               onClick={() => setWavePoint(point.id)} />
           </Col>)}
+          {operationState !== 'running' && points.length > 0 && <Col span={24}>
+            <div className="last-reading-note">
+              {operationState === 'stopped'
+                ? 'Động cơ đang dừng — các giá trị bên trên là lần đo cuối, không phải số đo trực tiếp.'
+                : 'Chưa xác định được trạng thái vận hành — đang hiển thị lần đo cuối.'}
+            </div>
+          </Col>}
           {!points.length && <Col span={24}><Card><Empty description="Máy chưa được cấu hình điểm đo" /></Card></Col>}
 
           <Col span={24}>

@@ -52,6 +52,9 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
                                  ORDER BY machine_id, ts DESC""", mids)
         power = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, running, load_pct FROM power_metrics
                                  WHERE machine_id = ANY($1) AND ts > now() - interval '5 minutes' ORDER BY machine_id, ts DESC""", mids)
+        run_states = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, ts, running, source
+                                      FROM machine_run_states WHERE machine_id = ANY($1)
+                                      ORDER BY machine_id, ts DESC""", mids)
         health = await c.fetch("""SELECT DISTINCT ON (machine_id) machine_id, health_index
                                   FROM machine_health WHERE machine_id = ANY($1) AND health_index IS NOT NULL
                                     AND ts > now() - interval '7 days' ORDER BY machine_id, ts DESC""", mids)
@@ -71,7 +74,7 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
                                   WHERE COALESCE(m.site_id, g.site_id) = ANY($1) AND e.severity <> 'info'
                                   ORDER BY e.ts DESC LIMIT 15""", allowed)
     by = lambda rows: {r["machine_id"]: dict(r) for r in rows}  # noqa: E731
-    vib_m, temp_m, pow_m, health_m, rul_m = by(vib), by(temps), by(power), by(health), by(rul)
+    vib_m, temp_m, pow_m, run_m, health_m, rul_m = by(vib), by(temps), by(power), by(run_states), by(health), by(rul)
     online_m: dict = {}
     for r in gw:
         online_m[r["machine_id"]] = online_m.get(r["machine_id"], True) and bool(r["online"])
@@ -97,9 +100,10 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
         mid = m["id"]
         z = zone_m.get(mid) or {}
         lim = iso_limits(m["iso_group"], m["foundation"])
-        running = (pow_m.get(mid) or {}).get("running")
-        if running is None and mid in vib_m:
-            running = (vib_m[mid]["vmax"] or 0) > 0.3
+        # Connectivity, alarm severity and operating state are separate concepts.
+        # The edge run detector is authoritative; never infer RUN from a fixed RMS threshold here.
+        run = run_m.get(mid) or {}
+        running = run.get("running")
         st = machine_status(sev_m.get(mid), z.get("iso_zone"), online_m.get(mid))
         counts[st] += 1
         h, r = health_m.get(mid) or {}, rul_m.get(mid) or {}
@@ -113,6 +117,7 @@ async def overview(request: Request, site_id: str | None = Query(None), user: Us
             "bearing_temp_c": (temp_m.get(mid) or {}).get("bearing_temp_c"),
             "sensor_temp_c": (temp_m.get(mid) or {}).get("sensor_temp_c") or (vib_m.get(mid) or {}).get("tmax"),
             "winding_temp_est_c": (temp_m.get(mid) or {}).get("winding_temp_est_c"), "running": running,
+            "run_ts": run.get("ts"), "run_source": run.get("source"),
             "load_pct": (pow_m.get(mid) or {}).get("load_pct"),
             "iso_limits": {"ab": lim.ab, "bc": lim.bc, "cd": lim.cd}, "trend_7d": trend_m.get(mid, []),
         })

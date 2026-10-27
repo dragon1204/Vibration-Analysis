@@ -500,6 +500,7 @@ body, .app-shell, .app-content { background: var(--bg) !important; color: var(--
 .sensor-online i { width: 7px; height: 7px; border-radius: 50%; background: #9aa7b5; }
 .sensor-online.ok { color: #278b45; }
 .sensor-online.ok i { background: #2fa84f; box-shadow: 0 0 0 3px rgba(47, 168, 79, .12); }
+.last-reading-note { padding: 9px 12px; border: 1px solid #f0d58a; border-radius: 6px; background: #fff9e8; color: #7a5b00; font-size: 13px; font-weight: 600; }
 .sensor-overview-axes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid #e7edf3; }
 .sensor-overview-axes > div { display: flex; flex-direction: column; min-width: 0; padding: 13px 10px 0; border-right: 1px solid #edf1f5; }
 .sensor-overview-axes > div:first-child { padding-left: 0; }
