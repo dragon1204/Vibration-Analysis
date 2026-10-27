@@ -220,9 +220,9 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
 }) {
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
-  // Gateway samples are g. Engineering view defaults to SI while retaining g as a quick check.
-  const [accUnit, setAccUnit] = useState<'m/s²' | 'g'>('m/s²')
-  const scale = accUnit === 'm/s²' ? 9.80665 : 1
+  // Gateway samples are g. Display acceleration in mm/s² to match the project convention.
+  const [accUnit, setAccUnit] = useState<'mm/s²' | 'g'>('mm/s²')
+  const scale = accUnit === 'mm/s²' ? 9806.65 : 1
   const total = Math.max(0, ...names.map((a) => axes[a]?.length || 0)) * dt
   const defaultEndPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
 
@@ -333,8 +333,8 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
             { value: 'all', label: 'Cả 3 trục' },
           ]}
         />
-        <Segmented size="small" value={accUnit} onChange={(v) => setAccUnit(v as 'm/s²' | 'g')}
-          options={[{ value: 'm/s²', label: 'm/s²' }, { value: 'g', label: 'g' }]} />
+        <Segmented size="small" value={accUnit} onChange={(v) => setAccUnit(v as 'mm/s²' | 'g')}
+          options={[{ value: 'mm/s²', label: 'mm/s²' }, { value: 'g', label: 'g' }]} />
         <span className="muted">Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
       </div>
       <ReactECharts
