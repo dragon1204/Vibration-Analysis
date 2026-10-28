@@ -11,7 +11,7 @@ import logging
 
 import asyncpg
 
-from . import mqttpub
+from . import installation, mqttpub
 from .settings import Settings
 
 log = logging.getLogger(__name__)
@@ -81,14 +81,23 @@ async def merge_managed(conn: asyncpg.Connection, cfg: dict) -> dict:
             # Vibration-based RUN signal is edited per machine on the web.
             # It remains part of the gateway's versioned configuration.
             run_detection = (mrow["meta"] or {}).get("run_detection")
-            if run_detection:
+            meta, model = await installation.machine_model(conn, m.get("id"))
+            # The installation model decides which algorithms run on this machine.
+            if run_detection and installation.algorithm_enabled(model, "run_detection"):
                 m["run_detection"] = run_detection
+            elif not installation.algorithm_enabled(model, "run_detection"):
+                m.pop("run_detection", None)
+            m["base_alpha"] = installation.base_alpha(meta, model)
         for p in m.get("points") or []:
             prow = await conn.fetchrow(
-                """SELECT p.calibration, b.model, b.n_balls, b.bd_mm, b.pd_mm, b.contact_deg, b.bpfo_x, b.bpfi_x, b.bsf_x, b.ftf_x
+                """SELECT p.name, p.location, p.role, p.calibration, b.model, b.n_balls, b.bd_mm, b.pd_mm, b.contact_deg, b.bpfo_x, b.bpfi_x, b.bsf_x, b.ftf_x
                    FROM measurement_points p LEFT JOIN bearings b ON b.id=p.bearing_id WHERE p.id=$1""", p.get("id"))
             if not prow:
                 continue
+            # Name, mounting position and role are edited on the web (DB is the source of truth).
+            for key in ("name", "location", "role"):
+                if prow[key]:
+                    p[key] = prow[key]
             if prow["calibration"]:
                 p["calibration"] = prow["calibration"]
             if prow["model"] and prow["n_balls"]:

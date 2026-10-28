@@ -150,7 +150,11 @@ func (a *Agent) viewMachines() []localview.MachineInfo {
 	for _, m := range a.machines {
 		lim := a.isoLimits(m.cfg)
 		mi := localview.MachineInfo{ID: m.cfg.ID, Name: m.cfg.Name, RatedSpeedRPM: m.cfg.RatedSpeedRPM,
-			ISOGroup: m.cfg.ISOGroup, Foundation: m.cfg.Foundation, Limits: localview.Limits{AB: lim.AB, BC: lim.BC, CD: lim.CD}}
+			ISOGroup: m.cfg.ISOGroup, Foundation: m.cfg.Foundation, Limits: localview.Limits{AB: lim.AB, BC: lim.BC, CD: lim.CD},
+			BaseAlpha: m.cfg.BaseAlpha}
+		if mi.BaseAlpha == 0 {
+			mi.BaseAlpha = a.cfg.LocalUI.BaseAlpha
+		}
 		for _, p := range m.points {
 			role := p.cfg.Role
 			if role == "" {

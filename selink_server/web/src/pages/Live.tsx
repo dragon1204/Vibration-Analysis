@@ -25,7 +25,17 @@ const pointRole = (point: any): string => point?.role || 'bearing'
 /** Short sensor name by mounting position (shared with every other page). */
 const posLabel = (point: any, _index: number): string => sensorCode(point)
 /** Temporary BASE→bearing transmission coefficient (measured overall ratio is 0.2 to 0.9 depending on direction). */
-const BASE_ALPHA = 0.8
+const DEFAULT_BASE_ALPHA = 0.8
+/** α of the machine on screen (machine settings, installation model); set once per Live render. */
+let BASE_ALPHA = DEFAULT_BASE_ALPHA
+/** The correction only runs when the installation model selects it and has a BASE position. */
+function correctionAlpha(machine: any, installation: any): number | null {
+  const algorithms: string[] | undefined = installation?.algorithms
+  if (algorithms && algorithms.length && !algorithms.includes('iso_corrected_rms')) return null
+  if (installation?.locations?.length && !installation.locations.includes('BASE')) return null
+  const a = Number(machine?.meta?.base_alpha ?? DEFAULT_BASE_ALPHA)
+  return a > 0 && a <= 2 ? a : DEFAULT_BASE_ALPHA
+}
 /** Gateway reports acceleration in g; the live sensor cards use engineering SI units. */
 const G_TO_MM_S2 = 9806.65
 /** Bearing vibration after removing the foundation contribution. */
@@ -242,7 +252,7 @@ function SensorOverview({ index, point, basePoint, limits, running, active, onCl
 }
 
 /** Same-direction RMS of every sensor side by side; the base/bearing ratio shows how much vibration reaches the foundation. */
-function CompareCard({ points, status, installation }: { points: any[]; status: any[]; installation: any }) {
+function CompareCard({ points, status, installation, alpha }: { points: any[]; status: any[]; installation: any; alpha: number | null }) {
   const cell = (point: any, role: string): number | null => {
     const axis = axisOfRole(point, role)
     if (!axis) return null
@@ -258,7 +268,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
         <thead>
           <tr><th>Measurement axis</th>{points.map((p, i) => <th key={p.id}>{posLabel(p, i)}<small>{p.name}</small></th>)}
             {bearing && base && <th>Base / bearing ratio</th>}
-            {bearing && base && <th>Bearing-corrected RMS</th>}</tr>
+            {bearing && base && alpha != null && <th>Bearing-corrected RMS<small>{`α = ${num(alpha, 2)}`}</small></th>}</tr>
         </thead>
         <tbody>
           {ROLE_ORDER.map((role) => {
@@ -270,7 +280,7 @@ function CompareCard({ points, status, installation }: { points: any[]; status: 
                 <td>{{ radial_h: 'Horizontal (H)', radial_v: 'Vertical (V)', axial: 'Axial (A)' }[role]}</td>
                 {points.map((p) => <td key={p.id}>{num(cell(p, role), 2)}</td>)}
                 {bearing && base && <td className={ratio != null && ratio > 50 ? 'ratio-high' : ''}>{ratio != null ? `${num(ratio, 0)} %` : '--'}</td>}
-                {bearing && base && <td>{num(ownRms(b, d), 2)}</td>}
+                {bearing && base && alpha != null && <td>{num(ownRms(b, d), 2)}</td>}
               </tr>
             )
           })}
@@ -418,7 +428,11 @@ export default function Live() {
   if (isInitialLoading) return <div className="page page-loading"><Spin size="large" /></div>
 
   const points = byPosition(status.points || [])
-  const basePoint = points.find((point: any) => pointRole(point) === 'base')
+  const installationModel = templateById(machine.meta?.installation_template, installationModels)
+  const alphaForMachine = correctionAlpha(machine, installationModel)
+  BASE_ALPHA = alphaForMachine ?? DEFAULT_BASE_ALPHA
+  // Without the model's correction algorithm the bearings are evaluated on their direct RMS.
+  const basePoint = alphaForMachine == null ? undefined : points.find((point: any) => pointRole(point) === 'base')
   const runTs = status.run_state?.ts ? Date.parse(status.run_state.ts) : 0
   const gatewayOnline = points.some((p: any) => p.gateway_online)
   const runStateFresh = gatewayOnline && runTs > 0 && Date.now() - runTs < 180_000
@@ -515,7 +529,7 @@ export default function Live() {
             </Card>
           </Col>
 
-          {points.length > 1 && <Col span={24}><CompareCard points={byPosition(machine.points)} status={points} installation={installation} /></Col>}
+          {points.length > 1 && <Col span={24}><CompareCard points={byPosition(machine.points)} status={points} installation={installation} alpha={alphaForMachine} /></Col>}
 
           <Col xs={24} xl={15}>
             <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc">

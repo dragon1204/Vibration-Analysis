@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ...common import gwconfig, mqttpub
-from ...common.sensor_slots import SLOTS, add_point_to_config, build_edge_point, point_id, point_name, slot_of
+from ...common import installation
+from ...common.model_export import position_of
+from ...common.sensor_slots import SLOTS, add_point_to_config, build_point_for
 from ..deps import User, audit, check_machine, current_user, require
 
 router = APIRouter(tags=["sensors"])
@@ -20,26 +22,32 @@ COMMISSION_WAIT_S = 40
 
 
 class SensorIn(BaseModel):
-    slot: int = Field(ge=1, le=4)
+    code: Optional[str] = Field(None, max_length=32)  # position of the installation model, e.g. DE, BASE
+    slot: Optional[int] = Field(None, ge=1, le=4)     # legacy numeric slot (1 LOAD, 2 BASE, 3 DE, 4 NDE)
     addr: int = Field(ge=1, le=127)
     name: Optional[str] = None
     commission: bool = False  # the sensor still has its factory address: set `addr` through the gateway first
 
 
 async def _points(c, machine_id: str) -> list[dict]:
-    rows = await c.fetch("SELECT id, name, location, role, sensor_addr, gateway_id FROM measurement_points WHERE machine_id=$1 ORDER BY id",
-                         machine_id)
+    rows = await c.fetch("""SELECT id, name, location, role, sensor_addr, gateway_id, iso_axes FROM measurement_points
+                            WHERE machine_id=$1 ORDER BY id""", machine_id)
     return [dict(r) for r in rows]
 
 
 @router.get("/machines/{machine_id}/sensor-slots")
 async def sensor_slots(machine_id: str, request: Request, user: User = Depends(current_user)):
-    """The four positions with the point (if any) mounted there."""
+    """The positions of the machine's installation model, with the sensor (if any) mounted at each."""
     await check_machine(request.app.state.pool, user, machine_id)
     async with request.app.state.pool.acquire() as c:
         pts = await _points(c, machine_id)
-    used = {slot_of(p["location"]): p for p in pts if slot_of(p["location"])}
-    return {"slots": [{"slot": n, **spec, "point": used.get(n)} for n, spec in SLOTS.items()],
+        _, model = await installation.machine_model(c, machine_id)
+    used = {position_of(p): p for p in pts if position_of(p)}
+    out = [{"code": str(s["code"]).upper(), "short": str(s["code"]).upper(), "label": s.get("label") or "",
+            "model_role": s.get("role") or "bearing", "role": installation.edge_role(s.get("role")),
+            "point": used.get(str(s["code"]).upper())} for s in installation.slots(model)]
+    return {"model": {"id": model["id"], "name": model["name"]} if model else None, "slots": out,
+            "issues": installation.check_points(model, pts),
             "used_addrs": sorted({p["sensor_addr"] for p in pts if p["sensor_addr"]})}
 
 
@@ -71,14 +79,18 @@ async def _commission(request: Request, gateway: dict, bus_id: str | None, addr:
 async def add_sensor(machine_id: str, body: SensorIn, request: Request, user: User = Depends(require("admin"))):
     pool = request.app.state.pool
     await check_machine(pool, user, machine_id, "admin")
+    code = (body.code or (SLOTS[body.slot]["location"] if body.slot else "")).upper()
+    if not code:
+        raise HTTPException(422, "Cần chọn vị trí lắp")
     async with pool.acquire() as c:
+        _, model = await installation.machine_model(c, machine_id)
+        spec = installation.slot(model, code)
+        if model is not None and spec is None:
+            raise HTTPException(422, f"Mô hình {model['name']} không có vị trí {code}")
         pts = await _points(c, machine_id)
-        if any(slot_of(p["location"]) == body.slot for p in pts):
-            raise HTTPException(409, f"Vị trí {SLOTS[body.slot]['short']} đã có cảm biến")
+        if any(position_of(p) == code for p in pts):
+            raise HTTPException(409, f"Vị trí {code} đã có cảm biến")
         gw_id = next((p["gateway_id"] for p in pts if p["gateway_id"]), None)
-        if not gw_id:
-            gw_id = await c.fetchval("""SELECT gateway_id FROM gateway_deployments
-                                       WHERE machine_id=$1 AND state='active' ORDER BY started_at DESC LIMIT 1""", machine_id)
         if not gw_id:
             raise HTTPException(400, "Máy chưa gắn gateway")
         if any(p["sensor_addr"] == body.addr and p["gateway_id"] == gw_id for p in pts):
@@ -92,20 +104,21 @@ async def add_sensor(machine_id: str, body: SensorIn, request: Request, user: Us
     if machine is None:
         raise HTTPException(409, "Cấu hình gateway không có máy này")
     template = next((p for p in machine.get("points") or [] if p.get("role", "bearing") == "bearing"), None) or (machine.get("points") or [None])[0]
-    edge_point = build_edge_point(machine_id, body.slot, body.addr, template, body.name)
+    role = installation.edge_role((spec or {}).get("role")) if spec else SLOTS.get(body.slot or 0, {}).get("role", "bearing")
+    edge_point = build_point_for(machine_id, code, role, body.addr, template, body.name, (spec or {}).get("label", ""))
 
     commissioned = None
     if body.commission:
         commissioned = await _commission(request, dict(gateway), (edge_point["sensor"] or {}).get("bus"), body.addr)
 
-    pid = point_id(machine_id, body.slot)
+    pid = edge_point["id"]
     async with pool.acquire() as c:
         await c.execute("""INSERT INTO measurement_points (id, machine_id, name, location, gateway_id, sensor_addr, axes_map, iso_axes, role)
                            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)""",
-                        pid, machine_id, edge_point["name"], edge_point["location"], gw_id, body.addr, edge_point["axes_map"],
-                        edge_point["iso_axes"], edge_point["role"])
+                        pid, machine_id, edge_point["name"], code, gw_id, body.addr, edge_point["axes_map"],
+                        edge_point["iso_axes"], role)
         merged = await gwconfig.merge_managed(c, add_point_to_config(cfg, machine_id, edge_point))
     ver = await gwconfig.save_and_publish(pool, request.app.state.settings, gw_id, merged, user.email)
-    await audit(pool, user, "sensor.add", pid, {"slot": body.slot, "addr": body.addr, "commission": body.commission, "config": ver})
-    return {"point_id": pid, "name": edge_point["name"], "slot": body.slot, "config_version": ver,
-            "commission": commissioned, "label": point_name(body.slot)}
+    await audit(pool, user, "sensor.add", pid, {"code": code, "addr": body.addr, "commission": body.commission, "config": ver})
+    return {"point_id": pid, "name": edge_point["name"], "code": code, "role": role, "config_version": ver,
+            "commission": commissioned}

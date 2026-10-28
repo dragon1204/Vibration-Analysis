@@ -5,7 +5,7 @@ import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress,
 import { api, patch, post } from '../api/client'
 import { ago, dt, num } from '../utils/format'
 import MachineNav from './MachineNav'
-import InstallationDiagram from '../components/InstallationDiagram'
+import InstallationDiagram, { templateById } from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
 import { useAuth } from '../auth'
 
@@ -23,11 +23,23 @@ export default function MachineDetail() {
   const { data: gateways = [] } = useQuery<any[]>({ queryKey: ['gateways'], queryFn: () => api('/gateways') })
   const { data: installationModels } = useQuery<any[]>({ queryKey: ['installation-models'], queryFn: () => api('/installation-models') })
   const { data: runtime } = useQuery<any>({ queryKey: ['machine-runtime', id], queryFn: () => api(`/machines/${id}/runtime`), refetchInterval: 30_000 })
+  const { data: algorithmInfo = [] } = useQuery<any[]>({ queryKey: ['installation-algorithms'], queryFn: () => api('/installation-models/algorithms') })
+  const [modelWarnings, setModelWarnings] = useState<string[]>([])
   const templateMutation = useMutation({
     mutationFn: (installation_template: string) => patch(`/machines/${id}`, { meta: { ...(m?.meta || {}), installation_template } }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['machine', id] }); message.success('Đã cập nhật sơ đồ lắp đặt') },
-    onError: () => message.error('Không thể cập nhật sơ đồ lắp đặt'),
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ['machine', id] })
+      setModelWarnings(r?.warnings || [])
+      message.success('Đã đổi mô hình lắp đặt và đẩy cấu hình tới gateway')
+    },
+    onError: () => message.error('Không thể cập nhật mô hình lắp đặt'),
   })
+  const saveAlpha = (value: number | null) => {
+    if (value == null || value <= 0 || value > 2) return
+    patch(`/machines/${id}`, { meta: { ...(m?.meta || {}), base_alpha: value } })
+      .then(() => { queryClient.invalidateQueries({ queryKey: ['machine', id] }); message.success('Đã lưu hệ số α và đẩy tới gateway') })
+      .catch(() => message.error('Không lưu được hệ số α'))
+  }
   if (!m) return <div className="page"><MachineNav id={id} /><Spin /></div>
   const tp = m.thermal_params || {}
   const gatewayHealth = gatewayDetail?.health || {}
@@ -108,6 +120,22 @@ export default function MachineDetail() {
             style={{ minWidth: 280 }}
           /> : null}>
             <InstallationDiagram templateId={m.meta?.installation_template} points={m.points || []} models={installationModels} />
+            {modelWarnings.length > 0 && <Alert style={{ marginTop: 12 }} type="warning" showIcon message="Cảm biến chưa khớp với mô hình"
+              description={<ul style={{ margin: 0, paddingLeft: 18 }}>{modelWarnings.map((w) => <li key={w}>{w}</li>)}</ul>} />}
+            {(() => {
+              const model = templateById(m.meta?.installation_template, installationModels)
+              const chosen: string[] = model.algorithms || []
+              const info = Object.fromEntries(algorithmInfo.map((a: any) => [a.id, a]))
+              const corrected = chosen.includes('iso_corrected_rms') && model.locations.includes('BASE')
+              return <div className="model-algorithms">
+                <span>Thuật toán của mô hình:</span>
+                {chosen.length ? chosen.map((a) => <Tag key={a} color={info[a]?.supported ? 'blue' : 'default'} title={info[a]?.effect || 'Chưa được hệ thống hỗ trợ'}>
+                  {a}{info[a] && !info[a].supported ? ' (chưa hỗ trợ)' : ''}</Tag>) : <Tag>không có</Tag>}
+                {corrected && <label className="model-alpha">Hệ số truyền BASE → ổ đỡ (α)
+                  <InputNumber size="small" min={0.05} max={2} step={0.05} defaultValue={Number(m.meta?.base_alpha ?? 0.8)}
+                    disabled={!can('analyst')} onBlur={(e) => saveAlpha(Number((e.target as HTMLInputElement).value.replace(',', '.')))} /></label>}
+              </div>
+            })()}
           </Card>
         </Col>
         <Col xs={24} lg={12}>

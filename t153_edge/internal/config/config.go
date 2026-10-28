@@ -80,24 +80,27 @@ type TempModule struct {
 }
 
 type Machine struct {
-	ID            string            `yaml:"id" json:"id"`
-	Name          string            `yaml:"name" json:"name"`
-	Type          string            `yaml:"type" json:"type"`
-	RatedPowerKW  float64           `yaml:"rated_power_kw" json:"rated_power_kw"`
-	RatedSpeedRPM float64           `yaml:"rated_speed_rpm" json:"rated_speed_rpm"`
-	Poles         int               `yaml:"poles" json:"poles"`
-	LineFreqHz    float64           `yaml:"line_freq_hz" json:"line_freq_hz"`
-	ISOGroup      int               `yaml:"iso_group" json:"iso_group"`
-	Foundation    string            `yaml:"foundation" json:"foundation"`
-	ISOBandHz     []float64         `yaml:"iso_band_hz" json:"iso_band_hz"`
-	RunningVrms   float64           `yaml:"running_vrms_mm_s" json:"running_vrms_mm_s"`
-	RunDetection  RunDetection      `yaml:"run_detection" json:"run_detection"`
-	Thermal       thermal.Params    `yaml:"thermal" json:"thermal"`
-	PowerMeter    *PowerMeter       `yaml:"power_meter" json:"power_meter"`
-	Temps         []TempRef         `yaml:"temps" json:"temps"`
-	Points        []Point           `yaml:"points" json:"points"`
-	Isolation     *Isolation        `yaml:"isolation" json:"isolation"`
-	BandLimits    []rules.BandLimit `yaml:"band_limits" json:"band_limits"`
+	ID            string       `yaml:"id" json:"id"`
+	Name          string       `yaml:"name" json:"name"`
+	Type          string       `yaml:"type" json:"type"`
+	RatedPowerKW  float64      `yaml:"rated_power_kw" json:"rated_power_kw"`
+	RatedSpeedRPM float64      `yaml:"rated_speed_rpm" json:"rated_speed_rpm"`
+	Poles         int          `yaml:"poles" json:"poles"`
+	LineFreqHz    float64      `yaml:"line_freq_hz" json:"line_freq_hz"`
+	ISOGroup      int          `yaml:"iso_group" json:"iso_group"`
+	Foundation    string       `yaml:"foundation" json:"foundation"`
+	ISOBandHz     []float64    `yaml:"iso_band_hz" json:"iso_band_hz"`
+	RunningVrms   float64      `yaml:"running_vrms_mm_s" json:"running_vrms_mm_s"`
+	RunDetection  RunDetection `yaml:"run_detection" json:"run_detection"`
+	// BaseAlpha overrides local_ui.base_alpha for this machine (server: installation model); < 0 hides
+	// the bearing's own-vibration value because the model has no BASE slot or the algorithm is off.
+	BaseAlpha  float64           `yaml:"base_alpha" json:"base_alpha"`
+	Thermal    thermal.Params    `yaml:"thermal" json:"thermal"`
+	PowerMeter *PowerMeter       `yaml:"power_meter" json:"power_meter"`
+	Temps      []TempRef         `yaml:"temps" json:"temps"`
+	Points     []Point           `yaml:"points" json:"points"`
+	Isolation  *Isolation        `yaml:"isolation" json:"isolation"`
+	BandLimits []rules.BandLimit `yaml:"band_limits" json:"band_limits"`
 	// MaleLobes of a screw compressor driven by this motor (f_mesh = lobes × 1X).
 	MaleLobes int `yaml:"male_lobes" json:"male_lobes"`
 }

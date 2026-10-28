@@ -3,18 +3,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Checkbox, InputNumber, Modal } from 'antd'
 import { ApiError, api, post } from '../api/client'
 
-type Slot = { slot: number; location: string; label: string; short: string; role: string; point: { id: string; name: string } | null }
+type Slot = { code: string; label: string; short: string; role: string; model_role: string; point: { id: string; name: string } | null }
 
-/** Add a sensor to a machine: choose where it is mounted (DE, NDE, BASE, LOAD) and its Modbus address. */
+/** Add a sensor at one of the positions of the machine's installation model, with its Modbus address. */
 export default function AddSensor({ machineId }: { machineId: string }) {
   const { message } = App.useApp()
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [slot, setSlot] = useState<number>()
+  const [slot, setSlot] = useState<string>()
   const [addr, setAddr] = useState<number | null>(null)
   const [fresh, setFresh] = useState(true)
   const [busy, setBusy] = useState(false)
-  const { data } = useQuery<{ slots: Slot[]; used_addrs: number[] }>({
+  const { data } = useQuery<{ model: { id: string; name: string } | null; slots: Slot[]; issues: string[]; used_addrs: number[] }>({
     queryKey: ['sensor-slots', machineId], queryFn: () => api(`/machines/${machineId}/sensor-slots`), enabled: open,
   })
   const slots = data?.slots || []
@@ -28,7 +28,7 @@ export default function AddSensor({ machineId }: { machineId: string }) {
     if (!slot) return
     setBusy(true)
     try {
-      const r = await post(`/machines/${machineId}/sensors`, { slot, addr: addrValue, commission: fresh })
+      const r = await post(`/machines/${machineId}/sensors`, { code: slot, addr: addrValue, commission: fresh })
       message.success(`Đã thêm cảm biến ${r.name}. Gateway sẽ nhận cấu hình trong ít giây.`)
       setOpen(false); setSlot(undefined); setAddr(null)
       qc.invalidateQueries({ queryKey: ['machine', machineId] })
@@ -43,16 +43,18 @@ export default function AddSensor({ machineId }: { machineId: string }) {
     <Button onClick={() => setOpen(true)}>Thêm cảm biến</Button>
     <Modal open={open} title="Thêm cảm biến" onCancel={() => setOpen(false)} okText="Thêm cảm biến" cancelText="Hủy"
       onOk={submit} okButtonProps={{ disabled: !valid, loading: busy }} width={560} destroyOnClose>
-      <div className="slot-label">Vị trí lắp</div>
+      <div className="slot-label">Vị trí lắp{data?.model ? ` theo mô hình ${data.model.name}` : ''}</div>
       <div className="slot-grid">
         {slots.map((s) => (
-          <button key={s.slot} type="button" disabled={!!s.point} className={`slot-card ${slot === s.slot ? 'active' : ''}`} onClick={() => setSlot(s.slot)}>
+          <button key={s.code} type="button" disabled={!!s.point} className={`slot-card ${slot === s.code ? 'active' : ''}`} onClick={() => setSlot(s.code)}>
             <b>{s.short}</b>
             <span>{s.label}</span>
             <em>{s.point ? `Đã có: ${s.point.name}` : s.role === 'bearing' ? 'Ổ đỡ, tính vùng ISO' : 'Không tính vùng ISO'}</em>
           </button>
         ))}
       </div>
+      {!slots.length && <p className="slot-note">Mô hình lắp đặt của máy chưa có vị trí nào. Chọn mô hình ở trang chi tiết máy.</p>}
+      {!!data?.issues?.length && <ul className="slot-issues">{data.issues.map((i) => <li key={i}>{i}</li>)}</ul>}
       <div className="slot-label">Địa chỉ Modbus (1 đến 127)</div>
       <InputNumber min={1} max={127} value={addrValue} onChange={(v) => setAddr(v)} status={free(addrValue) ? undefined : 'error'} />
       {!free(addrValue) && <span className="slot-error">Địa chỉ này đã dùng cho cảm biến khác</span>}

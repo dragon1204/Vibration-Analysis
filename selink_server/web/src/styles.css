@@ -681,3 +681,9 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .mobile-nav-drawer .app-menu .ant-menu-item-group-title { color: #aebbd0 !important; opacity: 1 !important; }
 .mobile-nav-drawer .app-menu .ant-menu-item-selected,
 .mobile-nav-drawer .app-menu .ant-menu-item-selected .ant-menu-title-content { color: #6ee1c8 !important; }
+
+.slot-issues { margin: 10px 0 0; padding-left: 18px; color: var(--zc); font-size: 12px; line-height: 1.55; }
+
+.model-algorithms { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.model-algorithms > span { margin-right: 6px; font-weight: 700; }
+.model-alpha { display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; color: var(--text); }

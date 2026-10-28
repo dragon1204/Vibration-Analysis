@@ -81,11 +81,19 @@ class InstallationModelIn(BaseModel):
         return value
 
 
+@router.get("/installation-models/algorithms")
+async def list_algorithms(user: User = Depends(current_user)):
+    """Every algorithm a model may list, and whether the platform runs it yet."""
+    from ...common.installation import SUPPORTED_ALGORITHMS
+    return [{"id": a, "supported": a in SUPPORTED_ALGORITHMS, "effect": SUPPORTED_ALGORITHMS.get(a, "")}
+            for a in sorted(ALGORITHMS)]
+
+
 def validate_model(model: InstallationModelIn) -> None:
     codes = [slot.code for slot in model.slots]
     if len(codes) != len(set(codes)):
         raise HTTPException(422, "sensor slot codes must be unique")
-    if "iso_corrected_rms" in model.algorithms and not any(slot.role == "bearing" for slot in model.slots):
+    if "iso_corrected_rms" in model.algorithms and not any(slot.role in ("bearing", "thrust") for slot in model.slots):
         raise HTTPException(422, "ISO profile needs at least one bearing slot")
 
 

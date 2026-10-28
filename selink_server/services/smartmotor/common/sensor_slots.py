@@ -61,6 +61,26 @@ def build_edge_point(machine_id: str, slot: int, addr: int, template: dict | Non
     }
 
 
+def build_point_for(machine_id: str, code: str, role: str, addr: int, template: dict | None,
+                    name: str | None = None, label: str = "") -> dict:
+    """Point block for a sensor at a position of the installation model (any slot code, edge role)."""
+    code = code.upper()
+    slot = LOCATION_TO_SLOT.get(code)
+    t = copy.deepcopy(template) if template else {}
+    sensor = dict(t.get("sensor") or {"driver": "wtvb05", "bus": "busA", "velocity_scale": 0.01})
+    sensor["addr"] = addr
+    return {
+        # Built-in positions keep their stable legacy IDs; other model codes use the code itself.
+        "id": point_id(machine_id, slot) if slot else f"{machine_id}-{code.lower()}",
+        "name": name or (f"{code} – {label}" if label else code), "location": code, "role": role,
+        "sensor": sensor, "axes_map": t.get("axes_map") or dict(DEFAULT_AXES_MAP),
+        "iso_axes": list(t.get("iso_axes") or ["y", "z"]) if role == "bearing" else [],
+        "bearing": None, "idle_sr": t.get("idle_sr", 3),
+        "profiles": copy.deepcopy(t.get("profiles") or [{"name": "orders", "sr": 3, "frames": 1, "every_s": 30}]),
+        "calibration": [], "baselines": [],
+    }
+
+
 def add_point_to_config(cfg: dict, machine_id: str, point: dict) -> dict:
     """Append ``point`` to a machine configuration idempotently; return a new config."""
     out = copy.deepcopy(cfg)

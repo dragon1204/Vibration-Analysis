@@ -4,6 +4,9 @@ import { App, Button, Card, Col, Drawer, Empty, Form, Input, Row, Select, Space,
 import { api, patch, post } from '../api/client'
 import { useAuth } from '../auth'
 
+/** Algorithms the platform runs today (mirrors SUPPORTED_ALGORITHMS in common/installation.py). */
+const SUPPORTED = new Set(['iso_corrected_rms', 'bearing_envelope', 'run_detection'])
+const algorithmLabel = (id: string, label: string) => SUPPORTED.has(id) ? label : `${label} (chưa hỗ trợ)`
 const ALGORITHMS = [
   ['iso_corrected_rms', 'ISO corrected RMS'], ['bearing_envelope', 'Bearing envelope'], ['run_detection', 'RUN detection'],
   ['alignment_screening', 'Alignment screening'], ['unbalance_screening', 'Unbalance screening'],
@@ -72,7 +75,7 @@ export default function InstallationModels() {
           actions={can('analyst') ? [<Button type="link" onClick={() => setEditing(model)}>Cấu hình</Button>] : undefined}>
           <Card.Meta title={<Space><span>{model.name}</span>{model.builtin && <Tag>Built-in</Tag>}</Space>} description={model.description || 'Chưa có mô tả'} />
           <div className="model-tags"><span>Sensor slots</span>{(model.slots || []).map((slot: any) => <Tag key={slot.code} color={slot.role === 'base' ? 'default' : 'blue'}>{slot.code}</Tag>)}</div>
-          <div className="model-tags"><span>Algorithms</span>{(model.algorithms || []).map((algorithm: string) => <Tag key={algorithm} color="cyan">{ALGORITHMS.find(([id]) => id === algorithm)?.[1] || algorithm}</Tag>)}</div>
+          <div className="model-tags"><span>Algorithms</span>{(model.algorithms || []).map((algorithm: string) => <Tag key={algorithm} color={SUPPORTED.has(algorithm) ? 'cyan' : 'default'}>{algorithmLabel(algorithm, ALGORITHMS.find(([id]) => id === algorithm)?.[1] || algorithm)}</Tag>)}</div>
         </Card>
       </Col>)}
     </Row>
@@ -88,7 +91,7 @@ export default function InstallationModels() {
         <Form.Item label="Ảnh sơ đồ"><Upload maxCount={1} accept="image/*" beforeUpload={(file) => { setImage(file); return false }} onRemove={() => setImage(undefined)}><Button>Tải ảnh sơ đồ</Button></Upload><div className="muted">PNG/JPG tối đa 10 MB. Ảnh sẽ được lưu cùng mô hình.</div></Form.Item>
         <Form.List name="slots">{(fields, { add, remove }) => <Card size="small" title="Vị trí cảm biến" extra={<Button size="small" onClick={() => add({ role: 'bearing', axes: ['x', 'y', 'z'], x: 50, y: 50 })}>Thêm vị trí</Button>}>
           {fields.map((field) => <Row gutter={8} key={field.key} align="middle"><Col span={3}><Form.Item {...field} name={[field.name, 'code']} rules={[{ required: true }]}><Input placeholder="DE" /></Form.Item></Col><Col span={4}><Form.Item {...field} name={[field.name, 'label']}><Input placeholder="Drive end" /></Form.Item></Col><Col span={4}><Form.Item {...field} name={[field.name, 'role']}><Select options={SLOT_ROLES.map((value) => ({ value, label: value }))} /></Form.Item></Col><Col span={4}><Form.Item {...field} name={[field.name, 'axes']}><Select mode="multiple" options={['x', 'y', 'z'].map((value) => ({ value, label: value.toUpperCase() }))} /></Form.Item></Col><Col span={3}><Form.Item {...field} name={[field.name, 'x']}><Input type="number" placeholder="X %" /></Form.Item></Col><Col span={3}><Form.Item {...field} name={[field.name, 'y']}><Input type="number" placeholder="Y %" /></Form.Item></Col><Col span={3}><Button danger type="text" onClick={() => remove(field.name)}>Xóa</Button></Col></Row>)}</Card>}</Form.List>
-        <Form.Item name="algorithms" label="Thuật toán áp dụng" rules={[{ required: true }]} style={{ marginTop: 16 }}><Select mode="multiple" options={ALGORITHMS.map(([value, label]) => ({ value, label }))} /></Form.Item>
+        <Form.Item name="algorithms" label="Thuật toán áp dụng" rules={[{ required: true }]} style={{ marginTop: 16 }}><Select mode="multiple" options={ALGORITHMS.map(([value, label]) => ({ value, label: algorithmLabel(value, label) }))} /></Form.Item>
       </Form>
     </Drawer>
   </div>

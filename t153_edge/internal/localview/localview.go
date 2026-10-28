@@ -47,6 +47,7 @@ type MachineInfo struct {
 	ISOGroup      int         `json:"iso_group"`
 	Foundation    string      `json:"foundation"`
 	Limits        Limits      `json:"limits"`
+	BaseAlpha     float64     `json:"base_alpha"` // < 0: own-vibration display off
 	Running       bool        `json:"running"`
 	Points        []PointInfo `json:"points"`
 }

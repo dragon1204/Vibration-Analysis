@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from ...common import bus
 from ...common import gwconfig
-from ...common import model_export
+from ...common import installation, model_export
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -337,13 +337,29 @@ async def update_machine(machine_id: str, body: MachineIn, request: Request, use
             point_rows = await c.fetch("SELECT id FROM measurement_points WHERE machine_id=$1", machine_id)
             validate_run_detection(data["meta"], {row["id"] for row in point_rows})
         await c.execute(f"UPDATE machines SET {sets} WHERE id=$1", machine_id, *data.values())
+        warnings: list[str] = []
+        if "meta" in data:
+            # The installation model decides each sensor's role (and so ISO zones, alarms, analytics).
+            _, model = await installation.machine_model(c, machine_id)
+            pts = [dict(r) for r in await c.fetch(
+                "SELECT id, name, location, role, axes_map, iso_axes FROM measurement_points WHERE machine_id=$1", machine_id)]
+            warnings = installation.check_points(model, pts)
+            for p in pts:
+                spec = installation.slot(model, model_export.position_of(p) or "")
+                if not spec:
+                    continue
+                role = installation.edge_role(spec.get("role"))
+                radial = [a for a, r in sorted((p["axes_map"] or model_export.DEFAULT_AXES).items()) if r != "axial"]
+                iso_axes = (list(p["iso_axes"] or []) or radial) if role == "bearing" else []
+                if role != (p["role"] or "bearing") or iso_axes != list(p["iso_axes"] or []):
+                    await c.execute("UPDATE measurement_points SET role=$2, iso_axes=$3 WHERE id=$1", p["id"], role, iso_axes)
         gateways = [r["gateway_id"] for r in await c.fetch(
             "SELECT DISTINCT gateway_id FROM measurement_points WHERE machine_id=$1 AND gateway_id IS NOT NULL", machine_id)]
     await audit(pool, user, "machine.update", machine_id, data)
     versions = {}
     for gateway_id in gateways:
         versions[gateway_id] = await gwconfig.push_managed(pool, request.app.state.settings, gateway_id, user.email)
-    return {"ok": True, "config_versions": versions}
+    return {"ok": True, "config_versions": versions, "warnings": warnings}
 
 
 @router.get("/machines/{machine_id}/status")

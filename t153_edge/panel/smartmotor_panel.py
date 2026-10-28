@@ -114,6 +114,15 @@ def pos_label(i, pinfo):
     return loc[:8] if loc else "--"
 
 
+def machine_alpha(machine, state):
+    """BASE → bearing coefficient of a machine; None when its installation model switches the correction off."""
+    a = (machine or {}).get("base_alpha")
+    if a is None:
+        a = (state or {}).get("base_alpha", 0.8)
+    a = float(a or 0)
+    return a if a > 0 else None
+
+
 def local_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -557,7 +566,9 @@ class Panel(QWidget):
         base_value = self.role_value(base, role, now)
         if base_value is None:
             return raw
-        alpha = float((self.state or {}).get("base_alpha") or 0.8)
+        alpha = machine_alpha(machine, self.state)
+        if alpha is None:  # the installation model does not select the correction
+            return raw
         return math.sqrt(max(0.0, raw * raw - (alpha * base_value) ** 2))
 
     def point_value(self, machine, pinfo, now):
@@ -1075,8 +1086,8 @@ class ComparePage(QWidget):
                 lb.setText("%s %%" % fmt(ratio, 0) if ratio is not None else "--")
                 lb.setStyleSheet("color:%s;background:transparent;border:none;" % (C["C"] if ratio and ratio > 50 else C["text"]))
                 # Bearing-corrected vibration after removing the BASE contribution.
-                alpha = float((self.panel.state or {}).get("base_alpha") or 0.8)
-                own = None if b is None or d is None else math.sqrt(max(0.0, b * b - (alpha * d) ** 2))
+                alpha = machine_alpha(pts[bearing][0], self.panel.state)
+                own = None if b is None or d is None or alpha is None else math.sqrt(max(0.0, b * b - (alpha * d) ** 2))
                 self.cells[(r, len(pts) + 2)].setText(fmt(own))
         self.note.setText("BEARING-CORRECTED RMS = √(DE² − (k × BASE)²)" if self.has_ratio else "")
 
