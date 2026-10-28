@@ -65,7 +65,7 @@ export default function Reports() {
         </Space>
       </Card>
       <Card size="small" title="Báo cáo đã tạo">
-        <Table sticky={STICKY_HEAD} size="small" rowKey="id" loading={isLoading} dataSource={data?.items || []}
+        <Table sticky={STICKY_HEAD} size="small" rowKey="id" scroll={{ x: 'max-content' }} loading={isLoading} dataSource={data?.items || []}
           pagination={{ current: page, pageSize, total: data?.total || 0, onChange: setPage, showSizeChanger: false }}
           expandable={{
             rowExpandable: (r: any) => !!r.summary?.lines?.length,
@@ -73,15 +73,15 @@ export default function Reports() {
           }}
           columns={[
             { title: 'Kỳ', dataIndex: 'period', render: (v, r: any) => <Tooltip title={`${dt(r.period_start)} → ${dt(r.period_end)}`}>{v}</Tooltip> },
-            { title: 'Máy', dataIndex: 'machine_name' },
+            { title: 'Máy', dataIndex: 'machine_name', render: (v) => <span className="nowrap">{v}</span> },
             { title: 'Trạng thái', dataIndex: 'status', render: (s: string, r: any) => {
               const tag = <Tag color={STATUS[s]?.color}>{STATUS[s]?.label || s}</Tag>
               return s === 'failed' && r.error ? <Tooltip title={r.error}>{tag}</Tooltip> : tag
             } },
-            { title: 'Đánh giá', key: 'zone', render: (_, r: any) => r.summary ? <Space size={4}><ZoneTag zone={r.summary.zone} />
-              {r.summary.points?.[0] && <span className="muted">P95 {num(r.summary.points[0].p95)} mm/s</span>}
+            { title: 'Đánh giá', key: 'zone', render: (_, r: any) => r.summary ? <Space size={4} wrap><ZoneTag zone={r.summary.zone} />
+              {r.summary.points?.[0] && <span className="muted nowrap">P95 {num(r.summary.points[0].p95)} mm/s</span>}
               {r.summary.period_complete === false && <Tag>kỳ chưa kết thúc</Tag>}</Space> : '–' },
-            { title: 'Cảnh báo', key: 'ev', render: (_, r: any) => r.summary ? `${r.summary.events_total} (${r.summary.events_active} còn mở)` : '–' },
+            { title: 'Cảnh báo', key: 'ev', render: (_, r: any) => r.summary ? <span className="nowrap">{r.summary.events_total} ({r.summary.events_active} còn mở)</span> : '–' },
             { title: 'Người tạo', dataIndex: 'requested_by', render: (v) => v || '–' },
             { title: 'Tạo lúc', dataIndex: 'created_at', render: (v) => dt(v) },
             { title: '', key: 'act', render: (_, r: any) => <Space size={4}>
@@ -92,7 +92,7 @@ export default function Reports() {
               {can('admin') && r.status !== 'queued' && r.status !== 'running' && (
                 <Popconfirm title="Xóa báo cáo này?" okText="Xóa" cancelText="Hủy"
                   onConfirm={() => api(`/reports/${r.id}`, { method: 'DELETE' }).then(refresh).catch((e) => message.error(e.message))}>
-                  <Button size="small" danger />
+                  <Button size="small" danger>Xóa</Button>
                 </Popconfirm>
               )}
             </Space> },
