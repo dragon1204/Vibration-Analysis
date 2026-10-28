@@ -707,3 +707,6 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .ant-descriptions-bordered .ant-descriptions-item-content { padding: 8px 12px !important; }
 .ant-statistic-content { font-size: 22px; }
 .ant-table-sticky-holder { z-index: 5; }
+
+/* Cards side by side in a row share the row height (the tallest card sets it). */
+.ant-row > .ant-col > .ant-card:only-child { height: 100%; }
