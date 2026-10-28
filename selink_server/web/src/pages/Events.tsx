@@ -7,6 +7,7 @@ import { useRealtime } from '../api/realtime'
 import { RangePicker, StatusTag, lastHours, rangeParams, type Range } from '../components/common'
 import { useAuth } from '../auth'
 import { EVENT_STATE, dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 const FLOW = ['raised', 'acknowledged', 'diagnosed', 'resolved', 'closed']
 
@@ -54,7 +55,7 @@ export default function Events() {
           options={machines.map((m) => ({ value: m.id, label: m.name }))} />
       </Space>
       <Card size="small">
-        <Table size="small" rowKey="event_id" loading={isLoading} dataSource={data} pagination={{ pageSize: 20 }}
+        <Table sticky={STICKY_HEAD} size="small" rowKey="event_id" loading={isLoading} dataSource={data} pagination={{ pageSize: 20 }}
           onRow={(r) => ({ onClick: () => setSp({ event: r.event_id }), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Thời điểm', dataIndex: 'ts', render: (v) => dt(v), width: 150 },

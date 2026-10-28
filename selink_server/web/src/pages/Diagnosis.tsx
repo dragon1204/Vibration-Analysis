@@ -9,6 +9,7 @@ import { EstimateTag, StatusTag } from '../components/common'
 import { useAuth } from '../auth'
 import { ago, dt, num } from '../utils/format'
 import MachineNav from './MachineNav'
+import { STICKY_HEAD } from '../utils/table'
 
 const FAULTS = [
   ['unbalance', 'Mất cân bằng'], ['misalignment', 'Lệch tâm'], ['bent_shaft', 'Trục cong'], ['looseness', 'Lỏng cơ khí'],
@@ -99,7 +100,7 @@ export default function Diagnosis() {
           <>
             <Col xs={24} lg={9}>
               <Card size="small" title="Bằng chứng (luật đã kích hoạt)">
-                <Table size="small" pagination={false} rowKey={(r: any) => r.feature + r.note} dataSource={diag.evidence || []} columns={[
+                <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey={(r: any) => r.feature + r.note} dataSource={diag.evidence || []} columns={[
                   { title: 'Đặc trưng', dataIndex: 'feature' }, { title: 'Giá trị', dataIndex: 'value', render: (v) => (typeof v === 'number' ? num(v, 3) : v) },
                   { title: 'Tham chiếu', dataIndex: 'ref', render: (v) => (v != null ? num(v, 3) : '') }, { title: 'Ghi chú', dataIndex: 'note' },
                 ]} />
@@ -142,7 +143,7 @@ export default function Diagnosis() {
                 </Col>
                 <Col xs={24} md={8}>
                   <Typography.Text strong>Ngưỡng dải hẹp (SOP)</Typography.Text>
-                  <Table size="small" pagination={false} rowKey={(r: any) => r.band + r.axis} dataSource={iso.bands || []} columns={[
+                  <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey={(r: any) => r.band + r.axis} dataSource={iso.bands || []} columns={[
                     { title: 'Dải', dataIndex: 'band', render: (b) => b.toUpperCase() }, { title: 'Trục', dataIndex: 'axis' },
                     { title: 'mm/s', dataIndex: 'vel_mm_s', render: (v) => num(v, 3) },
                     { title: 'W/A', key: 'l', render: (_, r: any) => `${num(r.warn, 2)} / ${num(r.alarm, 2)}` },
@@ -162,7 +163,7 @@ export default function Diagnosis() {
         )}
         <Col span={24}>
           <Card size="small" title="Cảnh báo 7 ngày gần nhất">
-            <Table size="small" rowKey="event_id" dataSource={data.events} pagination={{ pageSize: 5 }} columns={[
+            <Table sticky={STICKY_HEAD} size="small" rowKey="event_id" dataSource={data.events} pagination={{ pageSize: 5 }} columns={[
               { title: 'Thời điểm', dataIndex: 'ts', render: (v) => dt(v) }, { title: 'Mức', dataIndex: 'severity', render: (s) => <StatusTag status={s} /> },
               { title: 'Điểm đo', dataIndex: 'point_id' }, { title: 'Nội dung', dataIndex: 'message' },
               { title: 'Chẩn đoán', dataIndex: 'diagnosis', render: (d) => d?.label || '' },

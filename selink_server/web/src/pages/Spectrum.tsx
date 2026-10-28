@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { SpectrumChart, WaterfallChart, WaveformChart } from '../components/charts'
 import { RangePicker, ZoneTag, lastHours, rangeParams, type Range } from '../components/common'
 import { dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 export default function Spectrum() {
   const { id = '' } = useParams()
@@ -65,7 +66,7 @@ export default function Spectrum() {
       <Row gutter={[12, 12]}>
         <Col xs={24} xl={7}>
           <Card size="small" title="Capture">
-            <Table size="small" rowKey="capture_id" dataSource={caps} pagination={{ pageSize: 12, size: 'small' }}
+            <Table sticky={STICKY_HEAD} size="small" rowKey="capture_id" dataSource={caps} pagination={{ pageSize: 12, size: 'small' }}
               rowSelection={{ type: 'radio', selectedRowKeys: capId ? [capId] : [], onChange: (k) => setCapId(String(k[0])) }}
               onRow={(r) => ({ onClick: () => setCapId(r.capture_id) })}
               columns={[

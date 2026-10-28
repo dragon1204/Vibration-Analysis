@@ -6,6 +6,7 @@ import { api, download, post } from '../api/client'
 import { useAuth } from '../auth'
 import { ZoneTag } from '../components/common'
 import { dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 type PeriodType = 'month' | 'quarter' | 'custom'
 const STATUS: Record<string, { color: string; label: string }> = {
@@ -64,7 +65,7 @@ export default function Reports() {
         </Space>
       </Card>
       <Card size="small" title="Báo cáo đã tạo">
-        <Table size="small" rowKey="id" loading={isLoading} dataSource={data?.items || []}
+        <Table sticky={STICKY_HEAD} size="small" rowKey="id" loading={isLoading} dataSource={data?.items || []}
           pagination={{ current: page, pageSize, total: data?.total || 0, onChange: setPage, showSizeChanger: false }}
           expandable={{
             rowExpandable: (r: any) => !!r.summary?.lines?.length,

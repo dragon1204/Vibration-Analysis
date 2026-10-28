@@ -4,6 +4,7 @@ import { Alert, App, Button, Card, Col, Form, Input, InputNumber, Row, Select, S
 import { api, download, post } from '../api/client'
 import { useAuth } from '../auth'
 import { dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 const QUANTITIES = [
   { value: 'iso_vrms', label: 'RMS vận tốc dải ISO (mm/s)' }, { value: 'acc_rms', label: 'RMS gia tốc (g)' },
@@ -84,7 +85,7 @@ export default function Accuracy() {
           </Col>
           <Col xs={24} lg={16}>
             <Card size="small" title={<Space>Kết luận {rep && (rep.pass ? <Tag color="green">ĐẠT</Tag> : <Tag color="red">CHƯA ĐẠT</Tag>)}</Space>}>
-              <Table size="small" pagination={false} rowKey={(r: any) => r.quantity + r.load_state} dataSource={rep?.summary || []} columns={[
+              <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey={(r: any) => r.quantity + r.load_state} dataSource={rep?.summary || []} columns={[
                 { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Tải', dataIndex: 'load_state' }, { title: 'n', dataIndex: 'n' },
                 { title: 'mean(e)', dataIndex: 'mean_pct', render: (v, r: any) => `${num(v)} ${['temp', 'peak_freq'].includes(r.quantity) ? (r.quantity === 'temp' ? '°C' : 'Hz') : '%'}` },
                 { title: 'P95(e)', dataIndex: 'p95_pct', render: (v) => num(v) },
@@ -92,7 +93,7 @@ export default function Accuracy() {
               ]} />
             </Card>
             <Card size="small" title="Số liệu" style={{ marginTop: 12 }}>
-              <Table size="small" rowKey="id" dataSource={tests} columns={[
+              <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={tests} columns={[
                 { title: 'Thời điểm', dataIndex: 'ts', render: (v) => dt(v) }, { title: 'Tải', dataIndex: 'load_state' },
                 { title: 'Đại lượng', dataIndex: 'quantity' }, { title: 'Trục', dataIndex: 'axis' },
                 { title: 'Chuẩn', dataIndex: 'ref_value', render: (v) => num(v, 3) }, { title: 'Cảm biến', dataIndex: 'dut_value', render: (v) => num(v, 3) },

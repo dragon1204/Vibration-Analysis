@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Button, Card, Col, Progress, Row, Statistic, Table, Tag, Typography } from 'antd'
 import { api } from '../api/client'
 import { dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 export default function Knowledge() {
   const nav = useNavigate()
@@ -21,13 +22,13 @@ export default function Knowledge() {
       <Col xs={12} lg={6}><Card><Statistic title="Baseline hiệu lực" value={active.length} suffix={`/ ${baselines.length}`} /></Card></Col>
       <Col xs={12} lg={6}><Card><Statistic title="Đang học" value={learning.length} /></Card></Col>
       <Col xs={12} lg={6}><Card title="Độ phủ tri thức"><Progress percent={coverage} strokeColor="#3270ed" /></Card></Col>
-      <Col span={24}><Card title="Luật chẩn đoán & cảnh báo"><Table size="small" rowKey="id" dataSource={rules} pagination={false} columns={[
+      <Col span={24}><Card title="Luật chẩn đoán & cảnh báo"><Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={rules} pagination={false} columns={[
         { title: 'Luật', dataIndex: 'rule', render: (value) => <b>{value}</b> }, { title: 'Phạm vi', render: (_, row: any) => `${row.scope}${row.scope_id ? ` · ${row.scope_id}` : ''}` },
         { title: 'Mức', dataIndex: 'severity', render: (value) => <Tag color={value === 'danger' ? 'error' : value === 'warning' ? 'orange' : 'gold'}>{value}</Tag> },
         { title: 'Trạng thái', dataIndex: 'enabled', render: (value) => value ? <Tag color="success">Hoạt động</Tag> : <Tag>Tắt</Tag> },
         { title: 'Tham số', dataIndex: 'params', render: (value) => <code>{JSON.stringify(value)}</code> },
       ]} /></Card></Col>
-      <Col span={24}><Card title="Baseline gần cập nhật"><Table size="small" rowKey="id" dataSource={baselines.slice(0, 20)} columns={[
+      <Col span={24}><Card title="Baseline gần cập nhật"><Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={baselines.slice(0, 20)} columns={[
         { title: 'Điểm', dataIndex: 'point_id' }, { title: 'Đặc trưng', dataIndex: 'feature' }, { title: 'Nhóm tải', dataIndex: 'load_bin' },
         { title: 'Median', dataIndex: 'median', render: (value) => num(value, 3) }, { title: 'Ngưỡng W / A', render: (_, row: any) => `${num(row.warn, 3)} / ${num(row.alarm, 3)}` },
         { title: 'Mẫu', dataIndex: 'n_samples' }, { title: 'Trạng thái', dataIndex: 'status', render: (value) => <Tag color={value === 'learning' ? 'processing' : 'success'}>{value}</Tag> },

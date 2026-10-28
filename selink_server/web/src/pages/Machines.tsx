@@ -5,6 +5,7 @@ import { Button, Card, Input, Select, Space, Table, Tag, Typography } from 'antd
 import { api } from '../api/client'
 import { num } from '../utils/format'
 import { ZoneTag } from '../components/common'
+import { STICKY_HEAD } from '../utils/table'
 
 const statusLabel: Record<string, string> = { normal: 'Bình thường', watch: 'Theo dõi', warning: 'Cảnh báo', danger: 'Nguy hiểm', offline: 'Mất kết nối' }
 const statusColor: Record<string, string> = { normal: 'success', watch: 'gold', warning: 'orange', danger: 'error', offline: 'default' }
@@ -37,7 +38,7 @@ export default function Machines() {
         <Select allowClear placeholder="Trạng thái" value={status} onChange={setStatus} style={{ width: 170 }} options={Object.entries(statusLabel).map(([value, label]) => ({ value, label }))} />
         <Tag>{rows.length} động cơ</Tag>
       </Space>
-      <Table className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} tableLayout="fixed"
+      <Table sticky={STICKY_HEAD} className="machines-table" rowKey="id" dataSource={rows} pagination={{ pageSize: 12 }} tableLayout="fixed"
         onRow={(record: any) => ({ onClick: () => nav(`/machines/${record.id}`), style: { cursor: 'pointer' } })} columns={[
         { title: 'Động cơ', key: 'machine', width: '28%', render: (_, row: any) => <div className="wrap-cell">
           <b>{row.name}</b>

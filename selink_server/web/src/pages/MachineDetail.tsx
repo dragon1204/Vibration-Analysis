@@ -8,6 +8,7 @@ import MachineNav from './MachineNav'
 import InstallationDiagram, { templateById } from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
 import { useAuth } from '../auth'
+import { STICKY_HEAD } from '../utils/table'
 
 export default function MachineDetail() {
   const { id = '' } = useParams()
@@ -101,7 +102,7 @@ export default function MachineDetail() {
               <Descriptions.Item label="Cấu hình edge">v{gatewayDetail.deployment?.config_version ?? deployment?.active?.config_version ?? '–'}</Descriptions.Item>
               <Descriptions.Item label="Phiên đo"><Tag color="green">Đang đo</Tag></Descriptions.Item>
             </Descriptions>
-            <Table size="small" pagination={false} rowKey="id" title={() => 'Cảm biến của động cơ'} dataSource={(gatewayDetail.points || []).filter((point: any) => point.machine_id === id)} style={{ marginTop: 12 }} columns={[
+            <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey="id" title={() => 'Cảm biến của động cơ'} dataSource={(gatewayDetail.points || []).filter((point: any) => point.machine_id === id)} style={{ marginTop: 12 }} columns={[
               { title: 'Điểm đo', dataIndex: 'id' },
               { title: 'Vị trí', dataIndex: 'location', render: (value, row: any) => value || row.role || '–' },
               { title: 'Địa chỉ', dataIndex: 'sensor_addr', render: (value) => `0x${(value || 0).toString(16).toUpperCase()}` },
@@ -213,7 +214,7 @@ export default function MachineDetail() {
             <Card size="small" title="Cô lập nhiễu (Beer HN)" style={{ marginTop: 12 }}>
               <p>Tham chiếu: <Tag>{m.isolation.reference_point}</Tag> Nguồn: <Tag>{m.isolation.source_point}</Tag>
                 Đích: {m.isolation.targets?.map((t: string) => <Tag key={t}>{t}</Tag>)}</p>
-              <Table size="small" pagination={false} rowKey={(r: any) => r.point + r.f_hz}
+              <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey={(r: any) => r.point + r.f_hz}
                 dataSource={Object.entries(m.isolation.alpha || {}).flatMap(([p, tab]: any) => tab.map((x: any) => ({ point: p, ...x })))}
                 locale={{ emptyText: 'Chưa học α (cần ≥ N mẫu ở đầy tải)' }}
                 columns={[{ title: 'Điểm', dataIndex: 'point' }, { title: 'f (Hz)', dataIndex: 'f_hz', render: (v) => num(v, 1) },
@@ -233,7 +234,7 @@ export default function MachineDetail() {
         </Col>
         <Col span={24}>
           <Card size="small" title="Điểm đo">
-            <Table size="small" rowKey="id" dataSource={m.points} pagination={false}
+            <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={m.points} pagination={false}
               onRow={(r: any) => ({ onClick: () => nav(`/points/${r.id}/spectrum`), style: { cursor: 'pointer' } })}
               columns={[
                 { title: 'Mã', dataIndex: 'id' }, { title: 'Tên', dataIndex: 'name' }, { title: 'Vị trí', dataIndex: 'location' },

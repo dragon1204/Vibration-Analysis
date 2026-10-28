@@ -22,6 +22,7 @@ from ..common.schemas import TOPIC_MODELS, Topic, parse_topic
 from ..common.settings import Settings
 from ..common.storage import Storage, capture_key
 from ..common import wavefile
+from ..common.run_state import SOURCE as SERVER_RUN_SOURCE, RunTracker
 
 log = logging.getLogger("ingest")
 
@@ -118,6 +119,7 @@ class Ingest:
         self.batch: Batcher | None = None
         self.stats = defaultdict(int)
         self._warned: set[str] = set()
+        self.runs = RunTracker()
 
     async def start(self) -> None:
         self.pool = await create_pool(self.s.db_url, max_size=8)
@@ -225,6 +227,13 @@ class Ingest:
         await bus.publish(self.redis, f"rt:point:{d.point_id}", msg)
         if m:
             await bus.publish(self.redis, f"rt:machine:{m['id']}", msg)
+            # Same velocity the edge compares with the RUN thresholds; used only while the
+            # gateway does not publish its own run state.
+            run = self.runs.observe(m, d.point_id, d.ts, {a: _num(getattr(d.vel_mm_s, a)) for a in AXES})
+            if run:
+                await self.batch.add(SQL_RUN_STATE, [(run[0], m["id"], run[1], SERVER_RUN_SOURCE, None)])
+                await bus.publish(self.redis, f"rt:machine:{m['id']}", {"type": "run", "ts": run[0].isoformat(),
+                                  "machine_id": m["id"], "running": run[1], "source": SERVER_RUN_SOURCE})
 
     async def on_metrics_vibstat(self, t: Topic, d) -> None:
         if not self._point_ok(d.point_id):
@@ -272,6 +281,7 @@ class Ingest:
         await bus.publish(self.redis, f"rt:machine:{d.machine_id}", {"type": "power", **json.loads(d.model_dump_json())})
 
     async def on_metrics_run(self, t: Topic, d) -> None:
+        self.runs.gateway_run(d.machine_id, d.ts)
         await self.batch.add(SQL_RUN_STATE, [(d.ts, d.machine_id, d.running, d.source, d.msg_id)])
         await bus.publish(self.redis, f"rt:machine:{d.machine_id}", {"type": "run", **json.loads(d.model_dump_json())})
 

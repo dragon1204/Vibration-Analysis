@@ -10,6 +10,7 @@ import { MultiSpectrumChart } from '../components/charts'
 import { RangePicker, lastHours, rangeParams, type Range } from '../components/common'
 import { dt, num, sensorCode } from '../utils/format'
 import MachineNav from './MachineNav'
+import { STICKY_HEAD } from '../utils/table'
 
 const COLORS = ['#2563eb', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f']
 const METRICS = [
@@ -379,7 +380,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       </div>}
       {result.harmonics.length ? <Row gutter={[14, 14]} style={{ marginTop: 6 }}>
         <Col xs={24} xl={10}><Card size="small" title={`Biên độ đỉnh theo bậc hài · ${result.unit}`}><ReactECharts option={chartOption} style={{ height: 350 }} /></Card></Col>
-        <Col xs={24} xl={14}><Card size="small" title="Bảng tần suất xuất hiện 1X–nX"><Table rowKey="order" size="small" pagination={false} scroll={{ x: 1370 }} dataSource={result.harmonics} columns={[
+        <Col xs={24} xl={14}><Card size="small" title="Bảng tần suất xuất hiện 1X–nX"><Table sticky={STICKY_HEAD} rowKey="order" size="small" pagination={false} scroll={{ x: 1370 }} dataSource={result.harmonics} columns={[
           { title: 'Bậc', dataIndex: 'label', fixed: 'left', width: 62, render: (value, row: any) => <Tag color={row.level === 'warning' ? 'red' : row.level === 'watch' ? 'gold' : row.level === 'info' ? 'blue' : 'default'}>{value}</Tag> },
           { title: 'Dải bắt (Hz)', width: 145, render: (_, row: any) => `${num(row.band_hz[0], 1)}–${num(row.band_hz[1], 1)}` },
           { title: 'Capture đạt ngưỡng', width: 175, render: (_, row: any) => <span><Progress percent={row.occurrence_pct} size="small" format={() => `${row.detections}/${row.captures}`} />
@@ -419,7 +420,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
           </Row>
           {comparison.coveragePct < 80 && <Alert type="warning" showIcon message="Độ phủ ghép timestamp thấp"
             description="Kiểm tra múi giờ/khoảng thời gian hoặc tăng dung sai ghép. Không nên kết luận độ chính xác khi độ phủ dưới 80%." style={{ marginBottom: 10 }} />}
-          <Table rowKey="index" size="small" pagination={false} scroll={{ x: 930 }} dataSource={comparison.metrics} columns={[
+          <Table sticky={STICKY_HEAD} rowKey="index" size="small" pagination={false} scroll={{ x: 930 }} dataSource={comparison.metrics} columns={[
             { title: 'Kênh / metric', dataIndex: 'label', fixed: 'left', width: 155 },
             { title: 'Số cặp', dataIndex: 'samples', width: 75, align: 'right' },
             { title: 'Sai số TB', width: 120, align: 'right', render: (_, row: any) => row.meanAbs == null ? '—' : `${num(row.meanAbs, 4)} ${row.unit}` },
@@ -520,7 +521,7 @@ export default function DeepAnalysis() {
           description={`Tương đồng phổ với LOAD ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so LOAD ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ LOAD/BASE/DE/NDE" />}
         {applicable && <Alert type="warning" showIcon message="Lưu ý kỹ thuật" description="Tương đồng phổ không thay thế coherence/pha. Kết luận chính thức cần capture nhóm đồng bộ từ gateway." />}
       </Card></Col>
-      <Col span={24}><Card title="Ma trận đặc trưng đa điểm"><Table rowKey="key" size="small" pagination={false} dataSource={matrix} scroll={{ x: 980 }} columns={[
+      <Col span={24}><Card title="Ma trận đặc trưng đa điểm"><Table sticky={STICKY_HEAD} rowKey="key" size="small" pagination={false} dataSource={matrix} scroll={{ x: 980 }} columns={[
         { title: 'Điểm', render: (_, row: any) => <Space><span className="series-dot" style={{ background: row.color }} /><b>{sensorCode(row.point)}</b><span>{row.point.name}</span></Space> },
         { title: 'Vai trò', render: (_, row: any) => <Tag>{roleName(row.point.role)}</Tag> },
         { title: 'RMS ISO', dataIndex: 'rms', render: (value) => `${num(value, 3)} mm/s` },

@@ -7,6 +7,7 @@ import { api, post } from '../api/client'
 import { useAuth } from '../auth'
 import { dt } from '../utils/format'
 import MachineNav from './MachineNav'
+import { STICKY_HEAD } from '../utils/table'
 
 const ACTIONS = [
   { value: 'bearing_replace', label: 'Thay vòng bi' }, { value: 'alignment', label: 'Căn chỉnh đồng trục' },
@@ -91,7 +92,7 @@ export default function Maintenance() {
         )}
         <Col xs={24} lg={can('engineer') ? 16 : 24}>
           <Card size="small" title="Lịch sử bảo trì">
-            <Table size="small" rowKey="id" dataSource={data} columns={[
+            <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} columns={[
               { title: 'Thời điểm', dataIndex: 'ts', render: (v) => dt(v) },
               { title: 'Công việc', dataIndex: 'action', render: (a) => ACTIONS.find((x) => x.value === a)?.label || a },
               { title: 'Điểm đo', dataIndex: 'point_id' }, { title: 'Mô tả', dataIndex: 'description' },

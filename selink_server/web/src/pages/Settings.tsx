@@ -5,6 +5,7 @@ import { api, patch, post, put } from '../api/client'
 import MachineSetupWizard from '../components/MachineSetupWizard'
 import { useAuth } from '../auth'
 import { dt, num } from '../utils/format'
+import { STICKY_HEAD } from '../utils/table'
 
 function JsonEditor({ value, onSave, disabled }: { value: any; onSave: (v: any) => Promise<void>; disabled?: boolean }) {
   const [text, setText] = useState(JSON.stringify(value ?? null, null, 2))
@@ -38,7 +39,7 @@ function MachinesTab() {
         <div><div className="page-kicker">Asset configuration</div><Typography.Title level={3} style={{ margin: 0 }}>Hồ sơ máy & ngưỡng đo</Typography.Title><div className="muted">Khai báo đúng thông số để tự động chọn ISO và cấu hình phân tích.</div></div>
         {can('admin') && <Button type="primary" onClick={() => setCreating(true)}>Thêm máy</Button>}
       </div>
-      <Table size="small" rowKey="id" dataSource={data} columns={[
+      <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} columns={[
         { title: 'Mã', dataIndex: 'id' }, { title: 'Tên', dataIndex: 'name' }, { title: 'Site', dataIndex: 'site_id' },
         { title: 'kW', dataIndex: 'rated_power_kw' }, { title: 'v/ph', dataIndex: 'rated_speed_rpm' },
         { title: 'ISO', key: 'iso', render: (_, r: any) => `nhóm ${r.iso_group}, ${r.foundation}` },
@@ -60,7 +61,7 @@ function BearingsTab() {
   const [form] = Form.useForm()
   return (
     <>
-      <Table size="small" rowKey="id" dataSource={data} pagination={false} columns={[
+      <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} pagination={false} columns={[
         { title: 'Model', dataIndex: 'model' }, { title: 'Hãng', dataIndex: 'maker' }, { title: 'Số bi N', dataIndex: 'n_balls' },
         { title: 'Bd (mm)', dataIndex: 'bd_mm' }, { title: 'Pd (mm)', dataIndex: 'pd_mm' }, { title: 'β (°)', dataIndex: 'contact_deg' },
         { title: 'BPFO×', dataIndex: 'bpfo_x' }, { title: 'BPFI×', dataIndex: 'bpfi_x' },
@@ -110,7 +111,7 @@ function BaselinesTab() {
           options={points.map((p) => ({ value: p.id, label: `${p.machine_id} · ${p.name}` }))} />
         {can('analyst') && <Button onClick={() => post('/analytics/run', { job: 'baseline_learn' }).then(() => message.success('Đang học baseline…'))}>Học baseline ngay</Button>}
       </Space>
-      <Table size="small" rowKey="id" dataSource={data} columns={[
+      <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} columns={[
         { title: 'Điểm', dataIndex: 'point_id' }, { title: 'Đặc trưng', dataIndex: 'feature' }, { title: 'Nhóm tải', dataIndex: 'load_bin' },
         { title: 'Median', dataIndex: 'median', render: (v) => num(v, 3) }, { title: 'MAD/σ', key: 's', render: (_, r: any) => `${num(r.mad, 3)} / ${num(r.std, 3)}` },
         { title: 'n', dataIndex: 'n_samples' }, { title: 'Phương pháp', dataIndex: 'method' },
@@ -133,7 +134,7 @@ function RulesTab() {
   const [edit, setEdit] = useState<any>()
   return (
     <>
-      <Table size="small" rowKey="id" dataSource={data} columns={[
+      <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} columns={[
         { title: 'Phạm vi', key: 'sc', render: (_, r: any) => `${r.scope}${r.scope_id ? ':' + r.scope_id : ''}` },
         { title: 'Luật', dataIndex: 'rule' }, { title: 'Mức', dataIndex: 'severity' },
         { title: 'Tham số', dataIndex: 'params', render: (p) => <code style={{ fontSize: 11 }}>{JSON.stringify(p)}</code> },
@@ -162,7 +163,7 @@ function UsersTab() {
   return (
     <>
       <Button type="primary" onClick={() => setOpen(true)} style={{ marginBottom: 8 }}>Thêm người dùng</Button>
-      <Table size="small" rowKey="id" dataSource={data} columns={[
+      <Table sticky={STICKY_HEAD} size="small" rowKey="id" dataSource={data} columns={[
         { title: 'Email', dataIndex: 'email' }, { title: 'Tên', dataIndex: 'name' }, { title: 'SĐT', dataIndex: 'phone' },
         { title: 'Quyền', dataIndex: 'roles', render: (rs) => rs.map((r: any, i: number) => <Tag key={i}>{r.role}@{r.site_id || r.tenant_id || 'toàn hệ thống'}</Tag>) },
         { title: 'Hoạt động', dataIndex: 'active', render: (v) => (v ? '✓' : '✗') },
@@ -204,7 +205,7 @@ function NotifyTab() {
     qc.invalidateQueries({ queryKey: ['prefs'] })
   }
   return (
-    <Table size="small" rowKey="channel" pagination={false} dataSource={rows} columns={[
+    <Table sticky={STICKY_HEAD} size="small" rowKey="channel" pagination={false} dataSource={rows} columns={[
       { title: 'Kênh', dataIndex: 'channel' },
       { title: 'Bật', dataIndex: 'enabled', render: (v, r: any) => <Switch checked={v} onChange={(c) => save(rows.map((x) => (x.channel === r.channel ? { ...x, enabled: c } : x)))} /> },
       { title: 'Mức tối thiểu', dataIndex: 'min_severity', render: (v, r: any) => (
