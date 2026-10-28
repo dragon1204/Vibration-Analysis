@@ -241,7 +241,7 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
 async def model_table(machine_id: str, request: Request, rng=Depends(time_range),
                       max_skew_ms: int = Query(1000, ge=0, le=10_000),
                       limit: int = Query(50_000, ge=1, le=100_000),
-                      rows: str = Query("all", pattern="^(all|rms)$"),
+                      row_mode: str = Query("all", alias="rows", pattern="^(all|rms)$"),
                       user: User = Depends(require("engineer"))):
     """CSV with one column block per position of the machine's installation model (e.g. DE + BASE).
 
@@ -293,7 +293,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     ref = next((p for code, p in slots if p and p.get("role", "bearing") == "bearing"), installed[0])
     if not metrics[ref["id"]]:
         raise HTTPException(404, "Không có dữ liệu trong khoảng thời gian đã chọn")
-    if rows == "rms":
+    if row_mode == "rms":
         base_rows = [r for r in rms[ref["id"]] if frm <= r["ts"] <= to][:limit]
         if not base_rows:
             raise HTTPException(404, "Không có kết quả RMS trong khoảng thời gian đã chọn")
@@ -314,12 +314,12 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
             if not p:
                 line += model_export.slot_values(None, None)
                 continue
-            m = row if p["id"] == ref["id"] and rows == "all" else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
+            m = row if p["id"] == ref["id"] and row_mode == "all" else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
             line += model_export.slot_values(m, model_export.latest_before(rms[p["id"]], rms_stamps[p["id"]], t))
         w.writerow(line)
     codes = "-".join(code for code, _ in slots)
     stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
-    suffix = "-rms" if rows == "rms" else ""
+    suffix = "-rms" if row_mode == "rms" else ""
     filename = f"{machine_id}-{codes}-{stamp}{suffix}.csv"
     return Response(("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
