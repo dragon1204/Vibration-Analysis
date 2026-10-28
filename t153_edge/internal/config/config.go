@@ -33,6 +33,12 @@ type Config struct {
 	Log          Log          `yaml:"log" json:"log"`
 	Intervals    Intervals    `yaml:"intervals" json:"intervals"`
 	LocalUI      LocalUI      `yaml:"local_ui" json:"local_ui"`
+	Clock        Clock        `yaml:"clock" json:"clock"`
+}
+
+// Clock: the server whose HTTP Date header verifies the clock when NTP is blocked.
+type Clock struct {
+	ServerURL string `yaml:"server_url" json:"server_url"`
 }
 
 type Gateway struct {

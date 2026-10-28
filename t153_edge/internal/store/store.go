@@ -56,6 +56,8 @@ type Message struct {
 	Priority int
 	Payload  []byte
 	Attempts int
+	// ClockEpoch is set when the message was measured before the wall clock was verified.
+	ClockEpoch string
 }
 
 // Store wraps the SQLite DB and the file directory.
@@ -65,6 +67,8 @@ type Store struct {
 	mu  sync.Mutex
 	// notify is signalled when a message is enqueued.
 	notify chan struct{}
+	// epoch returns the open clock epoch ("" while the clock is verified).
+	epoch func() string
 }
 
 // Open opens (or creates) <dir>/edge.db.
@@ -83,8 +87,38 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, dir: dir, notify: make(chan struct{}, 1)}, nil
+	if err := addColumn(db, "outbox", "clk_epoch", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db, dir: dir, notify: make(chan struct{}, 1), epoch: func() string { return "" }}, nil
 }
+
+// addColumn migrates an existing database (SQLite has no ADD COLUMN IF NOT EXISTS).
+func addColumn(db *sql.DB, table, col, def string) error {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		if name == col {
+			return nil
+		}
+	}
+	_, err = db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, col, def))
+	return err
+}
+
+// SetClockEpoch installs the clock-epoch source used to tag new outbox messages.
+func (s *Store) SetClockEpoch(f func() string) { s.epoch = f }
+
+// ClockStepKey is the state key holding the measured step (seconds) of a clock epoch.
+func ClockStepKey(epoch string) string { return "clock_step/" + epoch }
 
 // Close closes the DB.
 func (s *Store) Close() error { return s.db.Close() }
@@ -99,8 +133,8 @@ func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 // Enqueue appends a message to the outbox.
 func (s *Store) Enqueue(topic string, qos byte, prio int, payload []byte) error {
-	_, err := s.db.Exec(`INSERT INTO outbox(topic,qos,priority,payload,created_at) VALUES(?,?,?,?,?)`,
-		topic, qos, prio, payload, now())
+	_, err := s.db.Exec(`INSERT INTO outbox(topic,qos,priority,payload,created_at,clk_epoch) VALUES(?,?,?,?,?,?)`,
+		topic, qos, prio, payload, now(), s.epoch())
 	if err == nil {
 		select {
 		case s.notify <- struct{}{}:
@@ -110,10 +144,11 @@ func (s *Store) Enqueue(topic string, qos byte, prio int, payload []byte) error 
 	return err
 }
 
-// Pending returns up to limit unsent messages ordered by priority, id.
-func (s *Store) Pending(limit int) ([]Message, error) {
-	rows, err := s.db.Query(`SELECT id,topic,qos,priority,payload,attempts FROM outbox
-		WHERE sent_at IS NULL ORDER BY priority, id LIMIT ?`, limit)
+// Pending returns up to limit unsent messages ordered by priority, id. Messages of the
+// held clock epoch (still waiting for its step) are skipped; hold "" skips nothing.
+func (s *Store) Pending(limit int, hold string) ([]Message, error) {
+	rows, err := s.db.Query(`SELECT id,topic,qos,priority,payload,attempts,clk_epoch FROM outbox
+		WHERE sent_at IS NULL AND (?='' OR clk_epoch<>?) ORDER BY priority, id LIMIT ?`, hold, hold, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +157,7 @@ func (s *Store) Pending(limit int) ([]Message, error) {
 	for rows.Next() {
 		var m Message
 		var qos int
-		if err := rows.Scan(&m.ID, &m.Topic, &qos, &m.Priority, &m.Payload, &m.Attempts); err != nil {
+		if err := rows.Scan(&m.ID, &m.Topic, &qos, &m.Priority, &m.Payload, &m.Attempts, &m.ClockEpoch); err != nil {
 			return nil, err
 		}
 		m.QoS = byte(qos)

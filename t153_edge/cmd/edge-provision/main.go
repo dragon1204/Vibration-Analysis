@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"selink.vn/smartmotor/edge/internal/clock"
 	"selink.vn/smartmotor/edge/internal/version"
 )
 
@@ -211,6 +212,7 @@ func fixClock(date string) {
 		return
 	}
 	if d := time.Since(t); d > -2*time.Minute && d < 2*time.Minute {
+		markClockVerified()
 		return
 	}
 	if out, err := exec.Command("date", "-u", "-s", "@"+fmt.Sprint(t.Unix())).CombinedOutput(); err != nil {
@@ -218,6 +220,12 @@ func fixClock(date string) {
 		return
 	}
 	log.Printf("clock set from server Date header: %s", t.UTC().Format(time.RFC3339))
+	markClockVerified()
+}
+
+// markClockVerified tells edge-agent that the clock was checked against the server this boot.
+func markClockVerified() {
+	_ = os.WriteFile(clock.MarkerFile, []byte(time.Now().UTC().Format(time.RFC3339)), 0o644)
 }
 
 // timesync is the edge-agent ExecStartPre: NTP first, the server's Date header as fallback.

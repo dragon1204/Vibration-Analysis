@@ -34,6 +34,7 @@ type Report struct {
 	NetIface      string         `json:"net_iface"`
 	RSSIdBm       *float64       `json:"rssi_dbm"`
 	TimeUnsynced  bool           `json:"time_unsynced"`
+	ClockStepS    *float64       `json:"clock_step_s,omitempty"` // correction applied to data measured before the clock was verified
 	LocalAlarm    bool           `json:"local_alarm_on"`
 }
 

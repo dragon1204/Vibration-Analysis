@@ -270,7 +270,7 @@ func (p *pointRT) flushWindow(end time.Time) {
 	info := p.info
 	p.mu.Unlock()
 	ts := tsString(end)
-	unsynced := end.UTC().Year() < 2026
+	unsynced := !p.a.clk.Verified()
 	if len(win) > 0 {
 		var flags []string
 		windowMS := int((time.Duration(p.a.cfg.Intervals.WindowS) * time.Second) / time.Millisecond)

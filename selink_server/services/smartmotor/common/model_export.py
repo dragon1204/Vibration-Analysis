@@ -65,7 +65,7 @@ def header(slots: list[tuple[str, dict | None]]) -> list[str]:
         for qty, unit, *_ in QUANTITIES:
             cols += [f"{code} {qty} {_axis_title(point, a)} ({unit})" for a in "xyz"]
         cols.append(f"{code} Nhiệt độ (°C)")
-    return cols
+    return cols + ["Ghi chú thời gian"]
 
 
 def _num(v, digits: int, scale: float = 1.0):

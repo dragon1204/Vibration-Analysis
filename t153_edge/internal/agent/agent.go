@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
 	"selink.vn/smartmotor/edge/internal/bus"
+	"selink.vn/smartmotor/edge/internal/clock"
 	"selink.vn/smartmotor/edge/internal/config"
 	"selink.vn/smartmotor/edge/internal/drivers/powermeter"
 	"selink.vn/smartmotor/edge/internal/drivers/pt100mod"
@@ -52,6 +54,7 @@ type Agent struct {
 	alarm  *localalarm.Alarm
 	health *health.Collector
 	wd     *health.Watchdog
+	clk    *clock.Clock
 	view   *localview.Hub
 
 	wg  sync.WaitGroup
@@ -69,6 +72,21 @@ func New(cfg *config.Config, opt Options, log *slog.Logger) (*Agent, error) {
 		st.Close()
 		return nil, err
 	}
+	serverURL := cfg.Clock.ServerURL
+	if serverURL == "" {
+		serverURL = "http://160.191.87.104"
+	}
+	clk := clock.New(clock.Options{ServerURL: serverURL, OnResolve: func(epoch string, step float64) {
+		if err := st.SetState(store.ClockStepKey(epoch), strconv.FormatFloat(step, 'f', 3, 64)); err != nil {
+			log.Error("store clock step", "err", err)
+		}
+		log.Info("clock verified; correcting data measured before", "epoch", epoch, "step_s", step)
+	}})
+	if !clk.Verified() {
+		log.Warn("clock not verified at start; data is held until the clock step is known", "epoch", clk.Epoch())
+	}
+	st.SetClockEpoch(clk.Epoch)
+	up.Clock = clk
 	a := &Agent{
 		cfg: cfg, opt: opt, log: log, st: st, up: up,
 		buses: map[string]*bus.Manager{}, temps: map[string]*pt100mod.Module{}, points: map[string]*pointRT{},
@@ -77,6 +95,7 @@ func New(cfg *config.Config, opt Options, log *slog.Logger) (*Agent, error) {
 		alarm:  localalarm.New(cfg.LocalAlarm.Enabled, cfg.LocalAlarm.RelayGPIO, cfg.LocalAlarm.BuzzerGPIO, cfg.LocalAlarm.Buzzer, log),
 		health: health.NewCollector(cfg.Health.ThermalZone, cfg.Health.ModemATPort),
 		wd:     health.NewWatchdog(cfg.Health.Watchdog, log),
+		clk:    clk,
 	}
 	if opt.BinaryPath != "" {
 		up.OnConnect = func() { _ = os.Remove(opt.BinaryPath + ".pending") } // OTA confirmed
@@ -191,6 +210,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.ctx = ctx
 	stopWD := make(chan struct{})
 	go a.wd.Run(stopWD)
+	go a.clk.Run(ctx)
 	defer close(stopWD)
 
 	busCtx, busCancel := context.WithCancel(context.Background())
@@ -320,6 +340,10 @@ func (a *Agent) runHealth(ctx context.Context) {
 		r := health.Report{MsgID: ulid.New(), TS: tsString(time.Now()), Version: version.Version,
 			MQTTConnected: a.up.Connected(), BusStats: map[string]any{}, Devices: map[string]any{}, LocalAlarm: a.alarm.State()}
 		a.health.Fill(&r, a.st.Dir())
+		r.TimeUnsynced = !a.clk.Verified()
+		if step := a.clk.Step(); step != 0 {
+			r.ClockStepS = &step
+		}
 		r.OutboxPending, _ = a.st.PendingCount()
 		r.DataUsedMB = math.Round(float64(a.st.DiskUsage())/(1<<20)*10) / 10
 		for id, b := range a.buses {

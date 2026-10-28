@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from ...common import bus
 from ...common import gwconfig
-from ...common import installation, model_export
+from ...common import installation, model_export, timefix
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -274,7 +274,8 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
                        max(disp_um) FILTER (WHERE axis='x') AS disp_x, max(disp_um) FILTER (WHERE axis='y') AS disp_y,
                        max(disp_um) FILTER (WHERE axis='z') AS disp_z,
                        max(freq_hz) FILTER (WHERE axis='x') AS freq_x, max(freq_hz) FILTER (WHERE axis='y') AS freq_y,
-                       max(freq_hz) FILTER (WHERE axis='z') AS freq_z, max(temp_c) AS temp_c
+                       max(freq_hz) FILTER (WHERE axis='z') AS freq_z, max(temp_c) AS temp_c,
+                       max(array_to_string(flags, ',')) AS flags
                      FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
                        AND (acc_g IS NOT NULL OR vel_mm_s IS NOT NULL OR disp_um IS NOT NULL OR temp_c IS NOT NULL)
                      GROUP BY ts ORDER BY ts DESC LIMIT $4""", p["id"], frm, to, limit + 1)
@@ -310,13 +311,16 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     for row in base_rows:
         t = row["ts"]
         line = [t.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], device]
+        note = ""
         for _, p in slots:
             if not p:
                 line += model_export.slot_values(None, None)
                 continue
             m = row if p["id"] == ref["id"] and row_mode == "all" else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
             line += model_export.slot_values(m, model_export.latest_before(rms[p["id"]], rms_stamps[p["id"]], t))
-        w.writerow(line)
+            if p["id"] == ref["id"] and m:
+                note = timefix.describe((m.get("flags") or "").split(","))
+        w.writerow(line + [note])
     codes = "-".join(code for code, _ in slots)
     stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
     suffix = "-rms" if row_mode == "rms" else ""

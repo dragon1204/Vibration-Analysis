@@ -23,6 +23,7 @@ from ..common.settings import Settings
 from ..common.storage import Storage, capture_key
 from ..common import wavefile
 from ..common.run_state import SOURCE as SERVER_RUN_SOURCE, RunTracker
+from ..common.timefix import ClockWatch
 
 log = logging.getLogger("ingest")
 
@@ -120,6 +121,7 @@ class Ingest:
         self.stats = defaultdict(int)
         self._warned: set[str] = set()
         self.runs = RunTracker()
+        self.clock = ClockWatch()
 
     async def start(self) -> None:
         self.pool = await create_pool(self.s.db_url, max_size=8)
@@ -187,6 +189,8 @@ class Ingest:
             self.stats["duplicate"] += 1
             return
         self.stats[t.kind] += 1
+        if t.kind != "health":
+            self.clock.apply(t.gateway, data)
         handler = getattr(self, "on_" + t.kind.replace("/", "_"))
         await handler(t, data)
 
@@ -433,6 +437,10 @@ class Ingest:
 
     async def on_health(self, t: Topic, d) -> None:
         h = json.loads(d.model_dump_json())
+        # Server receive time − gateway time: shows a wrong gateway clock on the web and corrects
+        # data the gateway could not correct itself.
+        h["clock_offset_s"] = self.clock.observe_health(t.gateway, d.ts, bool(h.get("time_unsynced")),
+                                                       h.get("outbox_pending"))
         await self._touch_gateway(t.gateway, health=h, fw_version=d.version)
         await bus.publish(self.redis, "rt:gateways", {"type": "health", "gateway_id": t.gateway, **h})
 

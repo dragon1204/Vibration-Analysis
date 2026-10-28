@@ -122,6 +122,12 @@ export default function Devices() {
               <Descriptions.Item label="Dữ liệu edge">{num(h.data_used_mb, 0)} MB</Descriptions.Item>
               <Descriptions.Item label="Outbox chờ gửi">{h.outbox_pending}</Descriptions.Item>
               <Descriptions.Item label="Còi/relay">{h.local_alarm_on ? <Tag color="red">BẬT</Tag> : 'tắt'}</Descriptions.Item>
+              {/* Server receive time − gateway time; it includes delivery delay when the outbox has a backlog. */}
+              <Descriptions.Item label="Đồng hồ gateway" span={2}>
+                {h.time_unsynced ? <Tag color="red">CHƯA ĐỒNG BỘ GIỜ</Tag> : <Tag color="green">ĐÃ ĐỒNG BỘ</Tag>}
+                {h.clock_offset_s != null && <span className="muted">lệch so với server {num(h.clock_offset_s, 1)} s</span>}
+                {h.clock_step_s != null && <span className="muted"> | đã hiệu chỉnh dữ liệu đo trước khi đồng bộ {num(h.clock_step_s, 1)} s</span>}
+              </Descriptions.Item>
             </Descriptions>
             <Card size="small" title="Phiên đo hiện tại" extra={can('analyst') && <Button type="primary" size="small" onClick={() => setDeploymentMachine(gw.deployment?.machine_id || machines[0]?.id)}>Gán / chuyển máy</Button>}>
               {gw.deployment ? <Descriptions size="small" column={2}>

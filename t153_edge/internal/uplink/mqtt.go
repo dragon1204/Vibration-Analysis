@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
+	"selink.vn/smartmotor/edge/internal/clock"
 	"selink.vn/smartmotor/edge/internal/config"
 	"selink.vn/smartmotor/edge/internal/store"
 	"selink.vn/smartmotor/edge/internal/version"
@@ -53,12 +55,19 @@ type Client struct {
 	kick      chan struct{}
 	// OnConnect is called after each successful connection (e.g. confirm OTA).
 	OnConnect func()
+	// Clock, when set, holds data measured before the clock is verified until its step is known.
+	Clock   interface{ Epoch() string }
+	started time.Time
 }
+
+// clockHold bounds how long unverified-time data waits for the clock step before it is sent
+// flagged "time_unsynced" (the server's Date header normally verifies the clock within a minute).
+const clockHold = 10 * time.Minute
 
 // New creates a client (not yet connected).
 func New(cfg *config.Config, st *store.Store, log *slog.Logger) (*Client, error) {
 	c := &Client{cfg: cfg, st: st, log: log.With("mod", "uplink"), prefix: cfg.TopicPrefix(),
-		cmds: make(chan Command, 16), configs: make(chan []byte, 2), kick: make(chan struct{}, 1)}
+		cmds: make(chan Command, 16), configs: make(chan []byte, 2), kick: make(chan struct{}, 1), started: time.Now()}
 	broker := cfg.MQTT.URL
 	switch {
 	case strings.HasPrefix(broker, "mqtts://"):
@@ -217,9 +226,25 @@ func (c *Client) Run(ctx context.Context) {
 	}
 }
 
+// timed applies the clock step to a message measured during an unverified epoch.
+func (c *Client) timed(m store.Message) []byte {
+	if m.ClockEpoch == "" {
+		return m.Payload
+	}
+	v, ok, _ := c.st.GetState(store.ClockStepKey(m.ClockEpoch))
+	step, err := strconv.ParseFloat(v, 64)
+	return clock.Correct(m.Payload, step, ok && err == nil)
+}
+
 // flush publishes one batch; returns number of messages acknowledged.
 func (c *Client) flush() (int, error) {
-	msgs, err := c.st.Pending(25)
+	hold := ""
+	if c.Clock != nil {
+		if e := c.Clock.Epoch(); e != "" && time.Since(c.started) < clockHold {
+			hold = e
+		}
+	}
+	msgs, err := c.st.Pending(25, hold)
 	if err != nil || len(msgs) == 0 {
 		return 0, err
 	}
@@ -229,7 +254,7 @@ func (c *Client) flush() (int, error) {
 	}
 	var fl []inflight
 	for _, m := range msgs {
-		fl = append(fl, inflight{m, c.cli.Publish(m.Topic, m.QoS, false, m.Payload)})
+		fl = append(fl, inflight{m, c.cli.Publish(m.Topic, m.QoS, false, c.timed(m))})
 	}
 	acked := 0
 	for _, f := range fl {
