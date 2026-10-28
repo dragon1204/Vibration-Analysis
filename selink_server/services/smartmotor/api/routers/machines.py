@@ -2,7 +2,7 @@
 import bisect
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 import math
 from zoneinfo import ZoneInfo
@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ...common import bus
 from ...common import gwconfig
+from ...common import model_export
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -231,6 +232,80 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
     return Response(data, media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
         "X-Rows-Truncated": "1" if truncated[0] else "0", "Access-Control-Expose-Headers": "X-Rows-Truncated",
+    })
+
+
+@router.get("/machines/{machine_id}/model-table.csv")
+async def model_table(machine_id: str, request: Request, rng=Depends(time_range),
+                      max_skew_ms: int = Query(1000, ge=0, le=10_000),
+                      limit: int = Query(50_000, ge=1, le=100_000),
+                      user: User = Depends(require("engineer"))):
+    """CSV with one column block per position of the machine's installation model (e.g. DE + BASE)."""
+    await check_machine(request.app.state.pool, user, machine_id)
+    frm, to = rng
+    async with request.app.state.pool.acquire() as c:
+        meta = await c.fetchval("SELECT meta FROM machines WHERE id=$1", machine_id) or {}
+        template = (meta or {}).get("installation_template")
+        model = await c.fetchrow("SELECT name, slots FROM installation_models WHERE id=$1", template) if template else None
+        points = [dict(r) for r in await c.fetch("SELECT * FROM measurement_points WHERE machine_id=$1 ORDER BY id", machine_id)]
+        if not points:
+            raise HTTPException(404, "Máy chưa có điểm đo")
+        slots = model_export.slot_points(model["slots"] if model else None, points)
+        installed = [p for _, p in slots if p]
+        if not installed:
+            raise HTTPException(404, "Không có cảm biến nào khớp với các vị trí của mô hình lắp đặt")
+        truncated = False
+        metrics: dict[str, list[dict]] = {}
+        rms: dict[str, list[dict]] = {}
+        for p in installed:
+            rows = await c.fetch("""SELECT ts,
+                       max(acc_g) FILTER (WHERE axis='x') AS acc_x, max(acc_g) FILTER (WHERE axis='y') AS acc_y,
+                       max(acc_g) FILTER (WHERE axis='z') AS acc_z,
+                       max(vel_mm_s) FILTER (WHERE axis='x') AS vel_x, max(vel_mm_s) FILTER (WHERE axis='y') AS vel_y,
+                       max(vel_mm_s) FILTER (WHERE axis='z') AS vel_z,
+                       max(disp_um) FILTER (WHERE axis='x') AS disp_x, max(disp_um) FILTER (WHERE axis='y') AS disp_y,
+                       max(disp_um) FILTER (WHERE axis='z') AS disp_z, max(temp_c) AS temp_c
+                     FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                       AND (acc_g IS NOT NULL OR vel_mm_s IS NOT NULL OR disp_um IS NOT NULL OR temp_c IS NOT NULL)
+                     GROUP BY ts ORDER BY ts DESC LIMIT $4""", p["id"], frm, to, limit + 1)
+            truncated = truncated or len(rows) > limit
+            metrics[p["id"]] = [dict(r) for r in reversed(rows[:limit])]
+            # Fast RMS results start a little before the range so the first rows already have a value.
+            rows = await c.fetch("""SELECT ts,
+                       max(vel_rms_mm_s) FILTER (WHERE axis='x') AS rms_x, max(vel_rms_mm_s) FILTER (WHERE axis='y') AS rms_y,
+                       max(vel_rms_mm_s) FILTER (WHERE axis='z') AS rms_z
+                     FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3 AND vel_rms_mm_s IS NOT NULL
+                     GROUP BY ts ORDER BY ts""", p["id"], frm - model_export.RMS_MAX_AGE, to)
+            rms[p["id"]] = [dict(r) for r in rows]
+    # Time base: the first installed bearing position of the model (DE before NDE), else the first installed one.
+    ref = next((p for code, p in slots if p and p.get("role", "bearing") == "bearing"), installed[0])
+    if not metrics[ref["id"]]:
+        raise HTTPException(404, "Không có dữ liệu trong khoảng thời gian đã chọn")
+    stamps = {pid: [r["ts"] for r in rows] for pid, rows in metrics.items()}
+    rms_stamps = {pid: [r["ts"] for r in rows] for pid, rows in rms.items()}
+    skew = timedelta(milliseconds=max_skew_ms)
+    tz = ZoneInfo("Asia/Ho_Chi_Minh")
+    device = (ref.get("gateway_id") or ref["id"]).replace("\r", " ").replace("\n", " ")
+    out = io.StringIO(newline="")
+    w = csv.writer(out, lineterminator="\r\n")
+    w.writerow(model_export.header(slots))
+    for row in metrics[ref["id"]]:
+        t = row["ts"]
+        line = [t.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], device]
+        for _, p in slots:
+            if not p:
+                line += model_export.slot_values(None, None)
+                continue
+            m = row if p["id"] == ref["id"] else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
+            line += model_export.slot_values(m, model_export.latest_before(rms[p["id"]], rms_stamps[p["id"]], t))
+        w.writerow(line)
+    codes = "-".join(code for code, _ in slots)
+    stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
+    filename = f"{machine_id}-{codes}-{stamp}.csv"
+    return Response(("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+        "X-Rows-Truncated": "1" if truncated else "0", "X-Installation-Model": template or "",
+        "Access-Control-Expose-Headers": "X-Rows-Truncated, X-Installation-Model",
     })
 
 
