@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress, Row, Select, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd'
 import { api, patch, post } from '../api/client'
-import { ago, dt, num } from '../utils/format'
+import { ago, dt, num, sensorCode } from '../utils/format'
 import MachineNav from './MachineNav'
 import InstallationDiagram, { templateById } from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
@@ -103,8 +103,10 @@ export default function MachineDetail() {
               <Descriptions.Item label="Phiên đo"><Tag color="green">Đang đo</Tag></Descriptions.Item>
             </Descriptions>
             <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey="id" title={() => 'Cảm biến của động cơ'} dataSource={(gatewayDetail.points || []).filter((point: any) => point.machine_id === id)} style={{ marginTop: 12 }} columns={[
-              { title: 'Điểm đo', dataIndex: 'id' },
-              { title: 'Vị trí', dataIndex: 'location', render: (value, row: any) => value || row.role || '–' },
+              { title: 'Điểm đo', dataIndex: 'id', render: (value) => (m.points || []).find((p: any) => p.id === value)?.name || value },
+              // The gateway list has no mounting position: take it from the machine's measurement points.
+              { title: 'Vị trí', key: 'pos', render: (_, row: any) => sensorCode((m.points || []).find((p: any) => p.id === row.id) || row) },
+              { title: 'Vai trò', dataIndex: 'role', render: (value) => ({ bearing: 'Ổ đỡ', base: 'Đế', source: 'Nguồn rung' } as any)[value] || value || '–' },
               { title: 'Địa chỉ', dataIndex: 'sensor_addr', render: (value) => `0x${(value || 0).toString(16).toUpperCase()}` },
               { title: 'Đọc cuối', dataIndex: 'last_reading', render: (value) => value ? ago(value) : '–' },
               { title: 'Trạng thái', key: 'status', render: (_, row: any) => gatewayHealth.devices?.[row.id]?.offline ? <Tag color="red">offline</Tag> : <Tag color="green">ok</Tag> },
