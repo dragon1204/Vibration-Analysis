@@ -82,7 +82,7 @@ export default function Reports() {
               {r.summary.points?.[0] && <span className="muted nowrap">P95 {num(r.summary.points[0].p95)} mm/s</span>}
               {r.summary.period_complete === false && <Tag>kỳ chưa kết thúc</Tag>}</Space> : '–' },
             { title: 'Cảnh báo', key: 'ev', render: (_, r: any) => r.summary ? <span className="nowrap">{r.summary.events_total} ({r.summary.events_active} còn mở)</span> : '–' },
-            { title: 'Người tạo', dataIndex: 'requested_by', render: (v) => v || '–' },
+            { title: 'Người tạo', dataIndex: 'requested_by', width: 110, render: (v) => v || '–' },
             { title: 'Tạo lúc', dataIndex: 'created_at', render: (v) => dt(v) },
             { title: '', key: 'act', render: (_, r: any) => <Space size={4}>
               <Button size="small" disabled={r.status !== 'done'}

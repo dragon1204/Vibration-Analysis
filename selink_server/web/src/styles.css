@@ -701,7 +701,7 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .dashboard-card .ant-card-body { padding: 12px 14px 14px; }
 .ant-table-small .ant-table-thead > tr > th { padding: 8px 10px !important; }
 .ant-table-small .ant-table-tbody > tr > td { padding: 7px 10px !important; }
-.ant-table-thead > tr > th, .ant-statistic-title, .ant-input-number-group-addon, .ant-input-group-addon,
+.ant-statistic-title, .ant-input-number-group-addon, .ant-input-group-addon,
 .ant-tag, .ant-btn, .ant-descriptions-item-label, .ant-segmented-item-label { white-space: nowrap; }
 .ant-descriptions-bordered .ant-descriptions-item-label { width: 1%; padding: 8px 12px !important; }
 .ant-descriptions-bordered .ant-descriptions-item-content { padding: 8px 12px !important; }
