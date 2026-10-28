@@ -232,34 +232,15 @@ func (m *machineRT) observeVibration(p *pointRT, ind drivers.VibrationIndicators
 			}
 		}
 	} else {
-		for _, source := range detection.Sources {
-			op := m.pointByID(source.PointID)
+		matched = runSourcesMatch(detection, func(id string) *drivers.VibrationIndicators {
+			op := m.pointByID(id)
 			if op == nil {
-				continue
+				return nil
 			}
 			op.mu.Lock()
-			last := op.lastInd
-			op.mu.Unlock()
-			if last == nil {
-				continue
-			}
-			for axis, name := range drivers.AxisNames {
-				selected := len(source.Axes) == 0
-				for _, a := range source.Axes {
-					if a == name {
-						selected = true
-						break
-					}
-				}
-				if selected && !math.IsNaN(last.VelMMs[axis]) && last.VelMMs[axis] > source.ThresholdMMs {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				break
-			}
-		}
+			defer op.mu.Unlock()
+			return op.lastInd
+		})
 	}
 
 	current := m.runState.Running()
@@ -281,6 +262,41 @@ func (m *machineRT) observeVibration(p *pointRT, ind drivers.VibrationIndicators
 	} else {
 		m.runState.Update(now, current, math.NaN())
 	}
+}
+
+// runSourcesMatch applies the RUN rule to the latest indicators of each source.
+// Sources without data yet are ignored; with no data at all the machine is stopped.
+func runSourcesMatch(detection config.RunDetection, last func(pointID string) *drivers.VibrationIndicators) bool {
+	all := detection.Mode == "all"
+	seen := 0
+	for _, source := range detection.Sources {
+		ind := last(source.PointID)
+		if ind == nil {
+			continue
+		}
+		seen++
+		above := false
+		for axis, name := range drivers.AxisNames {
+			selected := len(source.Axes) == 0
+			for _, a := range source.Axes {
+				if a == name {
+					selected = true
+					break
+				}
+			}
+			if selected && !math.IsNaN(ind.VelMMs[axis]) && ind.VelMMs[axis] > source.ThresholdMMs {
+				above = true
+				break
+			}
+		}
+		if above && !all {
+			return true
+		}
+		if !above && all {
+			return false
+		}
+	}
+	return all && seen > 0
 }
 
 func (m *machineRT) setBearingTemp(point string, t float64) {

@@ -107,6 +107,8 @@ def validate_run_detection(meta: dict | None, point_ids: set[str]) -> None:
     rule = meta["run_detection"]
     if not isinstance(rule, dict):
         raise HTTPException(422, "run_detection phải là một đối tượng")
+    if rule.get("mode", "any") not in ("any", "all"):
+        raise HTTPException(422, "mode phải là any hoặc all")
     for key in ("on_delay_s", "off_delay_s"):
         value = rule.get(key, 10)
         if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or value > 3600:

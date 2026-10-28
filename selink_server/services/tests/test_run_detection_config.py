@@ -8,6 +8,7 @@ def test_run_detection_accepts_per_sensor_thresholds():
     validate_run_detection(
         {
             "run_detection": {
+                "mode": "all",
                 "on_delay_s": 10,
                 "off_delay_s": 30,
                 "sources": [
@@ -28,6 +29,7 @@ def test_run_detection_accepts_per_sensor_thresholds():
         {"run_detection": {"sources": [{"point_id": "de", "axes": ["q"], "threshold_mm_s": 0.5}]}},
         {"run_detection": {"sources": [{"point_id": "de", "axes": ["z"], "threshold_mm_s": 0}]}},
         {"run_detection": {"sources": []}},
+        {"run_detection": {"mode": "majority", "sources": [{"point_id": "de", "axes": ["z"], "threshold_mm_s": 0.5}]}},
         {"run_detection": {"on_delay_s": -1, "sources": [{"point_id": "de", "axes": ["z"], "threshold_mm_s": 0.5}]}},
     ],
 )

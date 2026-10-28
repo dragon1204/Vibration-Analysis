@@ -106,10 +106,13 @@ type Machine struct {
 }
 
 // RunDetection derives the motor RUN signal from selected vibration axes when
-// no electrical meter is present. A selected source above its threshold makes
-// the machine RUN after OnDelayS; all sources below their thresholds stops it
-// after OffDelayS. Empty Sources preserves the legacy "any axis / any point" rule.
+// no electrical meter is present. Mode "any" (default): a source above its
+// threshold makes the machine RUN, all sources below stop it. Mode "all": every
+// source must be above its threshold, so one source below stops the machine.
+// Changes are confirmed after OnDelayS / OffDelayS. Empty Sources preserves the
+// legacy "any axis / any point" rule.
 type RunDetection struct {
+	Mode      string      `yaml:"mode" json:"mode"`
 	Sources   []RunSignal `yaml:"sources" json:"sources"`
 	OnDelayS  int         `yaml:"on_delay_s" json:"on_delay_s"`
 	OffDelayS int         `yaml:"off_delay_s" json:"off_delay_s"`

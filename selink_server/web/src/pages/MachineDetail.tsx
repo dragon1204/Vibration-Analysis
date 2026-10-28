@@ -167,7 +167,15 @@ export default function MachineDetail() {
               <Col span={8}><Statistic title="Rate" value={runtime?.rate_pct ?? 0} suffix="%" precision={1} /></Col>
               <Col span={8}><Statistic title="Mẫu ghi nhận" value={runtime?.samples ?? 0} /></Col>
             </Row>
-            <div className="muted" style={{ margin: '12px 0 8px' }}>Mỗi cảm biến có thể là nguồn RUN riêng, với trục và ngưỡng độc lập. Máy RUN khi ít nhất một nguồn đang bật.</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '12px 0 8px' }}>
+              <span className="muted">Máy CHẠY khi</span>
+              <Select style={{ minWidth: 260 }} value={runDetection.mode || 'any'} disabled={!can('analyst')}
+                options={[{ value: 'all', label: 'tất cả cảm biến đã chọn vượt ngưỡng' }, { value: 'any', label: 'ít nhất một cảm biến vượt ngưỡng' }]}
+                onChange={(mode) => saveRunDetection({ ...runDetection, mode })} />
+            </div>
+            <div className="muted" style={{ marginBottom: 8 }}>{(runDetection.mode || 'any') === 'all'
+              ? 'Một cảm biến xuống dưới ngưỡng là tính máy DỪNG.'
+              : 'Tất cả cảm biến đã chọn xuống dưới ngưỡng mới tính máy DỪNG.'}</div>
             <div style={{ display: 'grid', gap: 8 }}>
               {(m.points || []).map((point: any) => {
                 const source = sourceFor(point.id)
@@ -183,10 +191,10 @@ export default function MachineDetail() {
               })}
             </div>
             <div style={{ display: 'flex', gap: 16, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="muted">Xác nhận RUN</span><InputNumber min={0} max={3600} precision={0} addonAfter="s" defaultValue={runDetection.on_delay_s ?? 10} disabled={!can('analyst')}
-                onBlur={(event) => { const on_delay_s = Number(event.target.value); if (on_delay_s >= 0) saveRunDetection({ ...runDetection, on_delay_s }) }} />
-              <span className="muted">Xác nhận STOP</span><InputNumber min={0} max={3600} precision={0} addonAfter="s" defaultValue={runDetection.off_delay_s ?? 10} disabled={!can('analyst')}
-                onBlur={(event) => { const off_delay_s = Number(event.target.value); if (off_delay_s >= 0) saveRunDetection({ ...runDetection, off_delay_s }) }} />
+              <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><span className="muted">Xác nhận RUN</span><InputNumber style={{ width: 110 }} min={0} max={3600} precision={0} addonAfter="s" defaultValue={runDetection.on_delay_s ?? 10} disabled={!can('analyst')}
+                onBlur={(event) => { const on_delay_s = Number(event.target.value); if (on_delay_s >= 0) saveRunDetection({ ...runDetection, on_delay_s }) }} /></span>
+              <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><span className="muted">Xác nhận STOP</span><InputNumber style={{ width: 110 }} min={0} max={3600} precision={0} addonAfter="s" defaultValue={runDetection.off_delay_s ?? 10} disabled={!can('analyst')}
+                onBlur={(event) => { const off_delay_s = Number(event.target.value); if (off_delay_s >= 0) saveRunDetection({ ...runDetection, off_delay_s }) }} /></span>
             </div>
           </Card>
         </Col>
