@@ -1,8 +1,12 @@
 """CSV export laid out by the machine's installation model (e.g. DE + BASE).
 
 One column block per sensor position of the model, in the model's order. Units are SI-derived
-and stated in every header: acceleration mm/s², velocity mm/s, displacement µm, temperature °C.
-Times are Vietnam local time (GMT+7).
+and stated in every header: acceleration mm/s², velocity mm/s, displacement µm, frequency Hz,
+temperature °C. Times are Vietnam local time (GMT+7).
+
+RMS values are computed by the gateway from the raw waveform (velocity in the ISO 10–1000 Hz band);
+"đỉnh (cảm biến)" values are the WTVB05's own peak-type registers and are several times larger than
+RMS, so they must not be compared with ISO limits.
 """
 from __future__ import annotations
 
@@ -43,28 +47,42 @@ def _axis_title(point: dict | None, axis: str) -> str:
     return f"{axis.upper()} {ROLE_VI.get(role, role)}"
 
 
+# (title, unit, row key prefix, source, digits, scale) — source "rms": gateway RMS, "reg": sensor register.
+QUANTITIES = (
+    ("Vận tốc RMS ISO 10-1000 Hz", "mm/s", "rms", "rms", 3, 1.0),
+    ("Gia tốc RMS", "mm/s²", "arms", "rms", 1, G_MM_S2),
+    ("Vận tốc đỉnh (cảm biến)", "mm/s", "vel", "reg", 2, 1.0),
+    ("Gia tốc đỉnh (cảm biến)", "mm/s²", "acc", "reg", 1, G_MM_S2),
+    ("Dịch chuyển đỉnh (cảm biến)", "µm", "disp", "reg", 0, 1.0),
+    ("Tần số rung (cảm biến)", "Hz", "freq", "reg", 1, 1.0),
+)
+SLOT_COLUMNS = 3 * len(QUANTITIES) + 1
+
+
 def header(slots: list[tuple[str, dict | None]]) -> list[str]:
     cols = ["Thời gian (GMT+7)", "Thiết bị"]
     for code, point in slots:
-        for qty, unit in (("Gia tốc", "mm/s²"), ("Vận tốc VX", "mm/s"), ("Vận tốc RMS ISO 10-1000 Hz", "mm/s"),
-                          ("Dịch chuyển", "µm")):
+        for qty, unit, *_ in QUANTITIES:
             cols += [f"{code} {qty} {_axis_title(point, a)} ({unit})" for a in "xyz"]
         cols.append(f"{code} Nhiệt độ (°C)")
     return cols
 
 
 def _num(v, digits: int, scale: float = 1.0):
-    return "" if v is None else round(float(v) * scale, digits)
+    if v is None:
+        return ""
+    v = round(float(v) * scale, digits)
+    return int(v) if digits == 0 else v
 
 
 def slot_values(metric: dict | None, rms: dict | None) -> list:
-    """The 13 values of one position for one output row."""
+    """The values of one position for one output row (sensor registers + gateway RMS)."""
     m, r = metric or {}, rms or {}
-    return ([_num(m.get(f"acc_{a}"), 1, G_MM_S2) for a in "xyz"]
-            + [_num(m.get(f"vel_{a}"), 3) for a in "xyz"]
-            + [_num(r.get(f"rms_{a}"), 3) for a in "xyz"]
-            + [_num(m.get(f"disp_{a}"), 1) for a in "xyz"]
-            + [_num(m.get("temp_c"), 2)])
+    out = []
+    for _, _, key, source, digits, scale in QUANTITIES:
+        src = r if source == "rms" else m
+        out += [_num(src.get(f"{key}_{a}"), digits, scale) for a in "xyz"]
+    return out + [_num(m.get("temp_c"), 2)]
 
 
 def nearest(rows: list[dict], stamps: list[datetime], t: datetime, max_skew: timedelta) -> dict | None:

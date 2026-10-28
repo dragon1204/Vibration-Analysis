@@ -22,16 +22,20 @@ def test_slots_follow_the_model_order():
 
 def test_header_has_units_and_directions():
     h = me.header(me.slot_points(MODEL, [DE, BASE]))
-    assert h[:2] == ["Thời gian (GMT+7)", "Thiết bị"] and len(h) == 2 + 2 * 13
-    assert "DE Gia tốc X dọc trục (mm/s²)" in h and "BASE Vận tốc RMS ISO 10-1000 Hz Z đứng (mm/s)" in h
-    assert "DE Dịch chuyển Y ngang (µm)" in h and "BASE Nhiệt độ (°C)" in h
+    assert h[:2] == ["Thời gian (GMT+7)", "Thiết bị"] and len(h) == 2 + 2 * me.SLOT_COLUMNS == 2 + 2 * 19
+    assert h[2] == "DE Vận tốc RMS ISO 10-1000 Hz X dọc trục (mm/s)" and "DE Gia tốc RMS Z đứng (mm/s²)" in h
+    assert "DE Gia tốc đỉnh (cảm biến) X dọc trục (mm/s²)" in h and "BASE Vận tốc đỉnh (cảm biến) Z đứng (mm/s)" in h
+    assert "DE Dịch chuyển đỉnh (cảm biến) Y ngang (µm)" in h and "DE Tần số rung (cảm biến) X dọc trục (Hz)" in h
+    assert "BASE Nhiệt độ (°C)" in h
 
 
 def test_acceleration_is_converted_from_g_to_mm_s2():
-    v = me.slot_values({"acc_x": 1.0, "acc_y": 0.5, "acc_z": None, "vel_x": 5.28, "temp_c": 43.4}, {"rms_x": 4.1})
-    assert v[0] == 9806.6 and v[1] == 4903.3 and v[2] == ""
-    assert v[3] == 5.28 and v[6] == 4.1 and v[12] == 43.4
-    assert me.slot_values(None, None) == [""] * 13
+    v = me.slot_values({"acc_x": 1.0, "acc_y": 0.5, "acc_z": None, "vel_x": 5.28, "disp_x": 3.0, "freq_x": 408.1,
+                        "temp_c": 43.4}, {"rms_x": 4.1, "arms_x": 0.52})
+    assert v[0] == 4.1 and v[3] == 5099.5                     # RMS velocity, RMS acceleration (0.52 g)
+    assert v[6] == 5.28 and v[9] == 9806.6 and v[10] == 4903.3 and v[11] == ""
+    assert v[12] == 3 and isinstance(v[12], int) and v[15] == 408.1 and v[18] == 43.4
+    assert me.slot_values(None, None) == [""] * me.SLOT_COLUMNS
 
 
 def test_rms_is_carried_forward_only_while_fresh():

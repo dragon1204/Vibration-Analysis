@@ -241,8 +241,14 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
 async def model_table(machine_id: str, request: Request, rng=Depends(time_range),
                       max_skew_ms: int = Query(1000, ge=0, le=10_000),
                       limit: int = Query(50_000, ge=1, le=100_000),
+                      rows: str = Query("all", pattern="^(all|rms)$"),
                       user: User = Depends(require("engineer"))):
-    """CSV with one column block per position of the machine's installation model (e.g. DE + BASE)."""
+    """CSV with one column block per position of the machine's installation model (e.g. DE + BASE).
+
+    rows=all: one line per sensor register sample (~2–3 per second; RMS repeats until refreshed).
+    rows=rms: one line per new RMS result of the reference position (~every 2–3 s, no repeats),
+    suited to statistics.
+    """
     await check_machine(request.app.state.pool, user, machine_id)
     frm, to = rng
     async with request.app.state.pool.acquire() as c:
@@ -266,7 +272,9 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
                        max(vel_mm_s) FILTER (WHERE axis='x') AS vel_x, max(vel_mm_s) FILTER (WHERE axis='y') AS vel_y,
                        max(vel_mm_s) FILTER (WHERE axis='z') AS vel_z,
                        max(disp_um) FILTER (WHERE axis='x') AS disp_x, max(disp_um) FILTER (WHERE axis='y') AS disp_y,
-                       max(disp_um) FILTER (WHERE axis='z') AS disp_z, max(temp_c) AS temp_c
+                       max(disp_um) FILTER (WHERE axis='z') AS disp_z,
+                       max(freq_hz) FILTER (WHERE axis='x') AS freq_x, max(freq_hz) FILTER (WHERE axis='y') AS freq_y,
+                       max(freq_hz) FILTER (WHERE axis='z') AS freq_z, max(temp_c) AS temp_c
                      FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
                        AND (acc_g IS NOT NULL OR vel_mm_s IS NOT NULL OR disp_um IS NOT NULL OR temp_c IS NOT NULL)
                      GROUP BY ts ORDER BY ts DESC LIMIT $4""", p["id"], frm, to, limit + 1)
@@ -275,7 +283,9 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
             # Fast RMS results start a little before the range so the first rows already have a value.
             rows = await c.fetch("""SELECT ts,
                        max(vel_rms_mm_s) FILTER (WHERE axis='x') AS rms_x, max(vel_rms_mm_s) FILTER (WHERE axis='y') AS rms_y,
-                       max(vel_rms_mm_s) FILTER (WHERE axis='z') AS rms_z
+                       max(vel_rms_mm_s) FILTER (WHERE axis='z') AS rms_z,
+                       max(acc_rms_g) FILTER (WHERE axis='x') AS arms_x, max(acc_rms_g) FILTER (WHERE axis='y') AS arms_y,
+                       max(acc_rms_g) FILTER (WHERE axis='z') AS arms_z
                      FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3 AND vel_rms_mm_s IS NOT NULL
                      GROUP BY ts ORDER BY ts""", p["id"], frm - model_export.RMS_MAX_AGE, to)
             rms[p["id"]] = [dict(r) for r in rows]
@@ -283,6 +293,12 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     ref = next((p for code, p in slots if p and p.get("role", "bearing") == "bearing"), installed[0])
     if not metrics[ref["id"]]:
         raise HTTPException(404, "Không có dữ liệu trong khoảng thời gian đã chọn")
+    if rows == "rms":
+        base_rows = [r for r in rms[ref["id"]] if frm <= r["ts"] <= to][:limit]
+        if not base_rows:
+            raise HTTPException(404, "Không có kết quả RMS trong khoảng thời gian đã chọn")
+    else:
+        base_rows = metrics[ref["id"]]
     stamps = {pid: [r["ts"] for r in rows] for pid, rows in metrics.items()}
     rms_stamps = {pid: [r["ts"] for r in rows] for pid, rows in rms.items()}
     skew = timedelta(milliseconds=max_skew_ms)
@@ -291,19 +307,20 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     out = io.StringIO(newline="")
     w = csv.writer(out, lineterminator="\r\n")
     w.writerow(model_export.header(slots))
-    for row in metrics[ref["id"]]:
+    for row in base_rows:
         t = row["ts"]
         line = [t.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], device]
         for _, p in slots:
             if not p:
                 line += model_export.slot_values(None, None)
                 continue
-            m = row if p["id"] == ref["id"] else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
+            m = row if p["id"] == ref["id"] and rows == "all" else model_export.nearest(metrics[p["id"]], stamps[p["id"]], t, skew)
             line += model_export.slot_values(m, model_export.latest_before(rms[p["id"]], rms_stamps[p["id"]], t))
         w.writerow(line)
     codes = "-".join(code for code, _ in slots)
     stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
-    filename = f"{machine_id}-{codes}-{stamp}.csv"
+    suffix = "-rms" if rows == "rms" else ""
+    filename = f"{machine_id}-{codes}-{stamp}{suffix}.csv"
     return Response(("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
         "X-Rows-Truncated": "1" if truncated else "0", "X-Installation-Model": template or "",

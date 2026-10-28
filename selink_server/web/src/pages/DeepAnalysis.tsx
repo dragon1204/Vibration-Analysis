@@ -322,6 +322,11 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
         `/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh.csv`,
         { ...rangeParams(range), max_skew_ms: 1000 },
       ).catch((error) => message.error(`Không xuất được file: ${error.message}`))}>Xuất CSV theo mô hình lắp đặt</Button>
+      {/* One line per new RMS result (~2–3 s), without repeated register samples: for statistics. */}
+      <Button onClick={() => download(
+        `/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh-rms.csv`,
+        { ...rangeParams(range), max_skew_ms: 1000, rows: 'rms' },
+      ).catch((error) => message.error(`Không xuất được file: ${error.message}`))}>Xuất CSV mỗi kết quả RMS một dòng</Button>
       <Button disabled={!pointId} onClick={() => download(
         `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`,
         { ...rangeParams(range), point_id: pointId, device_name: deviceName, max_skew_ms: 1000 },
