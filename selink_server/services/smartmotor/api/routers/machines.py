@@ -361,7 +361,8 @@ async def alpha_learn_preview(machine_id: str, request: Request, rng=Depends(tim
     learned = alpha_learn.combine(axes, iso_axes)
     warnings = []
     if not states and prior is None:
-        warnings.append("Chưa có dữ liệu chạy/dừng trong khoảng này; hãy chắc chắn máy đã dừng")
+        warnings.append("Không có dữ liệu chạy/dừng trong khoảng này nên không xác nhận được máy đã dừng; hãy chọn khoảng khác")
+        learned = None
     elif running_share > alpha_learn.MAX_RUNNING_SHARE:
         warnings.append(f"Máy chạy {running_share * 100:.0f}% thời gian trong khoảng này; α chỉ đúng khi máy dừng")
         learned = None
