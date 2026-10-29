@@ -128,6 +128,9 @@ export default function MachineDetail() {
                 {corrected && <label className="model-alpha">Hệ số truyền BASE → ổ đỡ (α)
                   <InputNumber size="small" min={0.05} max={2} step={0.05} defaultValue={Number(m.meta?.base_alpha ?? 0.8)}
                     disabled={!can('analyst')} onBlur={(e) => saveAlpha(Number((e.target as HTMLInputElement).value.replace(',', '.')))} /></label>}
+                {corrected && can('analyst') && activeGatewayId && <Button size="small" onClick={() =>
+                  post(`/gateways/${activeGatewayId}/commands`, { type: 'learn_alpha', params: { machine_id: id } })
+                    .then((r: any) => message.success(`Đã gửi lệnh học α (${r.cmd_id})`)).catch((e) => message.error(e.message))}>Học lại hệ số α</Button>}
               </div>
             })()}
           </Card>

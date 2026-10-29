@@ -164,7 +164,6 @@ export default function Devices() {
                 <Button onClick={() => setCmd({ type: 'ping' })}>Ping</Button>
                 <Button onClick={() => setCmd({ type: 'capture_now', point_id: gw.points[0]?.id, profile: 'orders' })}>Chụp sóng ngay</Button>
                 <Button onClick={() => setCmd({ type: 'group_capture', machine_id: machinesOfGw[0] })}>Capture nhóm (cô lập nhiễu)</Button>
-                <Button onClick={() => setCmd({ type: 'learn_alpha', machine_id: machinesOfGw[0] })}>Học lại hệ số α</Button>
                 <Button onClick={() => post(`/gateways/${open}/config/push`, {}).then((r) => message.success(`Cấu hình v${r.version}`)).catch((e) => message.error(e.message))}>Đẩy cấu hình</Button>
                 {can('admin') && <Button danger onClick={() => setCmd({ type: 'reboot' })}>Khởi động lại</Button>}
                 {can('admin') && <Button onClick={() => setCmd({ type: 'ota_update', url: '', sha256: '' })}>Cập nhật OTA</Button>}
