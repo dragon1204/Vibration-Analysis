@@ -612,7 +612,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         quality_issues.append(f"Phổ chỉ đủ phủ đến khoảng {covered_order}X; không đánh giá các bậc cao hơn.")
     if skipped:
         quality_issues.append(f"Bỏ qua {skipped} capture do thiếu hoặc lỗi dữ liệu phổ.")
-    if tracking == "capture" and speed_coverage < 90:
+    if tracking == "capture" and speed_coverage < 90 and not speed_rejected:
         quality_issues.append(f"Chỉ {speed_coverage:.0f}% capture có tốc độ quay độ tin cậy cao; capture còn lại dùng 1X cố định.")
     if speed_rejected:
         quality_issues.append(f"{speed_rejected} capture có tốc độ ước lượng trùng tần số lưới {line_hz:g} Hz (động cơ không đồng bộ "
