@@ -440,13 +440,30 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   </Card>
 }
 
+const POS_ORDER = ['LOAD', 'DE', 'NDE', 'BASE']
+const machineAlgorithms = (_machine: any, slotInfo: any): string[] | undefined => slotInfo?.model?.algorithms
+
 export default function DeepAnalysis() {
   const { id = '' } = useParams()
-  const [axis, setAxis] = useState('x')
+  const [axis, setAxis] = useState('y')
   const [fmax, setFmax] = useState(500)
   const range = useMemo(() => ({ from: new Date(Date.now() - 6 * 3600000).toISOString(), to: new Date().toISOString() }), [])
   const { data: machine } = useQuery<any>({ queryKey: ['machine', id], queryFn: () => api(`/machines/${id}`) })
-  const points = machine?.points || []
+  const { data: slotInfo } = useQuery<any>({ queryKey: ['sensor-slots', id], queryFn: () => api(`/machines/${id}/sensor-slots`), enabled: !!id })
+  // Positions of the machine's installation model (e.g. DE + BASE), in the model's order; without a model, every point.
+  const modelCodes: string[] = (slotInfo?.slots || []).map((slot: any) => String(slot.code).toUpperCase())
+  const algorithms: string[] = slotInfo?.model ? (machineAlgorithms(machine, slotInfo) ?? []) : []
+  const points = useMemo(() => {
+    const all = (machine?.points || []) as any[]
+    const inModel = modelCodes.length ? all.filter((point) => modelCodes.includes(sensorCode(point))) : all
+    const order = modelCodes.length ? modelCodes : POS_ORDER
+    return [...inModel].sort((a, b) => order.indexOf(sensorCode(a)) - order.indexOf(sensorCode(b)))
+  }, [machine?.points, modelCodes.join(',')])
+  const alpha = (() => {
+    if (algorithms.length && !algorithms.includes('iso_corrected_rms')) return null
+    const a = Number(machine?.meta?.base_alpha ?? 0.8)
+    return a > 0 && a <= 2 ? a : null
+  })()
   const captureQueries = useQueries({ queries: points.map((point: any) => ({
     queryKey: ['deep-captures', point.id], queryFn: () => api<any[]>(`/points/${point.id}/captures`, { params: { ...range, limit: 5 } }),
     refetchInterval: 60_000,
@@ -465,27 +482,37 @@ export default function DeepAnalysis() {
     const feature = detail?.features?.axes?.[axis] || {}
     return { ...item, detail, spectrum, feature, color: COLORS[index % COLORS.length] }
   })
-  const source = rows.find((row: any) => row.point.role === 'source') || rows.find((row: any) => /s1/i.test(row.point.id))
-  const base = rows.find((row: any) => row.point.role === 'base') || rows.find((row: any) => /s2/i.test(row.point.id))
+  const source = rows.find((row: any) => row.point.role === 'source')
+  const base = rows.find((row: any) => row.point.role === 'base')
+  // Spectral similarity is measured against the model's reference: LOAD when installed, else BASE.
+  const reference = source || base
+  const refName = source ? 'LOAD' : base ? 'BASE' : ''
   const targets = rows.filter((row: any) => row.point.role === 'bearing')
   const sourceRms = source?.feature?.iso_vrms_mm_s
   const baseRms = base?.feature?.iso_vrms_mm_s
   const matrix = rows.map((row: any) => {
     const rms = row.feature?.iso_vrms_mm_s
-    const corr = source?.spectrum && row.spectrum ? correlation(source.spectrum.values, row.spectrum.values) : null
+    const isRef = row === reference
+    const corr = reference?.spectrum && row.spectrum && !isRef ? correlation(reference.spectrum.values, row.spectrum.values) : null
+    const bearing = row.point.role === 'bearing'
+    // Own bearing vibration after removing the foundation part: √(DE² − (α·BASE)²).
+    const own = bearing && alpha != null && rms != null && baseRms != null ? Math.sqrt(Math.max(0, rms * rms - (alpha * baseRms) ** 2)) : null
     return {
-      key: row.point.id, point: row.point, capture: row.capture, color: row.color, rms,
+      key: row.point.id, point: row.point, capture: row.capture, color: row.color, rms, own,
       one: row.feature?.orders?.['1'], two: row.feature?.orders?.['2'], mesh: row.feature?.mesh_mm_s,
-      sourceRatio: sourceRms && rms != null ? rms / sourceRms : null,
-      baseRatio: baseRms && rms != null ? rms / baseRms : null, correlation: corr,
+      sourceRatio: sourceRms && rms != null && row !== source ? rms / sourceRms : null,
+      baseRatio: baseRms && rms != null && row !== base ? rms / baseRms : null, correlation: corr,
     }
   })
   const targetAssessment = targets.map((target: any) => {
     const item = matrix.find((row: any) => row.key === target.point.id)
     if (!item) return null
-    const transmitted = (item.correlation || 0) >= 0.8 && (item.baseRatio || 0) <= 1.3
-    const local = (item.baseRatio || 0) > 1.45 || ((item.one || 0) / Math.max(item.rms || 1, 0.001)) > 0.9
-    return { ...item, transmitted, local }
+    // Transmitted: the bearing looks like the reference and is not much above what the foundation explains (α·BASE).
+    const expected = alpha != null && baseRms != null ? alpha * baseRms : null
+    const excess = expected && item.rms != null ? item.rms / expected : item.baseRatio
+    const transmitted = (item.correlation || 0) >= 0.8 && (excess || 0) <= 1.3
+    const local = (excess || 0) > 1.45 || (item.own != null && item.rms ? item.own / item.rms > 0.7 : false)
+    return { ...item, transmitted, local, expected, excess }
   }).filter(Boolean) as any[]
   const timestamps = latest.map((item: any) => Date.parse(item.capture.ts)).filter(Number.isFinite)
   const skewMs = timestamps.length ? Math.max(...timestamps) - Math.min(...timestamps) : null
@@ -495,6 +522,7 @@ export default function DeepAnalysis() {
   }))
   const complete = points.length > 1 && rows.length === points.length
   const hasRef = points.some((p: any) => p.role === 'source' || p.role === 'base')
+  const hasMesh = !!machine?.male_lobes
   const applicable = points.length >= 2 && hasRef
   const roleName = (role: string) => (role === 'source' ? 'Tải (LOAD)' : role === 'base' ? 'Tham chiếu bệ (BASE)' : 'Ổ đỡ (DE/NDE)')
 
@@ -523,19 +551,20 @@ export default function DeepAnalysis() {
           : targetAssessment.length ? targetAssessment.map((item) => <Alert key={item.key} style={{ marginBottom: 10 }} showIcon
           type={item.local && !item.transmitted ? 'warning' : 'info'}
           message={`${sensorCode(item.point)}: ${item.transmitted ? 'thiên về rung truyền' : item.local ? 'có thành phần cục bộ' : 'cần thêm capture đồng bộ'}`}
-          description={`Tương đồng phổ với LOAD ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`} · so LOAD ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ LOAD/BASE/DE/NDE" />}
+          description={`Tương đồng phổ với ${refName} ${item.correlation == null ? '—' : `${num(item.correlation * 100, 0)}%`}${source ? ` · so LOAD ${item.sourceRatio == null ? '—' : `${num(item.sourceRatio, 2)}×`}` : ''}${item.expected != null ? ` · từ đế truyền lên α·BASE = ${num(item.expected, 3)} mm/s, đo ${num(item.rms, 3)} mm/s (${num(item.excess, 2)}×) · riêng ổ đỡ ${num(item.own, 3)} mm/s` : ''} · so BASE ${item.baseRatio == null ? '—' : `${num(item.baseRatio, 2)}×`}`} />) : <Empty description="Chưa đủ LOAD/BASE/DE/NDE" />}
         {applicable && <Alert type="warning" showIcon message="Lưu ý kỹ thuật" description="Tương đồng phổ không thay thế coherence/pha. Kết luận chính thức cần capture nhóm đồng bộ từ gateway." />}
       </Card></Col>
       <Col span={24}><Card title="Ma trận đặc trưng đa điểm"><Table sticky={STICKY_HEAD} rowKey="key" size="small" pagination={false} dataSource={matrix} scroll={{ x: 980 }} columns={[
         { title: 'Điểm', render: (_, row: any) => <Space><span className="series-dot" style={{ background: row.color }} /><b>{sensorCode(row.point)}</b><span>{row.point.name}</span></Space> },
         { title: 'Vai trò', render: (_, row: any) => <Tag>{roleName(row.point.role)}</Tag> },
         { title: 'RMS ISO', dataIndex: 'rms', render: (value) => `${num(value, 3)} mm/s` },
+        ...(alpha != null && base ? [{ title: `Riêng ổ đỡ (α = ${num(alpha, 2)})`, dataIndex: 'own', render: (value: any) => value == null ? '—' : `${num(value, 3)} mm/s` }] : []),
         { title: '1X', dataIndex: 'one', render: (value) => `${num(value, 3)} mm/s` },
         { title: '2X', dataIndex: 'two', render: (value) => `${num(value, 3)} mm/s` },
-        { title: 'f_mesh', dataIndex: 'mesh', render: (value) => value == null ? '—' : `${num(value, 3)} mm/s` },
-        { title: 'So LOAD', dataIndex: 'sourceRatio', render: (value) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> },
+        ...(hasMesh ? [{ title: 'f_mesh', dataIndex: 'mesh', render: (value: any) => value == null ? '—' : `${num(value, 3)} mm/s` }] : []),
+        ...(source ? [{ title: 'So LOAD', dataIndex: 'sourceRatio', render: (value: any) => value == null ? '—' : <Progress percent={Math.min(100, Math.round(value * 100))} size="small" format={() => `${num(value, 2)}×`} /> }] : []),
         { title: 'So BASE', dataIndex: 'baseRatio', render: (value) => value == null ? '—' : `${num(value, 2)}×` },
-        { title: 'Tương đồng phổ', dataIndex: 'correlation', render: (value) => value == null ? '—' : `${num(value * 100, 0)}%` },
+        { title: `Tương đồng phổ với ${refName || 'tham chiếu'}`, dataIndex: 'correlation', render: (value) => value == null ? '—' : `${num(value * 100, 0)}%` },
         { title: 'Capture', dataIndex: 'capture', render: (value) => <span className="muted">{dt(value.ts)}</span> },
       ]} /></Card></Col>
     </Row>

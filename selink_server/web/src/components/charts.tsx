@@ -224,8 +224,10 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
   frames?: number; contiguous?: boolean
 }) {
   const split = (frames || 1) > 1 && !contiguous
-  const t0 = start && !split ? dayjs(start) : null
-  const clock = (v: number) => (t0 ? t0.add(Math.round(v * 1000), 'millisecond').format('HH:mm:ss.SSS') : `${num(v * 1000, 0)} ms`)
+  // Like the RMS trend: a real time axis from the capture start (frames are drawn back to back).
+  const t0 = start ? dayjs(start) : null
+  const ms0 = t0 ? t0.valueOf() : 0
+  const x = (sec: number) => (t0 ? ms0 + sec * 1000 : sec)
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
   // Gateway samples are g. Display acceleration in mm/s² to match the project convention.
@@ -281,7 +283,7 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
         valueFormatter: (v: number) => `${num(v, 3)} ${accUnit}`,
         axisPointer: {
           label: {
-            formatter: (p: any) => (p.axisDimension === 'x' ? (t0 ? clock(p.value) : `${num(p.value * 1000, 1)} ms`) : num(p.value, 3)),
+            formatter: (p: any) => (p.axisDimension === 'x' ? (t0 ? dayjs(p.value).format('HH:mm:ss.SSS') : `${num(p.value * 1000, 1)} ms`) : num(p.value, 3)),
           },
         },
       },
@@ -293,15 +295,18 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
           bottom: 8,
           start: zoomRange.start,
           end: zoomRange.end,
-          labelFormatter: (v: number) => clock(v),
+          labelFormatter: (v: number) => (t0 ? dayjs(v).format('HH:mm:ss.SSS') : `${num(v * 1000, 0)} ms`),
         },
       ],
-      xAxis: {
+      xAxis: t0 ? {
+        type: 'time', name: 'Thời gian', nameGap: 6, max: 'dataMax',
+        axisLabel: { formatter: (v: number) => dayjs(v).format('HH:mm:ss.SSS'), hideOverlap: true },
+      } : {
         type: 'value',
-        name: t0 ? '' : 'ms',
+        name: 'ms',
         nameGap: 6,
         max: 'dataMax',
-        axisLabel: { formatter: (v: number) => (t0 ? clock(v) : num(v * 1000, 0)), hideOverlap: true },
+        axisLabel: { formatter: (v: number) => num(v * 1000, 0) },
       },
       yAxis: {
         type: 'value',
@@ -321,9 +326,9 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
             width: isAll ? 1 : 1.5,
             opacity: isShown ? (isAll ? 0.85 : 1) : 0,
           },
-          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, (v - offset[a]) * scale]) : [],
+          data: isShown && axes[a] ? axes[a].map((v, i) => [x(i * dt), (v - offset[a]) * scale]) : [],
           markLine: split ? { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: '#94a3b8' }, label: { show: false },
-            data: Array.from({ length: (frames || 1) - 1 }, (_, k) => ({ xAxis: ((axes[a]?.length || 0) / (frames || 1)) * (k + 1) * dt })) } : undefined,
+            data: Array.from({ length: (frames || 1) - 1 }, (_, k) => ({ xAxis: x(((axes[a]?.length || 0) / (frames || 1)) * (k + 1) * dt) })) } : undefined,
         }
       }),
     }

@@ -46,7 +46,7 @@ async def sensor_slots(machine_id: str, request: Request, user: User = Depends(c
     out = [{"code": str(s["code"]).upper(), "short": str(s["code"]).upper(), "label": s.get("label") or "",
             "model_role": s.get("role") or "bearing", "role": installation.edge_role(s.get("role")),
             "point": used.get(str(s["code"]).upper())} for s in installation.slots(model)]
-    return {"model": {"id": model["id"], "name": model["name"]} if model else None, "slots": out,
+    return {"model": {"id": model["id"], "name": model["name"], "algorithms": model.get("algorithms") or []} if model else None, "slots": out,
             "issues": installation.check_points(model, pts),
             "used_addrs": sorted({p["sensor_addr"] for p in pts if p["sensor_addr"]})}
 
