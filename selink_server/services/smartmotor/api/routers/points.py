@@ -189,7 +189,8 @@ async def capture_waveform(capture_id: str, request: Request, axis: str = "x,y,z
     g = counts.astype(float) * wavefile.G_PER_LSB
     step = max(1, math.ceil(len(g) / max_points))
     fs = float(header["fs_hz"])
-    out = {"capture_id": capture_id, "fs_hz": fs, "frames": header.get("frames"), "unit": "g", "dt_s": step / fs,
+    out = {"capture_id": capture_id, "ts": cap["ts"].isoformat() if cap.get("ts") else None,
+           "fs_hz": fs, "frames": header.get("frames"), "unit": "g", "dt_s": step / fs,
            "frames_contiguous": header.get("frames_contiguous"), "axes": {}}
     for a in axis.split(","):
         if a in "xyz" and a:

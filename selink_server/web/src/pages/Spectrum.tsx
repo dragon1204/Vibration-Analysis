@@ -95,7 +95,7 @@ export default function Spectrum() {
               ) : <Empty description="Chọn capture" />,
             },
             {
-              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small"><WaveformChart axes={wave.axes} dt={wave.dt_s} height={420} defaultAxis={axis} /></Card>
+              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small"><WaveformChart axes={wave.axes} dt={wave.dt_s} start={wave.ts} height={420} defaultAxis={axis} /></Card>
                 : <Empty description="Không có sóng thô" />,
             },
             {

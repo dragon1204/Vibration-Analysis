@@ -1,3 +1,4 @@
+import dayjs from 'dayjs'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { Button, Segmented, Typography } from 'antd'
@@ -215,9 +216,13 @@ const axisLabel = (a: string, roles?: Record<string, string>) => `${a.toUpperCas
 
 /** Acceleration waveform. One axis at a time by default (three overlaid 2 kS/s traces read as a solid band),
  * opened on the first ~100 ms so individual cycles are visible; the slider pans/zooms over the whole frame. */
-export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windowS = 0.1, roles }: {
+export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windowS = 0.1, roles, start }: {
   roles?: Record<string, string>; axes: Record<string, number[]>; dt: number; height?: number; defaultAxis?: string; windowS?: number
+  /** Capture start time: when given, the x axis shows real clock time (HH:mm:ss.SSS) instead of ms from the start. */
+  start?: string
 }) {
+  const t0 = start ? dayjs(start) : null
+  const clock = (v: number) => (t0 ? t0.add(Math.round(v * 1000), 'millisecond').format('HH:mm:ss.SSS') : `${num(v * 1000, 0)} ms`)
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
   // Gateway samples are g. Display acceleration in mm/s² to match the project convention.
@@ -267,7 +272,7 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
         valueFormatter: (v: number) => `${num(v, 3)} ${accUnit}`,
         axisPointer: {
           label: {
-            formatter: (p: any) => (p.axisDimension === 'x' ? `${num(p.value * 1000, 1)} ms` : num(p.value, 3)),
+            formatter: (p: any) => (p.axisDimension === 'x' ? (t0 ? clock(p.value) : `${num(p.value * 1000, 1)} ms`) : num(p.value, 3)),
           },
         },
       },
@@ -279,15 +284,15 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
           bottom: 8,
           start: zoomRange.start,
           end: zoomRange.end,
-          labelFormatter: (v: number) => `${num(v * 1000, 0)} ms`,
+          labelFormatter: (v: number) => clock(v),
         },
       ],
       xAxis: {
         type: 'value',
-        name: 'ms',
+        name: t0 ? '' : 'ms',
         nameGap: 6,
         max: 'dataMax',
-        axisLabel: { formatter: (v: number) => num(v * 1000, 0) },
+        axisLabel: { formatter: (v: number) => (t0 ? clock(v) : num(v * 1000, 0)), hideOverlap: true },
       },
       yAxis: {
         type: 'value',
@@ -311,7 +316,7 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
         }
       }),
     }
-  }, [axes, dt, accUnit, scale, names, sel, zoomRange])
+  }, [axes, dt, accUnit, scale, names, sel, zoomRange, start])
 
   return (
     <div>
@@ -335,7 +340,7 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
         />
         <Segmented size="small" value={accUnit} onChange={(v) => setAccUnit(v as 'mm/s²' | 'g')}
           options={[{ value: 'mm/s²', label: 'mm/s²' }, { value: 'g', label: 'g' }]} />
-        <span className="muted">Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
+        <span className="muted">{t0 ? `Bắt đầu ${t0.format('DD/MM/YYYY HH:mm:ss.SSS')} · ` : ''}Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
       </div>
       <ReactECharts
         option={option}

@@ -22,8 +22,8 @@ def test_slots_follow_the_model_order():
 
 def test_header_has_units_and_directions():
     h = me.header(me.slot_points(MODEL, [DE, BASE]))
-    assert h[:2] == ["Thời gian (GMT+7)", "Thiết bị"] and len(h) == 4 + 2 * me.SLOT_COLUMNS == 4 + 2 * 19
-    assert h[2] == "DE Vận tốc RMS ISO 10-1000 Hz X dọc trục (mm/s)" and "DE Gia tốc RMS Z đứng (mm/s²)" in h
+    assert h[:3] == ["Ngày", "Giờ (GMT+7)", "Thiết bị"] and len(h) == 5 + 2 * me.SLOT_COLUMNS == 5 + 2 * 19
+    assert h[3] == "DE Vận tốc RMS ISO 10-1000 Hz X dọc trục (mm/s)" and "DE Gia tốc RMS Z đứng (mm/s²)" in h
     assert "DE Gia tốc đỉnh (cảm biến) X dọc trục (mm/s²)" in h and "BASE Vận tốc đỉnh (cảm biến) Z đứng (mm/s)" in h
     assert "DE Dịch chuyển đỉnh (cảm biến) Y ngang (µm)" in h and "DE Tần số rung (cảm biến) X dọc trục (Hz)" in h
     assert "BASE Nhiệt độ (°C)" in h

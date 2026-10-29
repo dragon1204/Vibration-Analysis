@@ -60,7 +60,7 @@ SLOT_COLUMNS = 3 * len(QUANTITIES) + 1
 
 
 def header(slots: list[tuple[str, dict | None]]) -> list[str]:
-    cols = ["Thời gian (GMT+7)", "Thiết bị"]
+    cols = ["Ngày", "Giờ (GMT+7)", "Thiết bị"]
     for code, point in slots:
         for qty, unit, *_ in QUANTITIES:
             cols += [f"{code} {qty} {_axis_title(point, a)} ({unit})" for a in "xyz"]

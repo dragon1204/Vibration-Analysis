@@ -31,6 +31,22 @@ VENDOR_TABLE_HEADER = [
 ]
 
 
+# Columns 14–18 belong to a second bearing sensor; they are left out when the machine has none.
+VENDOR_BRG2_COLUMNS = range(14, 19)
+
+
+def excel_time(t: datetime) -> str:
+    """Full local date-time to the millisecond. The ISO 'T' keeps Excel from re-formatting the
+    cell as mm:ss.0, which hides the hour and the date."""
+    return t.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+
+
+def date_and_time(t: datetime) -> list[str]:
+    """[date, time] columns. The comma before the milliseconds (ISO 8601) keeps Excel from
+    turning the time into mm:ss.0, so the hour stays visible."""
+    return [t.strftime("%Y-%m-%d"), t.strftime("%H:%M:%S,%f")[:-3]]
+
+
 def _nearest_vendor_row(rows: list[dict], timestamps: list[datetime], target: datetime, max_skew_ms: int) -> dict | None:
     if not rows:
         return None
@@ -209,14 +225,15 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
     timezone = ZoneInfo("Asia/Ho_Chi_Minh")
     output = io.StringIO(newline="")
     writer = csv.writer(output, lineterminator="\r\n")
-    writer.writerow(VENDOR_TABLE_HEADER)
+    keep = [i for i in range(len(VENDOR_TABLE_HEADER)) if brg2 or i not in VENDOR_BRG2_COLUMNS]
+    writer.writerow(["Date", "Time"] + [VENDOR_TABLE_HEADER[i] for i in keep][1:])
     for row in brg1_rows:
         ts = row["ts"]
         local = ts.astimezone(timezone)
         second = _nearest_vendor_row(brg2_rows, brg2_ts, ts, max_skew_ms)
         base_row = _nearest_vendor_row(base_rows, base_ts, ts, max_skew_ms)
-        writer.writerow([
-            local.strftime("%H:%M:%S.%f")[:-3], name,
+        line = [
+            "", name,
             _vendor_number(row, "acc_x"), _vendor_number(row, "acc_y"), _vendor_number(row, "acc_z"),
             _vendor_number(row, "vel_x", 0, 100), _vendor_number(row, "vel_x", 4),
             _vendor_number(row, "vel_y", 0, 100), _vendor_number(row, "vel_y", 4),
@@ -226,9 +243,10 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
             _vendor_number(second, "vel_y", 4), _vendor_number(second, "vel_z", 0, 100),
             _vendor_number(second, "vel_z", 4), _vendor_number(base_row, "vel_x", 4),
             _vendor_number(base_row, "vel_y", 4), _vendor_number(base_row, "vel_z", 4),
-            _vendor_number(row, "freq_z", 3), local.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
+            _vendor_number(row, "freq_z", 3), excel_time(local),
             _vendor_number(row, "temp_c", 2),
-        ])
+        ]
+        writer.writerow(date_and_time(local) + [line[i] for i in keep][1:])
     filename = f"{machine_id}-{brg1['id']}-bang-hang.csv"
     data = ("\ufeff" + output.getvalue()).encode("utf-8")
     return Response(data, media_type="text/csv; charset=utf-8", headers={
@@ -315,7 +333,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     w.writerow(model_export.header(slots))
     for row in base_rows:
         t = row["ts"]
-        line = [t.astimezone(tz).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3], device]
+        line = date_and_time(t.astimezone(tz)) + [device]
         note = ""
         for _, p in slots:
             if not p:

@@ -1,7 +1,7 @@
 import numpy as np
 from datetime import datetime, timedelta, timezone
 
-from smartmotor.api.routers.machines import VENDOR_TABLE_HEADER, _nearest_vendor_row, _vendor_number
+from smartmotor.api.routers.machines import VENDOR_BRG2_COLUMNS, VENDOR_TABLE_HEADER, _nearest_vendor_row, _vendor_number, date_and_time, excel_time
 from smartmotor.api.routers.points import _harmonic_findings, _harmonic_temporal
 from smartmotor.common import dsp
 
@@ -88,6 +88,14 @@ def test_vendor_table_contract_and_timestamp_alignment():
     assert len(VENDOR_TABLE_HEADER) == 25
     assert VENDOR_TABLE_HEADER[:5] == ["Time", "Device name", "Acceleration X(g)", "Acceleration Y(g)", "Acceleration Z(g)"]
     assert VENDOR_TABLE_HEADER.count("Abase(X)m/s") == 3  # preserve the instrument's duplicated headers exactly
+    assert [VENDOR_TABLE_HEADER[i] for i in VENDOR_BRG2_COLUMNS][0] == "Abrg2(X)m/s"
+    assert VENDOR_TABLE_HEADER[19] == "Abase(X)m/s"
+
+
+def test_excel_time_keeps_date_and_hour():
+    from datetime import datetime
+    assert excel_time(datetime(2026, 10, 29, 7, 44, 22, 800000)) == "2026-10-29T07:44:22.800"
+    assert date_and_time(datetime(2026, 10, 29, 7, 44, 22, 800000)) == ["2026-10-29", "07:44:22,800"]
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     rows = [{"ts": start, "vel_x": 17.11}, {"ts": start + timedelta(milliseconds=70), "vel_x": 18.0}]
     timestamps = [row["ts"] for row in rows]
