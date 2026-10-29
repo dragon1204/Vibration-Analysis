@@ -42,4 +42,4 @@ def test_verified_data_is_untouched_and_csv_has_note_column():
     ClockWatch().apply("gw", d)
     assert d.ts == T and d.flags == [] and describe(d.flags) == ""
     h = me.header([("DE", None)])
-    assert h[-1] == "Ghi chú thời gian" and len(h) == 3 + me.SLOT_COLUMNS
+    assert h[-1] == "Ghi chú thời gian" and len(h) == 4 + me.SLOT_COLUMNS

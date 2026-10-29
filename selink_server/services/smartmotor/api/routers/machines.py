@@ -262,6 +262,10 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
         installed = [p for _, p in slots if p]
         if not installed:
             raise HTTPException(404, "Không có cảm biến nào khớp với các vị trí của mô hình lắp đặt")
+        run_rows = [dict(r) for r in await c.fetch(
+            "SELECT ts, running FROM machine_run_states WHERE machine_id=$1 AND ts BETWEEN $2 AND $3 ORDER BY ts", machine_id, frm, to)]
+        run_prior = await c.fetchval(
+            "SELECT running FROM machine_run_states WHERE machine_id=$1 AND ts < $2 ORDER BY ts DESC LIMIT 1", machine_id, frm)
         truncated = False
         metrics: dict[str, list[dict]] = {}
         rms: dict[str, list[dict]] = {}
@@ -303,6 +307,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     stamps = {pid: [r["ts"] for r in rows] for pid, rows in metrics.items()}
     rms_stamps = {pid: [r["ts"] for r in rows] for pid, rows in rms.items()}
     skew = timedelta(milliseconds=max_skew_ms)
+    run_stamps = [r["ts"] for r in run_rows]
     tz = ZoneInfo("Asia/Ho_Chi_Minh")
     device = (ref.get("gateway_id") or ref["id"]).replace("\r", " ").replace("\n", " ")
     out = io.StringIO(newline="")
@@ -320,7 +325,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
             line += model_export.slot_values(m, model_export.latest_before(rms[p["id"]], rms_stamps[p["id"]], t))
             if p["id"] == ref["id"] and m:
                 note = timefix.describe((m.get("flags") or "").split(","))
-        w.writerow(line + [note])
+        w.writerow(line + [model_export.run_state_at(run_rows, run_stamps, t, run_prior), note])
     codes = "-".join(code for code, _ in slots)
     stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
     suffix = "-rms" if row_mode == "rms" else ""

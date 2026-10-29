@@ -22,7 +22,7 @@ def test_slots_follow_the_model_order():
 
 def test_header_has_units_and_directions():
     h = me.header(me.slot_points(MODEL, [DE, BASE]))
-    assert h[:2] == ["Thời gian (GMT+7)", "Thiết bị"] and len(h) == 3 + 2 * me.SLOT_COLUMNS == 3 + 2 * 19
+    assert h[:2] == ["Thời gian (GMT+7)", "Thiết bị"] and len(h) == 4 + 2 * me.SLOT_COLUMNS == 4 + 2 * 19
     assert h[2] == "DE Vận tốc RMS ISO 10-1000 Hz X dọc trục (mm/s)" and "DE Gia tốc RMS Z đứng (mm/s²)" in h
     assert "DE Gia tốc đỉnh (cảm biến) X dọc trục (mm/s²)" in h and "BASE Vận tốc đỉnh (cảm biến) Z đứng (mm/s)" in h
     assert "DE Dịch chuyển đỉnh (cảm biến) Y ngang (µm)" in h and "DE Tần số rung (cảm biến) X dọc trục (Hz)" in h
@@ -36,6 +36,20 @@ def test_acceleration_is_converted_from_g_to_mm_s2():
     assert v[6] == 5.28 and v[9] == 9806.6 and v[10] == 4903.3 and v[11] == ""
     assert v[12] == 3 and isinstance(v[12], int) and v[15] == 408.1 and v[18] == 43.4
     assert me.slot_values(None, None) == [""] * me.SLOT_COLUMNS
+    glitch = me.slot_values({"acc_x": 0.0, "acc_y": 0.0, "acc_z": 0.0, "vel_x": 10.9}, {})
+    assert glitch[9:12] == ["", "", ""] and glitch[6] == 10.9          # zero block while running → empty
+    stopped = me.slot_values({"acc_x": 0.0, "acc_y": 0.0, "acc_z": 0.0, "vel_x": 0.0}, {})
+    assert stopped[9:12] == [0.0, 0.0, 0.0]                             # a stopped machine stays 0
+
+
+def test_run_state_column():
+    t0 = datetime(2026, 10, 29, 17, tzinfo=timezone.utc)
+    states = [{"ts": t0, "running": True}, {"ts": t0 + timedelta(minutes=5), "running": False}]
+    stamps = [s["ts"] for s in states]
+    assert me.run_state_at(states, stamps, t0 + timedelta(minutes=1), None) == "CHẠY"
+    assert me.run_state_at(states, stamps, t0 + timedelta(minutes=6), None) == "DỪNG"
+    assert me.run_state_at(states, stamps, t0 - timedelta(minutes=1), False) == "DỪNG"
+    assert me.run_state_at([], [], t0, None) == ""
 
 
 def test_rms_is_carried_forward_only_while_fresh():

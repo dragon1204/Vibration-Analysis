@@ -65,7 +65,14 @@ def header(slots: list[tuple[str, dict | None]]) -> list[str]:
         for qty, unit, *_ in QUANTITIES:
             cols += [f"{code} {qty} {_axis_title(point, a)} ({unit})" for a in "xyz"]
         cols.append(f"{code} Nhiệt độ (°C)")
-    return cols + ["Ghi chú thời gian"]
+    return cols + ["Trạng thái máy", "Ghi chú thời gian"]
+
+
+def run_state_at(states: list[dict], stamps: list[datetime], t: datetime, prior: bool | None) -> str:
+    """CHẠY / DỪNG from the last run-state sample at or before t ('' when unknown)."""
+    i = bisect.bisect_right(stamps, t) - 1
+    running = states[i]["running"] if i >= 0 else prior
+    return "" if running is None else ("CHẠY" if running else "DỪNG")
 
 
 def _num(v, digits: int, scale: float = 1.0):
@@ -75,9 +82,23 @@ def _num(v, digits: int, scale: float = 1.0):
     return int(v) if digits == 0 else v
 
 
+# The WTVB05 now and then returns an all-zero acceleration block while velocity is clearly non-zero;
+# that is a read glitch, not a measurement, so those cells are left empty.
+GLITCH_VEL_MM_S = 0.5
+
+
+def acc_glitch(m: dict) -> bool:
+    acc = [m.get(f"acc_{a}") for a in "xyz"]
+    vel = [m.get(f"vel_{a}") for a in "xyz"]
+    return all(v == 0 for v in acc) and any(v is not None and v > GLITCH_VEL_MM_S for v in vel)
+
+
 def slot_values(metric: dict | None, rms: dict | None) -> list:
     """The values of one position for one output row (sensor registers + gateway RMS)."""
-    m, r = metric or {}, rms or {}
+    m, r = dict(metric or {}), rms or {}
+    if acc_glitch(m):
+        for a in "xyz":
+            m[f"acc_{a}"] = None
     out = []
     for _, _, key, source, digits, scale in QUANTITIES:
         src = r if source == "rms" else m
