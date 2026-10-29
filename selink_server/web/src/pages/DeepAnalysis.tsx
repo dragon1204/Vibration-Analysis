@@ -315,21 +315,30 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
     extra={<Dropdown trigger={['click']} menu={{
       // One export entry; each file answers a different question, so the menu says what it is for.
+      // Excel files carry real date/time cells and column widths; CSV is kept for other software.
       items: [
-        { key: 'model', label: <div><b>Dữ liệu đo theo mô hình lắp đặt</b><div className="muted">Mọi vị trí (DE, BASE…), ~2–3 dòng/giây</div></div> },
-        { key: 'rms', label: <div><b>Dữ liệu đo, mỗi kết quả RMS một dòng</b><div className="muted">~2,5 s/dòng, không lặp, dùng làm thống kê</div></div> },
-        { key: 'vendor', disabled: !pointId, label: <div><b>Bảng giống thiết bị hãng</b><div className="muted">Một điểm đo, để đối chiếu với máy đo của hãng</div></div> },
-        { key: 'fft', disabled: !result, label: <div><b>Kết quả phân tích FFT</b><div className="muted">{result ? 'Bậc hài 1X–nX của lần phân tích này' : 'Bấm "Phân tích" trước'}</div></div> },
+        { type: 'group', label: 'Excel (.xlsx), mở là đọc được ngay', children: [
+          { key: 'model:xlsx', label: <div><b>Dữ liệu đo theo mô hình lắp đặt</b><div className="muted">Mọi vị trí (DE, BASE…), ~2–3 dòng/giây</div></div> },
+          { key: 'rms:xlsx', label: <div><b>Dữ liệu đo, mỗi kết quả RMS một dòng</b><div className="muted">~2,5 s/dòng, không lặp, dùng làm thống kê</div></div> },
+          { key: 'vendor:xlsx', disabled: !pointId, label: <div><b>Bảng giống thiết bị hãng</b><div className="muted">Một điểm đo, để đối chiếu với máy đo của hãng</div></div> },
+        ] },
+        { type: 'group', label: 'CSV (cho phần mềm khác)', children: [
+          { key: 'model:csv', label: 'Dữ liệu đo theo mô hình lắp đặt (.csv)' },
+          { key: 'rms:csv', label: 'Mỗi kết quả RMS một dòng (.csv)' },
+          { key: 'vendor:csv', disabled: !pointId, label: 'Bảng giống thiết bị hãng (.csv)' },
+          { key: 'fft', disabled: !result, label: result ? 'Kết quả phân tích FFT (.csv)' : 'Kết quả phân tích FFT (bấm "Phân tích" trước)' },
+        ] },
       ],
       onClick: ({ key }) => {
+        if (key === 'fft') { if (result) exportAnalysisCsv(result); return }
+        const [kind, format] = key.split(':')
         const fail = (error: any) => message.error(`Không xuất được file: ${error.message}`)
-        const base = { ...rangeParams(range), max_skew_ms: 1000 }
-        if (key === 'model') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh.csv`, base).catch(fail)
-        if (key === 'rms') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh-rms.csv`, { ...base, rows: 'rms' }).catch(fail)
-        if (key === 'vendor') download(`/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`, { ...base, point_id: pointId, device_name: deviceName }).catch(fail)
-        if (key === 'fft' && result) exportAnalysisCsv(result)
+        const base = { ...rangeParams(range), max_skew_ms: 1000, format }
+        if (kind === 'model') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh.${format}`, base).catch(fail)
+        if (kind === 'rms') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh-rms.${format}`, { ...base, rows: 'rms' }).catch(fail)
+        if (kind === 'vendor') download(`/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.${format}`, { ...base, point_id: pointId, device_name: deviceName }).catch(fail)
       },
-    }}><Button type="primary">Xuất CSV ▾</Button></Dropdown>}>
+    }}><Button type="primary">Xuất file ▾</Button></Dropdown>}>
     <div className="fft-filter-grid">
       <label><span>Điểm đo</span><Select value={pointId} onChange={setPointId} options={points.map((p: any) => ({ value: p.id, label: `${p.name} (${p.id})` }))} /></label>
       <div className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></div>

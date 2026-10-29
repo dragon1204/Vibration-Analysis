@@ -1,7 +1,5 @@
 """Machines: CRUD, live status, power/temperature series, maintenance, diagnosis, health."""
 import bisect
-import csv
-import io
 from datetime import datetime, timedelta
 from typing import Any, Optional
 import math
@@ -15,7 +13,7 @@ from pydantic import BaseModel
 
 from ...common import bus
 from ...common import gwconfig
-from ...common import alpha_learn, installation, model_export, timefix
+from ...common import alpha_learn, installation, model_export, table_export, timefix
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -172,8 +170,9 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
                                   device_name: Optional[str] = Query(None, max_length=64),
                                   max_skew_ms: int = Query(1000, ge=0, le=10_000),
                                   limit: int = Query(50_000, ge=1, le=100_000),
+                                  fmt: str = Query("csv", alias="format", pattern="^(csv|xlsx)$"),
                                   user: User = Depends(require("engineer"))):
-    """Export the 25-column CSV layout used by the comparison instrument."""
+    """Export the 25-column CSV layout used by the comparison instrument (or the same table as .xlsx)."""
     await check_machine(request.app.state.pool, user, machine_id)
     frm, to = rng
     async with request.app.state.pool.acquire() as c:
@@ -223,8 +222,7 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
     base_ts = [row["ts"] for row in base_rows]
     name = (device_name or brg1.get("sensor_serial") or brg1.get("gateway_id") or brg1["id"]).replace("\r", " ").replace("\n", " ")
     timezone = ZoneInfo("Asia/Ho_Chi_Minh")
-    output = io.StringIO(newline="")
-    writer = csv.writer(output, lineterminator="\r\n")
+    writer = table_export.Rows()
     keep = [i for i in range(len(VENDOR_TABLE_HEADER)) if brg2 or i not in VENDOR_BRG2_COLUMNS]
     writer.writerow(["Date", "Time"] + [VENDOR_TABLE_HEADER[i] for i in keep][1:])
     for row in brg1_rows:
@@ -247,10 +245,7 @@ async def vendor_compatible_table(machine_id: str, request: Request, rng=Depends
             _vendor_number(row, "temp_c", 2),
         ]
         writer.writerow(date_and_time(local) + [line[i] for i in keep][1:])
-    filename = f"{machine_id}-{brg1['id']}-bang-hang.csv"
-    data = ("\ufeff" + output.getvalue()).encode("utf-8")
-    return Response(data, media_type="text/csv; charset=utf-8", headers={
-        "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+    return table_export.response(writer.rows, f"{machine_id}-{brg1['id']}-bang-hang", fmt, {
         "X-Rows-Truncated": "1" if truncated[0] else "0", "Access-Control-Expose-Headers": "X-Rows-Truncated",
     })
 
@@ -260,6 +255,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
                       max_skew_ms: int = Query(1000, ge=0, le=10_000),
                       limit: int = Query(50_000, ge=1, le=100_000),
                       row_mode: str = Query("all", alias="rows", pattern="^(all|rms)$"),
+                      fmt: str = Query("csv", alias="format", pattern="^(csv|xlsx)$"),
                       user: User = Depends(require("engineer"))):
     """CSV with one column block per position of the machine's installation model (e.g. DE + BASE).
 
@@ -328,8 +324,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     run_stamps = [r["ts"] for r in run_rows]
     tz = ZoneInfo("Asia/Ho_Chi_Minh")
     device = (ref.get("gateway_id") or ref["id"]).replace("\r", " ").replace("\n", " ")
-    out = io.StringIO(newline="")
-    w = csv.writer(out, lineterminator="\r\n")
+    w = table_export.Rows()
     w.writerow(model_export.header(slots))
     for row in base_rows:
         t = row["ts"]
@@ -347,9 +342,7 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
     codes = "-".join(code for code, _ in slots)
     stamp = frm.astimezone(tz).strftime("%Y%m%d-%H%M")
     suffix = "-rms" if row_mode == "rms" else ""
-    filename = f"{machine_id}-{codes}-{stamp}{suffix}.csv"
-    return Response(("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv; charset=utf-8", headers={
-        "Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store",
+    return table_export.response(w.rows, f"{machine_id}-{codes}-{stamp}{suffix}", fmt, {
         "X-Rows-Truncated": "1" if truncated else "0", "X-Installation-Model": template or "",
         "Access-Control-Expose-Headers": "X-Rows-Truncated, X-Installation-Model",
     })

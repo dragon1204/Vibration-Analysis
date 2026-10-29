@@ -10,7 +10,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from ...common import dsp, wavefile
+from ...common import dsp, harmonic_review, installation, wavefile
 from ...common.assets import AssetCache
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, check_point, current_user, require, time_range
@@ -277,20 +277,20 @@ def _harmonic_findings(harmonics: list[dict]) -> list[dict]:
     findings = []
     if one and one["occurrence_pct"] >= 35:
         confidence = min(95, round(45 + one["occurrence_pct"] * 0.45))
-        findings.append({"code": "rotational_1x", "title": "Kích thích đồng bộ 1X", "confidence": confidence,
+        findings.append({"code": "rotational_1x", "title": "Kích thích đồng bộ 1X", "confidence": confidence, "orders": [1],
                          "severity": "warning" if one["occurrence_pct"] >= 70 else "watch",
                          "evidence": f"1X xuất hiện {one['detections']}/{one['captures']} capture; đỉnh {one['peak_max']}.",
                          "action": "Kiểm tra cân bằng, độ đảo/lệch tâm và khả năng cộng hưởng; đối chiếu pha trước khi kết luận."})
     if two and two["occurrence_pct"] >= 25 and (two.get("relative_to_1x") or 0) >= 0.35:
         confidence = min(92, round(35 + two["occurrence_pct"] * 0.45 + min(two["relative_to_1x"], 1) * 20))
-        findings.append({"code": "alignment_2x", "title": "Mẫu 2X cần kiểm tra đồng tâm", "confidence": confidence,
+        findings.append({"code": "alignment_2x", "title": "Mẫu 2X cần kiểm tra đồng tâm", "confidence": confidence, "orders": [2],
                          "severity": "warning" if two["relative_to_1x"] >= 0.7 else "watch",
                          "evidence": f"2X xuất hiện {two['occurrence_pct']}% và bằng {two['relative_to_1x']}× đỉnh 1X.",
                          "action": "Đo pha hướng tâm/dọc trục, kiểm tra đồng tâm khớp nối, trục cong và chân mềm."})
     recurring = [x for x in higher if x["occurrence_pct"] >= 25]
     if len(recurring) >= 2:
         avg_occurrence = float(np.mean([x["occurrence_pct"] for x in recurring]))
-        findings.append({"code": "high_order_train", "title": "Chuỗi hài bậc cao lặp lại",
+        findings.append({"code": "high_order_train", "title": "Chuỗi hài bậc cao lặp lại", "orders": [x["order"] for x in recurring],
                          "confidence": min(90, round(38 + 8 * len(recurring) + avg_occurrence * 0.25)),
                          "severity": "warning" if len(recurring) >= 4 else "watch",
                          "evidence": f"{', '.join(x['label'] for x in recurring)} cùng lặp lại trong ≥25% capture.",
@@ -299,7 +299,7 @@ def _harmonic_findings(harmonics: list[dict]) -> list[dict]:
                and x.get("occurrence_pct", 0) >= 25]
     if growing:
         strongest = max(growing, key=lambda x: x.get("trend_pct", 0))
-        findings.append({"code": "rising_harmonic", "title": f"{strongest['label']} đang tăng theo thời gian",
+        findings.append({"code": "rising_harmonic", "title": f"{strongest['label']} đang tăng theo thời gian", "orders": [strongest["order"]],
                          "confidence": min(92, round(45 + strongest["occurrence_pct"] * 0.25
                                                      + min(strongest["trend_pct"], 100) * 0.2)),
                          "severity": "warning" if strongest["trend_pct"] >= 50 else "watch",
@@ -387,6 +387,25 @@ async def capture_spectrum(capture_id: str, request: Request, axis: str = "x", t
             "values": [round(x, 6) for x in vals], "speed_hz": cap.get("speed_hz"), "markers": _markers(cap, point, machine)}
 
 
+def _spectrum_values(doc: dict, type: str, axis: str, machine: dict) -> tuple[float, np.ndarray]:
+    if type == "env":
+        env = doc.get("env") or {}
+        return float(env["df_hz"]), np.asarray(env["amp_g"][axis], dtype=float)
+    df = float(doc["df_hz"])
+    acc = np.asarray(doc["acc"][axis], dtype=float)
+    if type == "acc":
+        return df, acc / dsp.G0
+    freq = np.arange(len(acc)) * df
+    values = np.zeros_like(acc)
+    low = float(machine.get("iso_band_lo_hz") or 2) * 0.5
+    mask = (freq >= low) & (freq > 0)
+    if type == "disp":
+        values[mask] = acc[mask] / ((2 * np.pi * freq[mask]) ** 2) * 1_000_000
+    else:
+        values[mask] = acc[mask] / (2 * np.pi * freq[mask]) * 1000
+    return df, values
+
+
 @router.get("/points/{point_id}/harmonic-analysis")
 async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_range), axis: str = "x", type: str = "vel",
                             base_hz: Optional[float] = Query(None, gt=0), tolerance_pct: float = Query(15, ge=1, le=30),
@@ -455,6 +474,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
     unit = "g" if type in ("acc", "env") else "µm" if type == "disp" else "mm/s"
     details: list[dict] = []
     skipped = 0
+    speed_rejected = 0
     max_available_hz: list[float] = []
     resolutions_hz: list[float] = []
     bases_hz: list[float] = []
@@ -471,33 +491,16 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
             skipped += 1
             continue
         try:
-            doc = json.loads(gzip.decompress(raw))
-            if type == "env":
-                env = doc.get("env") or {}
-                df = float(env["df_hz"])
-                values = np.asarray(env["amp_g"][axis], dtype=float)
-            else:
-                df = float(doc["df_hz"])
-                acc = np.asarray(doc["acc"][axis], dtype=float)
-                if type == "acc":
-                    values = acc / dsp.G0
-                elif type == "disp":
-                    freq = np.arange(len(acc)) * df
-                    values = np.zeros_like(acc)
-                    low = float(machine.get("iso_band_lo_hz") or 2) * 0.5
-                    mask = (freq >= low) & (freq > 0)
-                    values[mask] = acc[mask] / ((2 * np.pi * freq[mask]) ** 2) * 1_000_000
-                else:
-                    freq = np.arange(len(acc)) * df
-                    values = np.zeros_like(acc)
-                    low = float(machine.get("iso_band_lo_hz") or 2) * 0.5
-                    mask = (freq >= low) & (freq > 0)
-                    values[mask] = acc[mask] / (2 * np.pi * freq[mask]) * 1000
+            df, values = _spectrum_values(json.loads(gzip.decompress(raw)), type, axis, machine)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
             skipped += 1
             continue
         capture_speed = float(cap["speed_hz"]) if cap["speed_hz"] is not None and float(cap["speed_hz"]) > 0 else None
-        reliable_speed = capture_speed if cap["speed_confidence"] == "high" else None
+        # An estimate at the supply frequency (or above synchronous speed) is the electrical line, not the shaft.
+        reliable_speed = harmonic_review.plausible_speed(capture_speed, machine.get("line_freq_hz") or 50,
+                                                         machine.get("poles"), df) if cap["speed_confidence"] == "high" else None
+        if cap["speed_confidence"] == "high" and capture_speed and reliable_speed is None:
+            speed_rejected += 1
         used_f1x = reliable_speed if tracking == "capture" and reliable_speed else f1x
         max_available_hz.append((len(values) - 1) * df)
         resolutions_hz.append(df)
@@ -545,6 +548,45 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         }
         harmonic.update(_harmonic_temporal(rows))
         harmonics.append(harmonic)
+    line_hz = float(machine.get("line_freq_hz") or 50)
+    median_df_all = float(np.median(resolutions_hz)) if resolutions_hz else 0.0
+    for row in harmonics:
+        row["line_overlap_hz"] = harmonic_review.line_overlap(row["order"], summary_f1x, tolerance, median_df_all, line_hz)
+
+    # Foundation reference: the same orders on the machine's BASE sensor over the same period.
+    base_point, alpha = None, None
+    if (point.get("role") or "bearing") == "bearing" and type != "env":
+        async with request.app.state.pool.acquire() as c:
+            meta, model = await installation.machine_model(c, point["machine_id"])
+            alpha = installation.base_alpha(meta, model)
+            alpha = alpha if alpha > 0 else None
+            base_point = await c.fetchrow("SELECT id FROM measurement_points WHERE machine_id=$1 AND role='base' LIMIT 1",
+                                          point["machine_id"])
+            base_caps = await c.fetch("""SELECT spectrum_key FROM (
+                                           SELECT spectrum_key, row_number() OVER (ORDER BY ts) rn, count(*) OVER () n
+                                           FROM captures WHERE point_id=$1 AND ts BETWEEN $2 AND $3 AND spectrum_key IS NOT NULL) q
+                                         WHERE n <= 100 OR floor((rn - 1)::numeric * 100 / n) > floor((rn - 2)::numeric * 100 / n)""",
+                                      base_point["id"], frm, to) if base_point and alpha else []
+        base_amps: dict[int, list[float]] = {}
+        base_loaded = await asyncio.gather(*(request.app.state.storage.get(r["spectrum_key"]) for r in base_caps))
+        for raw in base_loaded:
+            try:
+                bdf, bvalues = _spectrum_values(json.loads(gzip.decompress(raw)), type, axis, machine)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError, OSError):
+                continue
+            for peak in dsp.harmonic_peaks(bvalues, bdf, summary_f1x, max_order, tolerance, 1.0):
+                if peak.get("amplitude") is not None and math.isfinite(peak["amplitude"]):
+                    base_amps.setdefault(peak["order"], []).append(float(peak["amplitude"]))
+        for row in harmonics:
+            amps = base_amps.get(row["order"])
+            row["base_mean"] = round(float(np.median(amps)), 6) if amps else None
+            own, share = harmonic_review.own_amplitude(row.get("peak_mean"), row["base_mean"], alpha)
+            row["own_mean"] = round(own, 6) if own is not None else None
+            row["transmitted_share"] = round(share, 3) if share is not None else None
+    async with request.app.state.pool.acquire() as c:
+        iso_median = await c.fetchval("""SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY iso_vrms_max_mm_s) FROM captures
+                                        WHERE point_id=$1 AND ts BETWEEN $2 AND $3""", point_id, frm, to)
+    zone_ab = iso_limits(machine.get("iso_group"), machine.get("foundation")).ab
     one_max = next((x["peak_max"] for x in harmonics if x["order"] == 1), None)
     for row in harmonics:
         row["relative_to_1x"] = round(row["peak_max"] / one_max, 3) if one_max and row["peak_max"] is not None else None
@@ -572,11 +614,19 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         quality_issues.append(f"Bỏ qua {skipped} capture do thiếu hoặc lỗi dữ liệu phổ.")
     if tracking == "capture" and speed_coverage < 90:
         quality_issues.append(f"Chỉ {speed_coverage:.0f}% capture có tốc độ quay độ tin cậy cao; capture còn lại dùng 1X cố định.")
+    if speed_rejected:
+        quality_issues.append(f"{speed_rejected} capture có tốc độ ước lượng trùng tần số lưới {line_hz:g} Hz (động cơ không đồng bộ "
+                              f"không quay đúng tốc độ đồng bộ); đã dùng 1X định mức {f1x:.2f} Hz thay thế.")
+    overlapping = [h["label"] for h in harmonics if h.get("line_overlap_hz") and h["order"] <= 4]
+    if overlapping:
+        quality_issues.append(f"{', '.join(overlapping)} trùng dải với tần số điện (bội {line_hz:g} Hz); "
+                              f"với độ phân giải {median_df_all:.1f} Hz không tách được rung cơ khí và rung điện.")
     if int(available or 0) > len(caps):
         quality_issues.append(f"Khoảng chọn có {available} capture; kết quả dùng {len(caps)} capture phân bố đều trong toàn khoảng để giới hạn tải.")
     findings = _harmonic_findings(harmonics)
     for finding in findings:
         finding["confidence"] = round(finding["confidence"] * confidence_score / 100)
+    findings = harmonic_review.review(findings, harmonics, float(iso_median) if iso_median is not None else None, zone_ab)
     detected = [x for x in harmonics if x["detections"]]
     dominant = max(detected, key=lambda x: x["peak_max"]) if detected else None
     conclusions = []
@@ -588,6 +638,13 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
         conclusions.append(f"Chưa có đỉnh nào vượt ngưỡng nổi bật {prominence_ratio}× nền phổ trong các dải hài đã chọn.")
     if quality_issues:
         conclusions.append(f"Chất lượng phân tích {confidence_score}/100; cần xem các cảnh báo chất lượng trước khi sử dụng kết quả.")
+    if iso_median is not None:
+        conclusions.append(f"RMS ISO trung vị {float(iso_median):.2f} mm/s "
+                           + (f"ở vùng A (< {zone_ab:g} mm/s): máy đang tốt, các mẫu bậc hài chỉ để theo dõi."
+                              if float(iso_median) < zone_ab else f"từ vùng B trở lên (≥ {zone_ab:g} mm/s): nên kiểm tra theo các mẫu dưới đây."))
+    transmitted = [h["label"] for h in harmonics if h.get("detections") and (h.get("transmitted_share") or 0) >= harmonic_review.TRANSMITTED_SHARE]
+    if transmitted:
+        conclusions.append(f"{', '.join(transmitted)} chủ yếu là rung truyền từ đế (α = {alpha:.2f} × BASE giải thích ≥ 70% biên độ).")
     conclusions.append("Kết quả là chỉ báo sàng lọc, không thay thế chẩn đoán có pha/coherence và kiểm tra cơ khí tại hiện trường.")
     return {
         "point_id": point_id, "point_name": point.get("name"), "axis": axis, "type": type, "unit": unit,
@@ -612,6 +669,9 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
                     "covered_order": covered_order, "speed_coverage_pct": round(speed_coverage, 1),
                     "speed_spread_pct": round(speed_spread, 1), "issues": quality_issues},
         "harmonics": harmonics, "details": details, "findings": findings, "conclusions": conclusions,
+        "reference": {"base_point_id": base_point["id"] if base_point else None, "alpha": alpha,
+                      "iso_median_mm_s": round(float(iso_median), 3) if iso_median is not None else None, "zone_ab": zone_ab,
+                      "line_hz": line_hz, "speed_rejected": speed_rejected},
     }
 
 
