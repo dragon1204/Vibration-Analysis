@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import {
-  Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography, Upload,
-} from 'antd'
+  Alert, Button, Card, Col, Empty, Input, InputNumber, message, Progress, Row, Segmented, Select, Space, Spin, Statistic, Table, Tag, Typography, Upload, Dropdown } from 'antd'
 import ReactECharts from 'echarts-for-react'
 import { api, download } from '../api/client'
 import { MultiSpectrumChart } from '../components/charts'
@@ -314,24 +313,23 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
   }
 
   return <Card className="fft-analysis-card" title="Phân tích FFT theo khoảng thời gian"
-    extra={<Space wrap>
-      {result && <Button onClick={() => exportAnalysisCsv(result)}>Xuất kết quả FFT</Button>}
-      {/* The vendor-style table only needs a point and a time range: no analysis run is required. */}
-      {/* Columns follow the machine's installation model (e.g. DE + BASE); SI units, Vietnam time. */}
-      <Button type="primary" onClick={() => download(
-        `/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh.csv`,
-        { ...rangeParams(range), max_skew_ms: 1000 },
-      ).catch((error) => message.error(`Không xuất được file: ${error.message}`))}>Xuất CSV theo mô hình lắp đặt</Button>
-      {/* One line per new RMS result (~2–3 s), without repeated register samples: for statistics. */}
-      <Button onClick={() => download(
-        `/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh-rms.csv`,
-        { ...rangeParams(range), max_skew_ms: 1000, rows: 'rms' },
-      ).catch((error) => message.error(`Không xuất được file: ${error.message}`))}>Xuất CSV mỗi kết quả RMS một dòng</Button>
-      <Button disabled={!pointId} onClick={() => download(
-        `/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`,
-        { ...rangeParams(range), point_id: pointId, device_name: deviceName, max_skew_ms: 1000 },
-      ).catch((error) => message.error(`Không xuất được bảng hãng: ${error.message}`))}>Xuất bảng giống hãng (để đối chiếu)</Button>
-    </Space>}>
+    extra={<Dropdown trigger={['click']} menu={{
+      // One export entry; each file answers a different question, so the menu says what it is for.
+      items: [
+        { key: 'model', label: <div><b>Dữ liệu đo theo mô hình lắp đặt</b><div className="muted">Mọi vị trí (DE, BASE…), ~2–3 dòng/giây</div></div> },
+        { key: 'rms', label: <div><b>Dữ liệu đo, mỗi kết quả RMS một dòng</b><div className="muted">~2,5 s/dòng, không lặp, dùng làm thống kê</div></div> },
+        { key: 'vendor', disabled: !pointId, label: <div><b>Bảng giống thiết bị hãng</b><div className="muted">Một điểm đo, để đối chiếu với máy đo của hãng</div></div> },
+        { key: 'fft', disabled: !result, label: <div><b>Kết quả phân tích FFT</b><div className="muted">{result ? 'Bậc hài 1X–nX của lần phân tích này' : 'Bấm "Phân tích" trước'}</div></div> },
+      ],
+      onClick: ({ key }) => {
+        const fail = (error: any) => message.error(`Không xuất được file: ${error.message}`)
+        const base = { ...rangeParams(range), max_skew_ms: 1000 }
+        if (key === 'model') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh.csv`, base).catch(fail)
+        if (key === 'rms') download(`/machines/${machine.id}/model-table.csv`, `${machine.id}-theo-mo-hinh-rms.csv`, { ...base, rows: 'rms' }).catch(fail)
+        if (key === 'vendor') download(`/machines/${machine.id}/vendor-table.csv`, `${machine.id}-${pointId}-bang-hang.csv`, { ...base, point_id: pointId, device_name: deviceName }).catch(fail)
+        if (key === 'fft' && result) exportAnalysisCsv(result)
+      },
+    }}><Button type="primary">Xuất CSV ▾</Button></Dropdown>}>
     <div className="fft-filter-grid">
       <label><span>Điểm đo</span><Select value={pointId} onChange={setPointId} options={points.map((p: any) => ({ value: p.id, label: `${p.name} (${p.id})` }))} /></label>
       <div className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></div>
