@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress, Row, Select, Spin, Statistic, Switch, Table, Tag, Typography } from 'antd'
 import { api, patch, post } from '../api/client'
-import { ago, dt, num, sensorCode } from '../utils/format'
+import { ago, dt, num } from '../utils/format'
 import MachineNav from './MachineNav'
 import InstallationDiagram, { templateById } from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
@@ -102,15 +102,6 @@ export default function MachineDetail() {
               <Descriptions.Item label="Cấu hình edge">v{gatewayDetail.deployment?.config_version ?? deployment?.active?.config_version ?? '–'}</Descriptions.Item>
               <Descriptions.Item label="Phiên đo"><Tag color="green">Đang đo</Tag></Descriptions.Item>
             </Descriptions>
-            <Table sticky={STICKY_HEAD} size="small" pagination={false} rowKey="id" title={() => 'Cảm biến của động cơ'} dataSource={(gatewayDetail.points || []).filter((point: any) => point.machine_id === id)} style={{ marginTop: 12 }} columns={[
-              { title: 'Điểm đo', dataIndex: 'id', render: (value) => (m.points || []).find((p: any) => p.id === value)?.name || value },
-              // The gateway list has no mounting position: take it from the machine's measurement points.
-              { title: 'Vị trí', key: 'pos', render: (_, row: any) => sensorCode((m.points || []).find((p: any) => p.id === row.id) || row) },
-              { title: 'Vai trò', dataIndex: 'role', render: (value) => ({ bearing: 'Ổ đỡ', base: 'Đế', source: 'Nguồn rung' } as any)[value] || value || '–' },
-              { title: 'Địa chỉ', dataIndex: 'sensor_addr', render: (value) => `0x${(value || 0).toString(16).toUpperCase()}` },
-              { title: 'Đọc cuối', dataIndex: 'last_reading', render: (value) => value ? ago(value) : '–' },
-              { title: 'Trạng thái', key: 'status', render: (_, row: any) => gatewayHealth.devices?.[row.id]?.offline ? <Tag color="red">offline</Tag> : <Tag color="green">ok</Tag> },
-            ]} />
           </Card>
         </Col>}
         <Col span={24}>
@@ -240,10 +231,12 @@ export default function MachineDetail() {
               onRow={(r: any) => ({ onClick: () => nav(`/points/${r.id}/spectrum`), style: { cursor: 'pointer' } })}
               columns={[
                 { title: 'Mã', dataIndex: 'id' }, { title: 'Tên', dataIndex: 'name' }, { title: 'Vị trí', dataIndex: 'location' },
-                { title: 'Vai trò', dataIndex: 'role' }, { title: 'Cảm biến', key: 's', render: (_, r: any) => `${r.sensor_model} @0x${(r.sensor_addr || 0).toString(16)}` },
+                { title: 'Vai trò', dataIndex: 'role', render: (v) => ({ bearing: 'Ổ đỡ', base: 'Đế', source: 'Nguồn rung' } as any)[v] || v || '–' }, { title: 'Cảm biến', key: 's', render: (_, r: any) => `${r.sensor_model} @0x${(r.sensor_addr || 0).toString(16)}` },
                 { title: 'Trục', dataIndex: 'axes_map', render: (a) => a && Object.entries(a).map(([k, v]) => `${k}:${v}`).join(' ') },
                 { title: 'Trục ISO', dataIndex: 'iso_axes', render: (a) => a?.join(', ') },
                 { title: 'Vòng bi', dataIndex: 'bearing_model' },
+                { title: 'Đọc cuối', key: 'last', render: (_, r: any) => { const v = (gatewayDetail?.points || []).find((p: any) => p.id === r.id)?.last_reading; return v ? ago(v) : '–' } },
+                { title: 'Trạng thái', key: 'status', render: (_, r: any) => gatewayHealth?.devices?.[r.id]?.offline ? <Tag color="red">offline</Tag> : <Tag color="green">ok</Tag> },
                 { title: 'Gateway', dataIndex: 'gateway_id', render: (g, r: any) => <Tag color={r.gateway_online ? 'green' : 'default'}>{g}</Tag> },
               ]} />
           </Card>
