@@ -5,6 +5,7 @@ import { Alert, Button, Card, Col, Descriptions, InputNumber, message, Progress,
 import { api, patch, post } from '../api/client'
 import { ago, dt, num } from '../utils/format'
 import MachineNav from './MachineNav'
+import AlphaLearn from '../components/AlphaLearn'
 import InstallationDiagram, { templateById } from '../components/InstallationDiagram'
 import { DEFAULT_INSTALLATION_TEMPLATE, installationTemplateList } from '../config/installationTemplates'
 import { useAuth } from '../auth'
@@ -36,8 +37,8 @@ export default function MachineDetail() {
     onError: () => message.error('Không thể cập nhật mô hình lắp đặt'),
   })
   const saveAlpha = (value: number | null) => {
-    if (value == null || value <= 0 || value > 2) return
-    patch(`/machines/${id}`, { meta: { ...(m?.meta || {}), base_alpha: value } })
+    if (value == null || value <= 0 || value > 2) return Promise.resolve()
+    return patch(`/machines/${id}`, { meta: { ...(m?.meta || {}), base_alpha: value } })
       .then(() => { queryClient.invalidateQueries({ queryKey: ['machine', id] }); message.success('Đã lưu hệ số α và đẩy tới gateway') })
       .catch(() => message.error('Không lưu được hệ số α'))
   }
@@ -126,11 +127,9 @@ export default function MachineDetail() {
                 {chosen.length ? chosen.map((a) => <Tag key={a} color={info[a]?.supported ? 'blue' : 'default'} title={info[a]?.effect || 'Chưa được hệ thống hỗ trợ'}>
                   {a}{info[a] && !info[a].supported ? ' (chưa hỗ trợ)' : ''}</Tag>) : <Tag>không có</Tag>}
                 {corrected && <label className="model-alpha">Hệ số truyền BASE → ổ đỡ (α)
-                  <InputNumber size="small" min={0.05} max={2} step={0.05} defaultValue={Number(m.meta?.base_alpha ?? 0.8)}
+                  <InputNumber key={String(m.meta?.base_alpha ?? 0.8)} size="small" min={0.05} max={2} step={0.05} defaultValue={Number(m.meta?.base_alpha ?? 0.8)}
                     disabled={!can('analyst')} onBlur={(e) => saveAlpha(Number((e.target as HTMLInputElement).value.replace(',', '.')))} /></label>}
-                {corrected && can('analyst') && activeGatewayId && <Button size="small" onClick={() =>
-                  post(`/gateways/${activeGatewayId}/commands`, { type: 'learn_alpha', params: { machine_id: id } })
-                    .then((r: any) => message.success(`Đã gửi lệnh học α (${r.cmd_id})`)).catch((e) => message.error(e.message))}>Học lại hệ số α</Button>}
+                {corrected && can('analyst') && <AlphaLearn machineId={id!} current={Number(m.meta?.base_alpha ?? 0.8)} onApply={saveAlpha} />}
               </div>
             })()}
           </Card>

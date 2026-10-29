@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from ...common import bus
 from ...common import gwconfig
-from ...common import installation, model_export, timefix
+from ...common import alpha_learn, installation, model_export, timefix
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, current_user, require, time_range
 
@@ -330,6 +330,44 @@ async def model_table(machine_id: str, request: Request, rng=Depends(time_range)
         "X-Rows-Truncated": "1" if truncated else "0", "X-Installation-Model": template or "",
         "Access-Control-Expose-Headers": "X-Rows-Truncated, X-Installation-Model",
     })
+
+
+@router.get("/machines/{machine_id}/alpha-learn")
+async def alpha_learn_preview(machine_id: str, request: Request, rng=Depends(time_range), user: User = Depends(require("analyst"))):
+    """α = RMS(DE) / RMS(BASE) per axis over a window where this machine is stopped (preview, nothing saved)."""
+    await check_machine(request.app.state.pool, user, machine_id)
+    frm, to = rng
+    if to - frm > timedelta(hours=6):
+        raise HTTPException(400, "Khoảng học tối đa 6 giờ")
+    async with request.app.state.pool.acquire() as c:
+        meta, model = await installation.machine_model(c, machine_id)
+        points = [dict(r) for r in await c.fetch("SELECT * FROM measurement_points WHERE machine_id=$1", machine_id)]
+        slots = dict(model_export.slot_points((model or {}).get("slots"), points))
+        de = slots.get("DE") or next((p for p in points if p.get("role") == "bearing"), None)
+        base = slots.get("BASE")
+        if not de or not base:
+            raise HTTPException(422, "Cần cảm biến DE (ổ đỡ) và BASE (đế) để học α")
+        series = {}
+        for key, p in (("de", de), ("base", base)):
+            rows = await c.fetch("""SELECT ts, axis, vel_rms_mm_s FROM vib_metrics WHERE point_id=$1 AND ts BETWEEN $2 AND $3
+                                    AND vel_rms_mm_s IS NOT NULL ORDER BY ts""", p["id"], frm, to)
+            series[key] = {a: [(r["ts"], float(r["vel_rms_mm_s"])) for r in rows if r["axis"] == a] for a in "xyz"}
+        prior = await c.fetchval("SELECT running FROM machine_run_states WHERE machine_id=$1 AND ts < $2 ORDER BY ts DESC LIMIT 1", machine_id, frm)
+        states = await c.fetch("SELECT ts, running FROM machine_run_states WHERE machine_id=$1 AND ts BETWEEN $2 AND $3 ORDER BY ts", machine_id, frm, to)
+    summary = runtime_summary([dict(r) for r in states], frm, to, bool(prior) if prior is not None else False)
+    running_share = (summary.get("run_seconds") or 0) / max(1.0, (to - frm).total_seconds())
+    axes = {a: alpha_learn.learn_axis(alpha_learn.pair(series["de"][a], series["base"][a])) for a in "xyz"}
+    iso_axes = de.get("iso_axes") or ["y", "z"]
+    learned = alpha_learn.combine(axes, iso_axes)
+    warnings = []
+    if not states and prior is None:
+        warnings.append("Chưa có dữ liệu chạy/dừng trong khoảng này; hãy chắc chắn máy đã dừng")
+    elif running_share > alpha_learn.MAX_RUNNING_SHARE:
+        warnings.append(f"Máy chạy {running_share * 100:.0f}% thời gian trong khoảng này; α chỉ đúng khi máy dừng")
+        learned = None
+    return {"from": frm, "to": to, "current": installation.base_alpha(meta, model), "learned": learned,
+            "iso_axes": iso_axes, "axes": axes, "running_pct": round(running_share * 100, 1), "warnings": warnings,
+            "de_point": de["id"], "base_point": base["id"]}
 
 
 @router.post("/machines", status_code=201)
