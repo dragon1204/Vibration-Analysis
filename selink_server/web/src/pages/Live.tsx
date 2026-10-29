@@ -542,7 +542,7 @@ export default function Live() {
                     <Spin size="small" /> <span>Đang cập nhật...</span>
                   </div>
                 )}
-                {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} start={wave.ts} height={250} roles={wavePointObj?.axes_map}
+                {wave ? <WaveformChart axes={wave.axes} dt={wave.dt_s} start={wave.ts} frames={wave.frames} contiguous={wave.frames_contiguous} height={250} roles={wavePointObj?.axes_map}
                   defaultAxis={Object.entries(wavePointObj?.axes_map || defaultRoles).find(([, r]) => r === 'radial_h')?.[0] || 'x'} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có dạng sóng từ gateway" />}
               </div>
             </Card>

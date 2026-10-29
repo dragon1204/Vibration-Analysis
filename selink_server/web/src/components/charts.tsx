@@ -1,7 +1,7 @@
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactECharts from 'echarts-for-react'
-import { Button, Segmented, Typography } from 'antd'
+import { Button, Segmented, Typography, Checkbox } from 'antd'
 import { ZONE_BG, num, saveCSV, vnMs } from '../utils/format'
 
 export type IsoLimits = { ab: number; bc: number; cd: number }
@@ -216,18 +216,27 @@ const axisLabel = (a: string, roles?: Record<string, string>) => `${a.toUpperCas
 
 /** Acceleration waveform. One axis at a time by default (three overlaid 2 kS/s traces read as a solid band),
  * opened on the first ~100 ms so individual cycles are visible; the slider pans/zooms over the whole frame. */
-export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windowS = 0.1, roles, start }: {
+export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windowS = 0.1, roles, start, frames, contiguous }: {
   roles?: Record<string, string>; axes: Record<string, number[]>; dt: number; height?: number; defaultAxis?: string; windowS?: number
   /** Capture start time: when given, the x axis shows real clock time (HH:mm:ss.SSS) instead of ms from the start. */
   start?: string
+  /** Frames of 1024 samples; non-contiguous frames are separated in time, so the clock only holds inside frame 1. */
+  frames?: number; contiguous?: boolean
 }) {
-  const t0 = start ? dayjs(start) : null
+  const split = (frames || 1) > 1 && !contiguous
+  const t0 = start && !split ? dayjs(start) : null
   const clock = (v: number) => (t0 ? t0.add(Math.round(v * 1000), 'millisecond').format('HH:mm:ss.SSS') : `${num(v * 1000, 0)} ms`)
   const names = Object.keys(axes)
   const [sel, setSel] = useState<string>(names.includes(defaultAxis) ? defaultAxis : names[0] || 'x')
   // Gateway samples are g. Display acceleration in mm/s² to match the project convention.
   const [accUnit, setAccUnit] = useState<'mm/s²' | 'g'>('mm/s²')
   const scale = accUnit === 'mm/s²' ? 9806.65 : 1
+  // Gravity (and any sensor offset) is the mean of each axis over the capture; removing it centres the trace on 0.
+  const [noGravity, setNoGravity] = useState(true)
+  const offset = useMemo(() => Object.fromEntries(names.map((a) => {
+    const v = axes[a] || []
+    return [a, noGravity && v.length ? v.reduce((s, x) => s + x, 0) / v.length : 0]
+  })), [axes, names, noGravity])
   const total = Math.max(0, ...names.map((a) => axes[a]?.length || 0)) * dt
   const defaultEndPct = total > 0 ? Math.min(100, (windowS / total) * 100) : 100
 
@@ -312,11 +321,13 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
             width: isAll ? 1 : 1.5,
             opacity: isShown ? (isAll ? 0.85 : 1) : 0,
           },
-          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, v * scale]) : [],
+          data: isShown && axes[a] ? axes[a].map((v, i) => [i * dt, (v - offset[a]) * scale]) : [],
+          markLine: split ? { silent: true, symbol: 'none', lineStyle: { type: 'dashed', color: '#94a3b8' }, label: { show: false },
+            data: Array.from({ length: (frames || 1) - 1 }, (_, k) => ({ xAxis: ((axes[a]?.length || 0) / (frames || 1)) * (k + 1) * dt })) } : undefined,
         }
       }),
     }
-  }, [axes, dt, accUnit, scale, names, sel, zoomRange, start])
+  }, [axes, dt, accUnit, scale, names, sel, zoomRange, start, offset, split, frames])
 
   return (
     <div>
@@ -340,7 +351,9 @@ export function WaveformChart({ axes, dt, height = 260, defaultAxis = 'x', windo
         />
         <Segmented size="small" value={accUnit} onChange={(v) => setAccUnit(v as 'mm/s²' | 'g')}
           options={[{ value: 'mm/s²', label: 'mm/s²' }, { value: 'g', label: 'g' }]} />
-        <span className="muted">{t0 ? `Bắt đầu ${t0.format('DD/MM/YYYY HH:mm:ss.SSS')} · ` : ''}Khung {num(total * 1000, 0)} ms · kéo thanh trượt để xem toàn bộ</span>
+        <Checkbox checked={noGravity} onChange={(e) => setNoGravity(e.target.checked)}>Bù trọng trường</Checkbox>
+        <span className="muted">{start ? `Bắt đầu ${dayjs(start).format('DD/MM/YYYY HH:mm:ss.SSS')} · ` : ''}
+          {split ? `${frames} khung × ${num(total * 1000 / (frames || 1), 0)} ms, đo cách quãng (vạch đứt = ranh giới khung)` : `Khung ${num(total * 1000, 0)} ms`} · kéo thanh trượt để xem toàn bộ</span>
       </div>
       <ReactECharts
         option={option}
