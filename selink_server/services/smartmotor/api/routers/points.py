@@ -10,6 +10,7 @@ import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from ...common.customer_rules import evaluate_rules
 from ...common import dsp, harmonic_review, installation, wavefile
 from ...common.assets import AssetCache
 from ...common.iso import iso_limits, rezone
@@ -668,6 +669,7 @@ async def harmonic_analysis(point_id: str, request: Request, rng=Depends(time_ra
                     "resolution_hz": round(median_df, 6), "resolution_pct_1x": round(resolution_pct, 2),
                     "covered_order": covered_order, "speed_coverage_pct": round(speed_coverage, 1),
                     "speed_spread_pct": round(speed_spread, 1), "issues": quality_issues},
+        "customer_rules": evaluate_rules((machine.get("meta") or {}).get("customer_rules", []), details),
         "harmonics": harmonics, "details": details, "findings": findings, "conclusions": conclusions,
         "reference": {"base_point_id": base_point["id"] if base_point else None, "alpha": alpha,
                       "iso_median_mm_s": round(float(iso_median), 3) if iso_median is not None else None, "zone_ab": zone_ab,

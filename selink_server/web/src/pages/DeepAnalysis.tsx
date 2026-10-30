@@ -9,6 +9,7 @@ import { MultiSpectrumChart } from '../components/charts'
 import { RangePicker, lastHours, rangeParams, type Range } from '../components/common'
 import { dt, num, sensorCode } from '../utils/format'
 import MachineNav from './MachineNav'
+import CustomerRules from '../components/CustomerRules'
 import { STICKY_HEAD } from '../utils/table'
 
 const COLORS = ['#2563eb', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4d7c0f']
@@ -344,6 +345,8 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <div className="fft-range"><span>Khoảng thời gian</span><RangePicker value={range} onChange={setRange} /></div>
       <label><span>Metric FFT</span><Select value={metric} onChange={setMetric} options={METRICS} /></label>
       <label><span>Trục đo</span><Segmented block value={axis} onChange={(value) => setAxis(String(value))} options={['x', 'y', 'z'].map((value) => ({ value, label: value.toUpperCase() }))} /></label>
+      <label><span>Ngưỡng % so với 1X</span><InputNumber value={minRelativeTo1xPct} onChange={(value) => value != null && setMinRelativeTo1xPct(value)} min={0} max={100} step={1} addonAfter="%" /></label>
+      <details style={{ gridColumn: '1 / -1' }}><summary>Tùy chọn nâng cao</summary><div className="fft-filter-grid">
       <label><span>Order tracking</span><Select value={tracking} onChange={setTracking} options={[
         { value: 'capture', label: 'Theo tốc độ từng capture' }, { value: 'fixed', label: 'Cố định theo 1X nhập vào' },
       ]} /></label>
@@ -352,18 +355,24 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <label><span>Vùng bắt quanh mỗi hài</span><InputNumber value={tolerancePct} onChange={(value) => value && setTolerancePct(value)} min={1} max={30} addonBefore="±" addonAfter="%" /></label>
       <label><span>Phân tích đến</span><InputNumber value={maxOrder} onChange={(value) => value && setMaxOrder(value)} min={1} max={30} addonAfter="X" /></label>
       <label><span>Ngưỡng đỉnh / nền</span><InputNumber value={prominenceRatio} onChange={(value) => value != null && setProminenceRatio(value)} min={1.2} max={10} step={0.2} addonAfter="×" /></label>
-      <label><span>Biên độ tối thiểu so với 1X</span><InputNumber value={minRelativeTo1xPct} onChange={(value) => value != null && setMinRelativeTo1xPct(value)} min={0} max={100} step={1} addonAfter="%" /></label>
       <label><span>Số capture lấy mẫu</span><Select value={analysisLimit} onChange={setAnalysisLimit} options={[100, 300, 500].map((value) => ({ value, label: `${value} capture` }))} /></label>
+      </div></details>
       <Button type="primary" size="large" disabled={!pointId} loading={analysis.isFetching} onClick={run}>Phân tích</Button>
     </div>
+    <details style={{ margin: '12px 0' }}><summary>Hướng dẫn dữ liệu và xuất file</summary>
     <Alert className="fft-sampling-note" type="warning" showIcon
       message="Không dùng bảng giá trị 68–72 ms để kết luận hài 50 Hz"
       description="Bảng mẫu có tần suất khoảng 14,3 mẫu/giây nên chỉ phân tích đúng đến khoảng 7,1 Hz (Nyquist). Chức năng này đọc phổ từ waveform tốc độ cao trong từng capture; để thấy đến 5X của 50 Hz, tần suất lấy mẫu phải trên 500 Hz và nên dùng 1.280 Hz trở lên." />
     <Alert className="vendor-export-note" type="info" showIcon message="Bảng đối chứng 25 cột đúng cấu trúc của hãng"
       description={<>Abrg1: <b>{selectedPoint?.name || pointId}</b> · Abrg2: <b>{secondBearing?.name || 'để trống nếu máy không có'}</b> · Abase: <b>{basePoint?.name || 'để trống nếu chưa gán điểm bệ'}</b>. Các kênh được ghép theo timestamp gần nhất trong 1 giây; ô không có phép đo thật được để trống.</>} />
+    </details>
+    <details style={{ margin: '12px 0' }}><summary>Mã lỗi & quy tắc khách hàng</summary>
+      <CustomerRules key={machine.id} machineId={machine.id} result={result} />
+    </details>
     {analysis.isError && <Alert type="error" showIcon message="Không phân tích được" description={(analysis.error as Error).message} style={{ marginTop: 12 }} />}
     {analysis.isFetching && <div className="fft-loading"><Spin /><span>Đang đọc và tổng hợp phổ của các capture…</span></div>}
     {result && !analysis.isFetching && <>
+      <details style={{ marginBottom: 12 }}><summary>Chi tiết lấy mẫu</summary>
       <Alert showIcon type={result.sampling?.metric?.median_ms <= 84 ? 'success' : result.sampling?.metric?.median_ms < 1000 ? 'info' : 'warning'}
         message={result.sampling?.metric?.median_ms < 60 ? 'Cadence metric nhanh hơn mục tiêu 68–72 ms'
           : result.sampling?.metric?.median_ms <= 84 ? 'Cadence metric đã đạt mục tiêu 68–72 ms'
@@ -374,6 +383,10 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
       <Alert showIcon type="info" message="Cách lấy mẫu phân tích"
         description={<>Khoảng chọn có <b>{result.total_captures}</b> capture; hệ thống chọn <b>{result.selected_captures}</b> capture phân bố đều trong toàn khoảng. Profile: {result.profiles?.map((item: any) => `${item.profile} (${item.captures})`).join(', ') || '—'}. Một bậc chỉ được tính khi đỉnh đạt ≥{num(result.settings.prominence_ratio, 1)}× nền và bậc 2X trở lên đạt ≥{num(result.settings.min_relative_to_1x_pct, 1)}% của 1X trong cùng capture.</>}
         style={{ marginBottom: 10 }} />
+      </details>
+      {result.customer_rules?.some((rule: any) => rule.status === 'matched') && <Alert showIcon type="warning"
+        message={`Quy tắc đạt điều kiện: ${result.customer_rules.filter((rule: any) => rule.status === 'matched').map((rule: any) => `${rule.code} – ${rule.name}`).join('; ')}`}
+        description="Xem số lần và tỷ lệ trong mục Mã lỗi & quy tắc khách hàng. Đây là dấu hiệu cần kiểm tra, chưa phải kết luận lỗi." style={{ marginBottom: 12 }} />}
       <Row gutter={[12, 12]} className="fft-kpis">
         <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="Capture mẫu đã phân tích" value={result.analyzed_captures} suffix={`/ ${result.total_captures}`} /></Card></Col>
         <Col xs={12} md={8} xl={4}><Card size="small"><Statistic title="1X đại diện" value={result.settings.representative_base_hz} precision={2} suffix="Hz" /></Card></Col>
@@ -408,10 +421,10 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
           { title: 'Dai dẳng', width: 125, render: (_, row: any) => <span>{row.longest_streak} capture<br/><small className="muted">{num(row.persistence_pct, 1)}% liên tiếp</small></span> },
           { title: 'Ảnh hưởng / gợi ý kiểm tra', dataIndex: 'effect', width: 360 },
         ]} /></Card></Col>
-        {result.harmonics.some((x: any) => x.detections) && <Col span={24}><Card size="small" title="Xu hướng biên độ các hài đã phát hiện theo thời gian"><ReactECharts option={trendOption} style={{ height: 360 }} /></Card></Col>}
-        {result.harmonics.some((x: any) => x.detections) && <Col span={24}><Card size="small" title="Bản đồ order–time · màu thể hiện biên độ đỉnh nổi bật">
+        {result.harmonics.some((x: any) => x.detections) && <Col span={24}><details><summary>Biểu đồ xu hướng và bản đồ hài</summary><Card size="small" title="Xu hướng biên độ các hài"><ReactECharts option={trendOption} style={{ height: 360 }} /></Card>
+        <Card size="small" title="Bản đồ order–time · biên độ đỉnh">
           <ReactECharts option={orderMapOption} style={{ height: Math.max(360, result.harmonics.length * 27 + 150) }} />
-        </Card></Col>}
+        </Card></details></Col>}
       </Row> : <Empty description="Không có dải hài nào nằm trong phổ khả dụng" />}
       <Card size="small" className="vendor-compare-card" title="Đối chiếu định lượng với file của hãng" extra={<Space wrap>
         <span className="muted">Ghép thời gian ±</span><InputNumber value={compareToleranceMs} min={10} max={5000} step={10}

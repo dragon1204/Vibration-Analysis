@@ -11,6 +11,7 @@ from pathlib import Path
 from uuid import uuid4
 from pydantic import BaseModel
 
+from ...common.customer_rules import CustomerRules
 from ...common import bus
 from ...common import gwconfig
 from ...common import alpha_learn, installation, model_export, table_export, timefix
@@ -687,3 +688,23 @@ async def run_analytics(body: AnalyticsCmd, request: Request, user: User = Depen
     await bus.publish(request.app.state.redis, "analytics:cmd", {"job": body.job, **body.params})
     await audit(request.app.state.pool, user, "analytics.run", body.job)
     return {"queued": body.job}
+
+
+@router.get("/machines/{machine_id}/customer-rules")
+async def get_customer_rules(machine_id: str, request: Request, user: User = Depends(current_user)):
+    await check_machine(request.app.state.pool, user, machine_id)
+    async with request.app.state.pool.acquire() as c:
+        meta = await c.fetchval("SELECT meta FROM machines WHERE id=$1", machine_id)
+    return {"rules": (meta or {}).get("customer_rules", [])}
+
+
+@router.put("/machines/{machine_id}/customer-rules")
+async def save_customer_rules(machine_id: str, body: CustomerRules, request: Request,
+                              user: User = Depends(require("engineer"))):
+    await check_machine(request.app.state.pool, user, machine_id, "engineer")
+    rules = [r.model_dump() for r in body.rules]
+    async with request.app.state.pool.acquire() as c:
+        await c.execute("""UPDATE machines SET meta=jsonb_set(COALESCE(meta, '{}'::jsonb),
+                        '{customer_rules}', $2::jsonb) WHERE id=$1""", machine_id, rules)
+    await audit(request.app.state.pool, user, "customer_rules.update", machine_id, body.model_dump())
+    return {"rules": rules}
