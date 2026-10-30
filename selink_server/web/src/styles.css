@@ -715,3 +715,56 @@ body, .app-shell, .app-content { background: var(--bg) !important; }
 .alpha-change span { display: block; color: var(--muted); font-size: 12px; }
 .alpha-change b { font-size: 28px; font-variant-numeric: tabular-nums; }
 .alpha-arrow { color: var(--muted); font-size: 22px; }
+
+/* Machine-specific rules: readable cards, with a focused editor. */
+.customer-rules { margin: 20px 0 12px; border: 1px solid #dce5ef; border-radius: 10px; background: #fff; overflow: hidden; }
+.customer-rules-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid #e8edf4; background: #f8fafd; }
+.customer-rules-heading { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.customer-rules-icon { display: grid; place-items: center; flex-shrink: 0; width: 42px; height: 42px; border-radius: 10px; background: #e8f1fc; color: #2766a5; font-size: 22px; }
+.customer-rules-heading h3 { margin: 0 0 4px; font-size: 16px; font-weight: 700; line-height: 1.5; color: #21354e; }
+.customer-rules-heading p, .customer-rules-footer p { margin: 0; color: #697b91; font-size: 12px; line-height: 1.6; }
+.customer-rules-heading strong { color: #435a73; font-weight: 600; }
+.customer-rules-count { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 22px; margin-left: 6px; padding: 0 6px; border-radius: 12px; background: #e5edf6; color: #48617e; font-size: 12px; vertical-align: middle; }
+.customer-rules-empty { padding: 4px 16px 12px; }
+.customer-rules-empty .ant-empty { margin: 20px 0; }
+.customer-rules-empty .ant-empty-image { height: 40px; margin-bottom: 10px; }
+.customer-rules-empty .ant-empty-description b { display: block; color: #435a73; font-size: 14px; font-weight: 600; }
+.customer-rules-empty .ant-empty-description span { display: block; margin-top: 4px; color: #78889c; font-size: 12px; }
+.customer-rule-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 14px; padding: 18px; }
+.customer-rule { min-width: 0; border: 1px solid #e1e8f1; border-radius: 8px; overflow: hidden; container-type: inline-size; }
+.customer-rule-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; }
+.customer-rule-title > div:first-child { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.customer-rule-title strong { color: #243c57; font-weight: 600; font-size: 14px; }
+.customer-rule-title .ant-tag { margin-right: 8px; font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
+.customer-rule-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; padding: 0 16px 16px; }
+.customer-rule-metrics span { display: block; margin-bottom: 3px; font-size: 12px; color: #75859a; }
+.customer-rule-metrics b { font-size: 17px; font-weight: 650; color: #243c57; font-variant-numeric: tabular-nums; }
+.customer-rule-metrics small { font-size: 12px; font-weight: 500; color: #75859a; }
+.customer-rule-result { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; padding: 10px 16px; background: #f8fafd; border-top: 1px solid #edf1f6; color: #6c7c91; font-size: 12px; }
+.customer-rule-result .ant-tag { margin: 0; }
+.customer-rules-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 20px; background: #fbfcfe; border-top: 1px solid #e8edf4; }
+.customer-rules-status { display: inline-flex; align-items: center; gap: 6px; color: #667c93; font-size: 12px; font-weight: 600; }
+.customer-rules-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #a8b8c9; }
+.customer-rules-status.is-dirty { color: #a2630b; }
+.customer-rules-status.is-dirty::before { background: #df9a26; }
+.customer-rules > .ant-skeleton, .customer-rules > .ant-alert { margin: 16px; width: auto; }
+.customer-rule-modal .ant-modal-title { font-size: 18px; }
+.customer-rule-modal-note { margin: 12px 0 18px; padding: 10px 12px; border-radius: 6px; color: #667b91; background: #f4f7fb; font-size: 12px; line-height: 1.7; }
+.customer-rule-form-identity { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+.customer-rule-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.customer-rule-modal .ant-form-item { margin-bottom: 18px; }
+.customer-rule-modal .ant-form-item-label > label { font-size: 13px; font-weight: 600; color: #3e536d; }
+.customer-rule-modal .ant-input-number-group-wrapper, .customer-rule-modal .ant-input-number { width: 100%; }
+.customer-rule-form-divider { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; margin: 2px 0 18px; padding-top: 16px; border-top: 1px solid #e8edf4; font-size: 13px; font-weight: 600; color: #3e536d; }
+.customer-rule-form-divider span { color: #8391a3; font-size: 12px; font-weight: 400; }
+@container (min-width: 600px) {
+  .customer-rule-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .customer-rules-header, .customer-rules-footer { align-items: flex-start; flex-direction: column; padding: 14px; }
+  .customer-rules-header > .ant-btn, .customer-rules-footer > .ant-btn { width: 100%; }
+  .customer-rule-list { padding: 12px; }
+  .customer-rule-title > div:first-child { flex-basis: 100%; }
+  .customer-rules-icon { width: 36px; height: 36px; font-size: 19px; }
+  .customer-rule-form-identity, .customer-rule-form-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}

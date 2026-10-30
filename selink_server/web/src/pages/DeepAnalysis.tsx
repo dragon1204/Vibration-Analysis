@@ -366,9 +366,7 @@ function HarmonicAnalysis({ machine }: { machine: any }) {
     <Alert className="vendor-export-note" type="info" showIcon message="Bảng đối chứng 25 cột đúng cấu trúc của hãng"
       description={<>Abrg1: <b>{selectedPoint?.name || pointId}</b> · Abrg2: <b>{secondBearing?.name || 'để trống nếu máy không có'}</b> · Abase: <b>{basePoint?.name || 'để trống nếu chưa gán điểm bệ'}</b>. Các kênh được ghép theo timestamp gần nhất trong 1 giây; ô không có phép đo thật được để trống.</>} />
     </details>
-    <details style={{ margin: '12px 0' }}><summary>Mã lỗi & quy tắc khách hàng</summary>
-      {machine?.id ? <CustomerRules key={machine.id} machineId={machine.id} result={result} /> : <Spin />}
-    </details>
+    {machine?.id && <CustomerRules key={machine.id} machineId={machine.id} machineName={machine.name} result={result} />}
     {analysis.isError && <Alert type="error" showIcon message="Không phân tích được" description={(analysis.error as Error).message} style={{ marginTop: 12 }} />}
     {analysis.isFetching && <div className="fft-loading"><Spin /><span>Đang đọc và tổng hợp phổ của các capture…</span></div>}
     {result && !analysis.isFetching && <>
