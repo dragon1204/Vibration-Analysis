@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Breadcrumb, Card, Col, Empty, InputNumber, Row, Segmented, Select, Space, Switch, Table, Tabs, Tag } from 'antd'
 import { api } from '../api/client'
+import { RawDownload } from '../components/RawDownload'
 import { SpectrumChart, WaterfallChart, WaveformChart } from '../components/charts'
 import { RangePicker, ZoneTag, lastHours, rangeParams, type Range } from '../components/common'
 import { dt, num } from '../utils/format'
@@ -88,6 +89,7 @@ export default function Spectrum() {
                     compare={cmp ? { name: `So sánh ${dt(caps.find((c) => c.capture_id === compareId)?.ts)}`, df: cmp.df_hz, values: cmp.values } : undefined} />
                   {cap && <Space wrap className="muted">
                     <span>{cap.capture_id}</span><span>fs {num(cap.fs_hz, 0)} Hz</span><span>{cap.frames} frame</span>
+                    <RawDownload captureId={capId} pointId={id} ts={cap.ts} />
                     <span>1X = {num(cap.speed_hz, 2)} Hz ({cap.speed_confidence})</span>
                     {cap.quality_flags?.map((f: string) => <Tag key={f}>{f}</Tag>)}
                   </Space>}
@@ -95,7 +97,8 @@ export default function Spectrum() {
               ) : <Empty description="Chọn capture" />,
             },
             {
-              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small"><WaveformChart axes={wave.axes} dt={wave.dt_s} start={wave.ts} frames={wave.frames} contiguous={wave.frames_contiguous} height={420} defaultAxis={axis} /></Card>
+              key: 'wave', label: 'Dạng sóng', children: wave ? <Card size="small" title={cap ? `Capture ${dt(cap.ts)}` : undefined}
+                extra={<RawDownload captureId={capId} pointId={id} ts={cap?.ts} />}><WaveformChart axes={wave.axes} dt={wave.dt_s} start={wave.ts} frames={wave.frames} contiguous={wave.frames_contiguous} height={420} defaultAxis={axis} /></Card>
                 : <Empty description="Không có sóng thô" />,
             },
             {

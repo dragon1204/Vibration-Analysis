@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Card, Col, Empty, Row, Select, Spin, Tag } from 'antd'
 import { api } from '../api/client'
+import { RawDownload } from '../components/RawDownload'
 import AddSensor from '../components/AddSensor'
 import { useAuth } from '../auth'
 import { useRealtime } from '../api/realtime'
@@ -532,7 +533,8 @@ export default function Live() {
           {points.length > 1 && <Col span={24}><CompareCard points={byPosition(machine.points)} status={points} installation={installation} alpha={alphaForMachine} /></Col>}
 
           <Col xs={24} xl={15}>
-            <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc">
+            <Card className="dashboard-card waveform-card" title="Dạng sóng gia tốc"
+              extra={<RawDownload captureId={lastCapture?.capture_id} pointId={wavePoint} ts={lastCapture?.ts} />}>
               <div className="card-subtitle">
                 {wave ? `${wavePointObj?.name || ''} | ${num(wave.fs_hz / 1000, 1)} kS/s | capture ${ago(lastCapture?.ts)}` : 'Dữ liệu capture mới nhất'}
               </div>

@@ -5,13 +5,14 @@ import json
 import math
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from ...common.customer_rules import evaluate_rules
-from ...common import dsp, harmonic_review, installation, wavefile
+from ...common import dsp, harmonic_review, installation, table_export, wavefile
 from ...common.assets import AssetCache
 from ...common.iso import iso_limits, rezone
 from ..deps import User, audit, check_machine, check_point, current_user, require, time_range
@@ -198,6 +199,20 @@ async def capture_waveform(capture_id: str, request: Request, axis: str = "x,y,z
             i = "xyz".index(a)
             out["axes"][a] = np.round(g[::step, i], 5).tolist()
     return out
+
+
+@router.get("/captures/{capture_id}/waveform/export")
+async def capture_waveform_export(capture_id: str, request: Request,
+                                  fmt: str = Query("csv", alias="format", pattern="^(csv|xlsx)$"),
+                                  user: User = Depends(require("engineer"))):
+    """Download every raw RAWFIFO sample of a capture (counts, g, m/s²) as CSV or Excel."""
+    cap = await _capture(request, user, capture_id)
+    header, counts = await _samples(request, cap)
+    local = cap["ts"].astimezone(ZoneInfo("Asia/Ho_Chi_Minh")) if cap.get("ts") else None
+    stamp = local.strftime("%Y%m%d-%H%M%S") if local else capture_id
+    return table_export.response(wavefile.export_rows(header, counts), f"{cap['point_id']}_song-tho_{stamp}", fmt, headers={
+        "X-Capture-Id": capture_id, "X-Capture-Ts": local.isoformat() if local else "",
+        "X-Fs-Hz": str(header.get("fs_hz")), "X-Frames": str(header.get("frames"))})
 
 
 def _markers(cap: dict, point: dict, machine: dict) -> list[dict]:
